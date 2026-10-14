@@ -15,9 +15,11 @@ import {
   UserRound,
 } from "lucide-react";
 import { AddConsultantModal } from "@/components/AddConsultantModal";
+import { AppAccessList } from "@/components/AppAccessList";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { ConsultantDetailClient } from "@/components/ConsultantDetailClient";
 import { PersonCustomersTab, type PersonCustomerOption } from "@/components/PersonCustomersTab";
+import { PersonMcpAccessTab } from "@/components/PersonMcpAccessTab";
 import {
   createConsultantProfileForUser,
   createUserPerson,
@@ -57,7 +59,6 @@ import {
   PageHeader,
   SAVED_DURATION_MS,
   Select,
-  Switch,
   SideDrawer,
   Tabs,
   TabsContent,
@@ -139,32 +140,6 @@ const APP_ICONS: Record<AppKey, typeof CalendarCheck> = {
   work: Briefcase,
 };
 
-const APP_ACCESS_ITEMS: Record<
-  AppKey,
-  { name: string; icon: typeof CalendarCheck; tileClass: string }
-> = {
-  planner: {
-    name: "Rove Planner",
-    icon: CalendarCheck,
-    tileClass: "bg-[var(--color-blue-100)] text-[var(--color-blue-600)]",
-  },
-  time_report: {
-    name: "Rove Time report",
-    icon: Clock,
-    tileClass: "bg-[var(--color-teal-100)] text-[var(--color-teal-600)]",
-  },
-  insights: {
-    name: "Rove Insights",
-    icon: Sparkles,
-    tileClass: "bg-[var(--color-cyan-100)] text-[var(--color-cyan-600)]",
-  },
-  work: {
-    name: "Rove Work",
-    icon: Briefcase,
-    tileClass: "bg-[var(--color-purple-100)] text-[var(--color-purple-600)]",
-  },
-};
-
 function PersonTypeCell({ person }: { person: PersonListItem }) {
   const kind = personKind(person);
   const label = personType(person);
@@ -216,64 +191,6 @@ function PersonAppIcons({ appKeys }: { appKeys: AppKey[] }) {
         );
       })}
     </span>
-  );
-}
-
-function AppAccessList({
-  value,
-  onChange,
-  allowedKeys = APP_KEYS,
-  disabled = false,
-  idPrefix = "app-access",
-}: {
-  value: AppKey[];
-  onChange: (value: AppKey[]) => void;
-  allowedKeys?: readonly AppKey[];
-  disabled?: boolean;
-  idPrefix?: string;
-}) {
-  return (
-    <div className="divide-y divide-border-subtle">
-      {allowedKeys.map((key) => {
-        const item = APP_ACCESS_ITEMS[key];
-        const Icon = item.icon;
-        const enabled = value.includes(key);
-        const canToggle = allowedKeys.includes(key) && !disabled;
-        const switchId = `${idPrefix}-${key}`;
-
-        return (
-          <div key={key} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-            <span
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${item.tileClass}`}
-              aria-hidden
-            >
-              <Icon className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1 text-label-l text-text-primary">
-              {item.name}
-            </span>
-            <Switch
-              id={switchId}
-              className="shrink-0"
-              tone="success"
-              checked={enabled}
-              disabled={!canToggle}
-              onCheckedChange={(checked) => {
-                onChange(
-                  checked
-                    ? [...value, key]
-                    : value.filter((current) => current !== key)
-                );
-              }}
-              label={enabled ? "Enabled" : "Disabled"}
-              labelClassName={
-                enabled ? "text-status-success" : "text-text-tertiary"
-              }
-            />
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1349,13 +1266,18 @@ export function PeoplePageClient({
             defaultValue="overview"
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
-            <TabsList className="shrink-0 border-border-default px-6 !gap-6">
+            <TabsList className="shrink-0 overflow-x-auto border-border-default px-6 !gap-6">
               <TabsTrigger value="overview" className="px-1 !px-1">
                 Overview
               </TabsTrigger>
               {selected.appUserId ? (
                 <TabsTrigger value="apps" className="px-1 !px-1">
                   App access
+                </TabsTrigger>
+              ) : null}
+              {selected.appUserId ? (
+                <TabsTrigger value="mcp" className="px-1 !px-1">
+                  MCP access
                 </TabsTrigger>
               ) : null}
               {selected.userRole !== "customer" ? (
@@ -1411,6 +1333,18 @@ export function PeoplePageClient({
                 <AppAccessForm
                   key={`${selected.key}-${selected.appKeys.join("-")}`}
                   person={selected}
+                />
+              </TabsContent>
+            ) : null}
+            {selected.appUserId ? (
+              <TabsContent
+                value="mcp"
+                className="min-h-0 flex-1 overflow-y-auto data-[state=active]:flex data-[state=active]:flex-col"
+              >
+                <PersonMcpAccessTab
+                  key={`${selected.key}-${selected.appKeys.join("-")}-${selected.userRole}`}
+                  appUserId={selected.appUserId}
+                  isCustomer={selected.userRole === "customer"}
                 />
               </TabsContent>
             ) : null}
