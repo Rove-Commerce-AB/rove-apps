@@ -111,8 +111,6 @@ Settings / People. Token management does not grant app permissions.
 The encryption key is derived from `AUTH_SECRET`, with `NEXTAUTH_SECRET` as a
 fallback. Revocation deletes the token row and preserves app permission settings.
 
-Added by [`scripts/20261014_people_mcp_access.sql`](../scripts/20261014_people_mcp_access.sql).
-
 ---
 
 ## app_user_shortcuts
