@@ -145,6 +145,7 @@ export type WorkBoardView = {
   id: string;
   title: string;
   prefix: string;
+  agentsMd: string;
   customerId: string;
   customerName: string;
   /** Linked Planner `projects.id`, when set. */
@@ -163,4 +164,16 @@ export type WorkBoardView = {
   components: WorkComponent[];
   issues: WorkIssue[];
   sprints: WorkSprint[];
+};
+
+export type WorkProjectContext = {
+  project: {
+    id: string;
+    title: string;
+    prefix: string;
+    customerId: string;
+    customerName: string;
+  };
+  columns: WorkBoardStatus[];
+  agentsMd: string;
 };

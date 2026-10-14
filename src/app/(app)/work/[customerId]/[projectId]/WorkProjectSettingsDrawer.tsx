@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import {
   Button,
@@ -13,19 +13,22 @@ import {
   TabsTrigger,
 } from "@/components/ui";
 import type { WorkComponent, WorkPerson } from "@/lib/workTypes";
-import { listLinkablePlannerProjectsAction } from "../../actions";
+import { listLinkablePlannerProjectsAction, saveWorkProjectInstructionsAction } from "../../actions";
 import { WorkBoardMembers } from "./WorkBoardMembers";
 
 export type WorkProjectSettingsTab =
   | "details"
   | "access"
   | "components"
+  | "agents.md"
   | "danger";
 
 export function WorkProjectSettingsDrawer({
   open,
   onOpenChange,
   initialTab = "details",
+  projectId,
+  agentsMd,
   title,
   customerId,
   customerName,
@@ -46,6 +49,8 @@ export function WorkProjectSettingsDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialTab?: WorkProjectSettingsTab;
+  projectId: string;
+  agentsMd: string;
   title: string;
   customerId: string;
   customerName: string;
@@ -190,7 +195,7 @@ export function WorkProjectSettingsDrawer({
             className="flex min-h-0 flex-1 flex-col"
           >
             <div className="shrink-0 px-6 pt-3">
-              <TabsList className="!gap-0">
+              <TabsList className="!flex-wrap !gap-0">
                 <TabsTrigger value="details" className="px-3 !px-3">
                   Details
                 </TabsTrigger>
@@ -199,6 +204,9 @@ export function WorkProjectSettingsDrawer({
                 </TabsTrigger>
                 <TabsTrigger value="components" className="px-3 !px-3">
                   Components
+                </TabsTrigger>
+                <TabsTrigger value="agents.md" className="px-3 !px-3">
+                  agents.md
                 </TabsTrigger>
                 <TabsTrigger value="danger" className="px-3 !px-3">
                   Danger
@@ -423,6 +431,14 @@ export function WorkProjectSettingsDrawer({
             </TabsContent>
 
             <TabsContent
+              value="agents.md"
+              forceMount
+              className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 py-5 data-[state=inactive]:hidden"
+            >
+              <ProjectInstructionsForm key={projectId} projectId={projectId} agentsMd={agentsMd} />
+            </TabsContent>
+
+            <TabsContent
               value="danger"
               className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 py-5"
             >
@@ -468,5 +484,77 @@ export function WorkProjectSettingsDrawer({
         }}
       />
     </>
+  );
+}
+
+function ProjectInstructionsForm({ projectId, agentsMd }: { projectId: string; agentsMd: string }) {
+  const [draft, setDraft] = useState(agentsMd);
+  const [saved, setSaved] = useState(agentsMd);
+  const [feedback, setFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  function save() {
+    if (saving || draft === saved) {
+      return;
+    }
+
+    setFeedback(null);
+    startSaving(async () => {
+      try {
+        const result = await saveWorkProjectInstructionsAction(projectId, draft);
+
+        if (!result.ok) {
+          setFeedback({ kind: "error", message: result.error });
+          return;
+        }
+
+        setSaved(result.agentsMd);
+        setFeedback({ kind: "success", message: "Saved." });
+      } catch {
+        setFeedback({ kind: "error", message: "Unable to save project instructions. Try again." });
+      }
+    });
+  }
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save();
+      }}
+    >
+      <div className="space-y-2">
+        <label htmlFor="work-project-instructions" className="block text-sm font-medium text-text-primary">
+          Project instructions
+        </label>
+        <p id="work-project-instructions-help" className="text-sm text-text-secondary">
+          Instructions for agents working in this project. Describe the workflow, conventions and how to use the board columns.
+        </p>
+        <textarea
+          id="work-project-instructions"
+          aria-describedby="work-project-instructions-help"
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setFeedback(null);
+          }}
+          rows={16}
+          disabled={saving}
+          spellCheck={false}
+          className="box-border w-full resize-y rounded-lg border border-form bg-bg-default px-3 py-2 font-mono text-sm text-text-primary focus:border-form focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--color-border-form)] disabled:opacity-50"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={saving || draft === saved}>
+          {saving ? "Saving..." : "Save"}
+        </Button>
+        {feedback ? (
+          <p role={feedback.kind === "error" ? "alert" : "status"} className={`text-sm ${feedback.kind === "error" ? "text-danger" : "text-text-secondary"}`}>
+            {feedback.message}
+          </p>
+        ) : null}
+      </div>
+    </form>
   );
 }

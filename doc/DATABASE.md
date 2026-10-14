@@ -770,6 +770,7 @@ are views on a project. Optionally linked to a Planner `projects` row.
 | id | uuid | PK, default `gen_random_uuid()` |
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
 | title | text | NOT NULL |
+| agents_md | text | NOT NULL, default `''`. Project instructions edited in Project settings / agents.md and returned by MCP |
 | prefix | text | NOT NULL; 2–8 chars `^[A-Z][A-Z0-9]{1,7}$`; unique per customer |
 | planner_project_id | uuid | nullable, FK → `projects.id`, ON DELETE SET NULL; at most one Work project per planner project |
 | created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
@@ -786,7 +787,8 @@ Visibility is `work_project_members`. Child tables use `project_id`
 
 DDL: [`scripts/20260913_rove_work_boards.sql`](../scripts/20260913_rove_work_boards.sql),
 [`scripts/20260914_work_board_archive.sql`](../scripts/20260914_work_board_archive.sql),
-[`scripts/20260925_work_boards_to_projects.sql`](../scripts/20260925_work_boards_to_projects.sql).
+[`scripts/20260925_work_boards_to_projects.sql`](../scripts/20260925_work_boards_to_projects.sql),
+[`scripts/20261015_work_project_context.sql`](../scripts/20261015_work_project_context.sql).
 
 ---
 

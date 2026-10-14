@@ -12,9 +12,37 @@ Each request checks the token hash and current app permissions in the database. 
 
 No OAuth login flow is provided. Clients must send the personal token explicitly.
 
+## Project context
+
+Project settings / agents.md contains a textarea for instructions to agents working in the project. Save persists the text exactly as entered, including Markdown and whitespace. An empty value clears the instructions. Everyone who can edit the existing project settings can edit this field.
+
+`getProjectContext` is a read-only MCP tool available to tokens with Work MCP access. It also checks the same customer access and project membership as the website, including membership for admins. Missing, archived and inaccessible projects return the same tool error. It does not load issues.
+
+Call it through `POST /api/mcp`, with the same headers as ping, after initialization:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "getProjectContext",
+    "arguments": { "projectId": "<work-project-uuid>" }
+  }
+}
+```
+
+Use the Work project UUID from `/work/{customerId}/{projectId}`, not the linked Planner project ID. The result includes:
+
+- `project`: `id`, `title`, `prefix`, `customerId` and `customerName`.
+- `columns`: all board columns in display order, each with `id`, `name`, `sortOrder` and `isDone`. The column ID is the issue status ID.
+- `agentsMd`: saved project instructions, or an empty string if none have been saved.
+
+The result is returned as `structuredContent` and as JSON text in `content` for client compatibility. Tool failures set `isError: true`.
+
 ## Ping
 
-The SDK provides the standard MCP `ping` method and initialization handshake. No business tools are registered yet, so `tools/list` returns an empty list. Ping is a protocol method and does not appear as an agent tool.
+The SDK provides the standard MCP `ping` method and initialization handshake. `tools/list` includes `getProjectContext` when Work MCP access is enabled, otherwise it returns an empty list. Ping is a protocol method and does not appear as an agent tool.
 
 The client first sends `initialize` and `notifications/initialized`. It then uses the negotiated protocol version in subsequent requests. For example, after negotiating `2025-11-25`:
 
@@ -42,4 +70,4 @@ The endpoint is stateless. It creates an SDK server per request, sends no sessio
 
 Native clients can omit `Origin`. Requests carrying it must exactly match the origin configured in `AUTH_URL`, or `NEXTAUTH_URL` if `AUTH_URL` is unset. Without either setting, all requests carrying `Origin` are rejected. Cross-origin browser access is not enabled.
 
-References: [MCP ping](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/ping), [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
+References: [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), [MCP ping](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/ping), [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).

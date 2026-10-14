@@ -2,6 +2,7 @@ import "server-only";
 
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { authenticateMcpRequest, type McpUser } from "@/lib/mcpAuth";
+import { registerWorkMcpTools } from "@/lib/mcpWorkTools";
 
 function hasAllowedOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
@@ -56,11 +57,12 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
     return errorResponse(405, "Use POST for MCP requests. This endpoint does not maintain sessions or SSE streams.", { Allow: "POST" });
   }
 
-  // The SDK handles initialize and ping. An empty tool list allows client discovery before Work tools are added.
+  // The SDK handles initialize and ping. Tools are registered for the authenticated user's MCP app permissions.
   const server = new McpServer({ name: "rove-apps", version: "0.1.0" }, { capabilities: { tools: { listChanged: false } } });
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
 
   try {
+    registerWorkMcpTools(server, user);
     await server.connect(transport);
     const response = await transport.handleRequest(request);
     response.headers.set("Cache-Control", "no-store");

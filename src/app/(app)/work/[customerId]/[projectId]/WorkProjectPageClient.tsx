@@ -1713,6 +1713,8 @@ export function WorkBoardPageClient({
       )}
 
       <WorkProjectSettingsDrawer
+        projectId={board.id}
+        agentsMd={board.agentsMd}
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         initialTab={settingsTab}
