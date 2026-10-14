@@ -7,6 +7,7 @@ import { fetchConsultantByAppUserId } from "@/lib/consultantsQueries";
 import { getCustomersForAppUser } from "@/lib/customerAppUsers";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
+import { WorkInputError } from "@/lib/workErrors";
 import { compareTextSv } from "@/lib/sort";
 import {
   canSeeWorkBoard,
@@ -179,9 +180,29 @@ export async function listWorkSelectorCustomers(): Promise<
   return loadWorkSelectorCustomers(actor);
 }
 
+export async function listAccessibleWorkProjects(
+  actor: WorkActor,
+  customerId?: string
+): Promise<Array<WorkSelectorBoard & { customerId: string; customerName: string }>> {
+  const customers = await loadWorkSelectorCustomers(actor);
+  const scopedCustomers = customerId ? customers.filter((customer) => customer.id === customerId) : customers;
+
+  if (customerId && scopedCustomers.length === 0) throw new WorkInputError("Customer not found or access denied.");
+
+  return scopedCustomers.flatMap((customer) => customer.boards.map((project) => ({
+    ...project,
+    customerId: customer.id,
+    customerName: customer.name,
+  })));
+}
+
 export async function listWorkNavCustomers(): Promise<WorkSelectorCustomer[]> {
   const actor = await getWorkActor();
   if (!actor) return [];
+  return listAssignedWorkCustomers(actor);
+}
+
+export async function listAssignedWorkCustomers(actor: WorkActor): Promise<WorkSelectorCustomer[]> {
   const assignedIds = await linkedCustomerIdsForActor(actor);
   const customers = (
     await q.fetchActiveCustomersByIds(assignedIds)
@@ -289,8 +310,8 @@ export async function redirectIfLegacyWorkIssueUrl(
   );
 }
 
-export async function requireVisibleWorkBoard(boardId: string) {
-  const actor = await requireWorkActorOrThrow();
+export async function requireVisibleWorkBoard(boardId: string, authenticatedActor?: WorkActor) {
+  const actor = authenticatedActor ?? await requireWorkActorOrThrow();
   return visibleWorkBoardForActor(boardId, actor);
 }
 

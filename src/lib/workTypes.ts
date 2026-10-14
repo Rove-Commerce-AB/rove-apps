@@ -41,8 +41,74 @@ export type WorkLabel = {
 
 export type WorkIssuePriority = "low" | "medium" | "high";
 
-/** Fixed issue kinds. Default for new cards is chosen in the add-card UI. */
+/** Fixed issue kinds. Default for new issues is chosen in the add-issue UI. */
 export type WorkIssueType = "issue" | "bug";
+
+export type WorkIssueDetailsInput = {
+  title?: string;
+  description?: string;
+  currentState?: string;
+  nextStep?: string;
+  outOfScope?: string;
+  issueType?: WorkIssueType;
+  priority?: WorkIssuePriority | null;
+  labels?: string[];
+};
+
+export type WorkIssueListItem = {
+  id: string;
+  key: string;
+  title: string;
+  projectId: string;
+  projectTitle: string;
+  customerId: string;
+  customerName: string;
+  columnId: string;
+  columnName: string;
+  isDone: boolean;
+  sortOrder: number;
+  issueType: WorkIssueType;
+  priority: WorkIssuePriority | null;
+  description: string;
+  currentState: string;
+  nextStep: string;
+  outOfScope: string;
+  owner: WorkPerson | null;
+  assignees: WorkPerson[];
+  labels: WorkLabel[];
+};
+
+export type WorkIssueListInput = {
+  projectId?: string;
+  customerId?: string;
+  columnId?: string;
+  assignedToMe?: boolean;
+  labels?: string[];
+  priority?: WorkIssuePriority | null;
+  isDone?: boolean;
+  query?: string;
+  sortBy?: "number" | "boardOrder" | "priority";
+  limit?: number;
+  cursor?: string;
+};
+
+export type WorkIssueListPage = { issues: WorkIssueListItem[]; nextCursor: string | null };
+
+export type WorkIssueLookup = { projectId: string; issueId?: string; issueKey?: string };
+
+export type WorkIssueDetails = WorkIssueListItem & Pick<WorkIssue,
+  "reporter" | "component" | "requirements" | "definitionOfDone" | "preDeployActions" |
+  "references" | "relations" | "files" | "estimateHours" | "loggedHours" | "sprintId" | "startDate" | "dueDate"
+> & { showTime: boolean };
+
+export type WorkIssueCommentsInput = { projectId: string; issueId: string; limit?: number; cursor?: string };
+
+export type WorkIssueCommentsPage = {
+  projectId: string;
+  issueId: string;
+  comments: WorkComment[];
+  nextCursor: string | null;
+};
 
 export type WorkComponent = {
   id: string;
