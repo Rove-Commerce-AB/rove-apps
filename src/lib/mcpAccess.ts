@@ -1,15 +1,11 @@
 "use server";
 
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
+import { revalidatePath } from "next/cache";
 import { assertAdmin } from "@/lib/accessGuards";
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { isAppKey, isCustomerAssignableAppKey, type AppKey } from "@/lib/peopleTypes";
-
-export type PersonMcpAccess = {
-  hasToken: boolean;
-  appKeys: AppKey[];
-  mcpAppKeys: AppKey[];
-};
+import { ROUTES } from "@/lib/routes";
 
 function encryptionKey(): Buffer {
   const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
@@ -44,36 +40,6 @@ function decryptToken(value: string, appUserId: string): string {
   return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64url")), decipher.final()]).toString("utf8");
 }
 
-export async function getPersonMcpAccess(appUserId: string): Promise<PersonMcpAccess> {
-  await assertAdmin();
-  const { rows } = await cloudSqlPool.query<{
-    has_token: boolean;
-    app_keys: string[];
-    mcp_app_keys: string[];
-  }>(
-    `SELECT EXISTS (SELECT 1 FROM app_user_mcp_tokens t WHERE t.app_user_id = u.id) AS has_token,
-            COALESCE(array_agg(a.key) FILTER (WHERE a.key IS NOT NULL), ARRAY[]::text[]) AS app_keys,
-            COALESCE(array_agg(a.key) FILTER (WHERE ua.mcp_access), ARRAY[]::text[]) AS mcp_app_keys
-     FROM app_users u
-     LEFT JOIN app_user_apps ua ON ua.app_user_id = u.id
-     LEFT JOIN apps a ON a.id = ua.app_id
-     WHERE u.id = $1
-     GROUP BY u.id`,
-    [appUserId]
-  );
-  const row = rows[0];
-
-  if (!row) {
-    throw new Error("User not found");
-  }
-
-  return {
-    hasToken: row.has_token,
-    appKeys: row.app_keys.filter(isAppKey),
-    mcpAppKeys: row.mcp_app_keys.filter(isAppKey),
-  };
-}
-
 export async function generatePersonMcpToken(appUserId: string): Promise<void> {
   await assertAdmin();
   const { rows } = await cloudSqlPool.query<{ id: string }>("SELECT id FROM app_users WHERE id = $1", [appUserId]);
@@ -96,6 +62,8 @@ export async function generatePersonMcpToken(appUserId: string): Promise<void> {
   if (result.rowCount !== 1) {
     throw new Error("This user already has a token. Reload the tab to manage it.");
   }
+
+  revalidatePath(ROUTES.people, "layout");
 }
 
 export async function revealPersonMcpToken(appUserId: string): Promise<string> {
@@ -120,6 +88,7 @@ export async function revealPersonMcpToken(appUserId: string): Promise<string> {
 export async function revokePersonMcpToken(appUserId: string): Promise<void> {
   await assertAdmin();
   await cloudSqlPool.query("DELETE FROM app_user_mcp_tokens WHERE app_user_id = $1", [appUserId]);
+  revalidatePath(ROUTES.people, "layout");
 }
 
 export async function setPersonMcpAppAccess(appUserId: string, appKey: AppKey, enabled: boolean): Promise<void> {
@@ -153,4 +122,6 @@ export async function setPersonMcpAppAccess(appUserId: string, appKey: AppKey, e
       throw new Error("Enable App access for this app first");
     }
   });
+
+  revalidatePath(ROUTES.people, "layout");
 }

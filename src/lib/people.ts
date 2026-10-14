@@ -16,6 +16,7 @@ import {
   type AppKey,
   type AppUserRole,
   type PersonListItem,
+  type PersonMcpAccess,
 } from "@/lib/peopleTypes";
 import { compareTextSv } from "@/lib/sort";
 import {
@@ -34,7 +35,7 @@ type AppUserWithAppsRow = {
 export async function getPeopleForAdmin(): Promise<PersonListItem[]> {
   await assertAdmin();
 
-  const [consultants, appUserResult] = await Promise.all([
+  const [consultants, appUserResult, mcpAccessResult] = await Promise.all([
     getConsultantsList(),
     cloudSqlPool.query<AppUserWithAppsRow>(
       `SELECT
@@ -52,8 +53,31 @@ export async function getPeopleForAdmin(): Promise<PersonListItem[]> {
        GROUP BY u.id, u.email, u.role, u.name
        ORDER BY lower(COALESCE(u.name, u.email)), lower(u.email)`
     ),
+    cloudSqlPool.query<{
+      app_user_id: string;
+      has_token: boolean;
+      mcp_app_keys: string[];
+    }>(
+      `SELECT u.id AS app_user_id,
+              EXISTS (SELECT 1 FROM app_user_mcp_tokens t WHERE t.app_user_id = u.id) AS has_token,
+              COALESCE(array_agg(a.key ORDER BY a.name) FILTER (WHERE aua.mcp_access), ARRAY[]::text[]) AS mcp_app_keys
+       FROM app_users u
+       LEFT JOIN app_user_apps aua ON aua.app_user_id = u.id
+       LEFT JOIN apps a ON a.id = aua.app_id
+       GROUP BY u.id`
+    ).catch((cause: unknown) => {
+      // Keep People available if the MCP migration has not been applied yet.
+      console.error("Failed to load People MCP access", cause);
+      return null;
+    }),
   ]);
 
+  const mcpAccessByUserId = new Map<string, PersonMcpAccess>(
+    (mcpAccessResult?.rows ?? []).map((row) => [
+      row.app_user_id,
+      { hasToken: row.has_token, mcpAppKeys: row.mcp_app_keys.filter(isAppKey) },
+    ])
+  );
   const consultantsByUserId = new Map(
     consultants
       .filter((consultant) => consultant.app_user_id)
@@ -73,6 +97,7 @@ export async function getPeopleForAdmin(): Promise<PersonListItem[]> {
       email: user.email,
       userRole: user.role,
       appKeys: user.app_keys.filter(isAppKey),
+      mcpAccess: mcpAccessByUserId.get(user.id) ?? null,
       consultant,
       customers: [],
     };
@@ -88,6 +113,7 @@ export async function getPeopleForAdmin(): Promise<PersonListItem[]> {
       email: consultant.email,
       userRole: null,
       appKeys: [],
+      mcpAccess: null,
       consultant,
       customers: [],
     }));

@@ -1,47 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { AppAccessList } from "@/components/AppAccessList";
 import { Button, ConfirmModal, Input } from "@/components/ui";
 import {
   generatePersonMcpToken,
-  getPersonMcpAccess,
   revealPersonMcpToken,
   revokePersonMcpToken,
   setPersonMcpAppAccess,
-  type PersonMcpAccess,
 } from "@/lib/mcpAccess";
-import { APP_KEYS, CUSTOMER_APP_KEYS, type AppKey } from "@/lib/peopleTypes";
+import { APP_KEYS, CUSTOMER_APP_KEYS, type AppKey, type PersonMcpAccess } from "@/lib/peopleTypes";
 
-export function PersonMcpAccessTab({ appUserId, isCustomer }: { appUserId: string; isCustomer: boolean }) {
-  const [access, setAccess] = useState<PersonMcpAccess | null>(null);
+export function PersonMcpAccessTab({ appUserId, isCustomer, appKeys, initialAccess }: {
+  appUserId: string;
+  isCustomer: boolean;
+  appKeys: AppKey[];
+  initialAccess: PersonMcpAccess | null;
+}) {
+  const router = useRouter();
+  const [access, setAccess] = useState(initialAccess);
   const [visibleToken, setVisibleToken] = useState<string | null>(null);
   const [busy, setBusy] = useState<"generate" | "show" | "copy" | "revoke" | "apps" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    getPersonMcpAccess(appUserId)
-      .then((value) => {
-        if (!cancelled) {
-          setAccess(value);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : "Failed to load MCP access");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [appUserId, reloadKey]);
 
   useEffect(() => {
     if (!copied) return;
@@ -149,22 +133,10 @@ export function PersonMcpAccessTab({ appUserId, isCustomer }: { appUserId: strin
   if (!access) {
     return (
       <div className="px-6 py-6">
-        {error ? (
-          <>
-            <p className="text-body-m text-danger" role="alert">{error}</p>
-            <Button
-              type="button"
-              variant="secondary"
-              className="mt-4"
-              onClick={() => {
-                setError(null);
-                setReloadKey((current) => current + 1);
-              }}
-            >
-              Retry
-            </Button>
-          </>
-        ) : <p className="text-body-m text-text-secondary" role="status">Loading MCP access...</p>}
+        <p className="text-body-m text-danger" role="alert">Unable to load MCP access. Refresh to retry.</p>
+        <Button type="button" variant="secondary" className="mt-4" onClick={() => router.refresh()}>
+          Refresh
+        </Button>
       </div>
     );
   }
@@ -227,7 +199,7 @@ export function PersonMcpAccessTab({ appUserId, isCustomer }: { appUserId: strin
             value={access.mcpAppKeys}
             onChange={(next) => void updateApps(next)}
             allowedKeys={isCustomer ? CUSTOMER_APP_KEYS : APP_KEYS}
-            availableKeys={access.appKeys}
+            availableKeys={appKeys}
             description="MCP access"
             disabled={busy !== null}
           />
