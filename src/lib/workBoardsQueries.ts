@@ -90,6 +90,7 @@ export async function fetchWorkBoardById(
   boardId: string
 ): Promise<
   (WorkBoardRow & {
+    agents_md: string;
     customer_name: string;
     customer_is_internal: boolean;
     work_show_time_to_customer_users: boolean;
@@ -98,6 +99,7 @@ export async function fetchWorkBoardById(
 > {
   const { rows } = await cloudSqlPool.query<
     Omit<WorkBoardRow, "member_ids"> & {
+      agents_md: string;
       member_ids: string[] | null;
       customer_name: string;
       customer_is_internal: boolean;
@@ -114,6 +116,7 @@ export async function fetchWorkBoardById(
        b.created_by_app_user_id,
        b.created_at,
        b.updated_at,
+       b.agents_md,
        c.name AS customer_name,
        c.is_internal AS customer_is_internal,
        c.work_show_time_to_customer_users,
@@ -247,6 +250,23 @@ export async function renameWorkBoard(
   const next = rows[0]?.title;
   if (!next) throw new Error("Project not found");
   return next;
+}
+
+export async function updateWorkProjectInstructions(projectId: string, agentsMd: string): Promise<string> {
+  const { rows } = await cloudSqlPool.query<{ agents_md: string }>(
+    `UPDATE work_projects
+     SET agents_md = $2
+     WHERE id = $1 AND archived_at IS NULL
+     RETURNING agents_md`,
+    [projectId, agentsMd]
+  );
+  const project = rows[0];
+
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
+  return project.agents_md;
 }
 
 export async function archiveWorkBoard(boardId: string): Promise<void> {

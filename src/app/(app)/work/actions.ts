@@ -16,6 +16,7 @@ import {
   renameWorkBoardStatus,
   reorderWorkBoardStatuses,
   restoreWorkBoard,
+  saveWorkProjectInstructions,
   setWorkProjectPreferredView,
 } from "@/lib/workBoards";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
@@ -222,6 +223,19 @@ export async function renameWorkBoardAction(
     revalidatePath(ROUTES.work, "layout");
     revalidatePath(workCustomerHref(renamed.customerId));
     return { ok: true, title: renamed.title };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveWorkProjectInstructionsAction(
+  projectId: string,
+  agentsMd: string
+): Promise<{ ok: true; agentsMd: string } | Err> {
+  try {
+    const saved = await saveWorkProjectInstructions(projectId, agentsMd);
+    revalidateBoard(projectId);
+    return { ok: true, agentsMd: saved };
   } catch (error) {
     return fail(error);
   }

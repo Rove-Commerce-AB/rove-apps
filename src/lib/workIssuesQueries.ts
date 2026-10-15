@@ -1,5 +1,7 @@
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
+import type { PoolClient } from "pg";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
+import type { WorkIssueDetailsInput, WorkLabel } from "@/lib/workTypes";
 
 export type WorkUserRow = {
   id: string;
@@ -178,7 +180,8 @@ export async function isWorkBoardMember(
 }
 
 export async function fetchWorkIssuesForBoard(
-  boardId: string
+  boardId: string,
+  issue?: { id: string } | { number: number }
 ): Promise<WorkIssueRow[]> {
   const { rows } = await cloudSqlPool.query<WorkIssueRow>(
     `SELECT
@@ -211,8 +214,9 @@ export async function fetchWorkIssuesForBoard(
      LEFT JOIN app_users r ON r.id = i.created_by_app_user_id
      LEFT JOIN app_users o ON o.id = i.owner_app_user_id
      WHERE i.project_id = $1
+       ${issue ? ("id" in issue ? "AND i.id = $2::uuid" : "AND i.number = $2::int") : ""}
      ORDER BY i.status, i.sort_order, i.number`,
-    [boardId]
+    issue ? [boardId, "id" in issue ? issue.id : issue.number] : [boardId]
   );
   return rows;
 }
@@ -361,6 +365,11 @@ export async function insertWorkIssue(input: {
   /** Defaults to null (no owner). Pass an id to assign an owner on create. */
   ownerAppUserId?: string | null;
   description?: string;
+  currentState?: string;
+  nextStep?: string;
+  outOfScope?: string;
+  priority?: "low" | "medium" | "high" | null;
+  labels?: string[];
   issueType?: "issue" | "bug";
   componentId?: string | null;
   /** Actor for the created event when reporter is null. */
@@ -389,8 +398,8 @@ export async function insertWorkIssue(input: {
       `INSERT INTO work_issues (
          project_id, number, title, status, sort_order,
          owner_app_user_id, created_by_app_user_id, description,
-         issue_type, component_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         issue_type, component_id, current_state, next_step, out_of_scope, priority
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`,
       [
         input.boardId,
@@ -403,6 +412,10 @@ export async function insertWorkIssue(input: {
         input.description ?? "",
         issueType,
         input.componentId ?? null,
+        input.currentState ?? "",
+        input.nextStep ?? "",
+        input.outOfScope ?? "",
+        input.priority ?? null,
       ]
     );
     const id = rows[0]?.id;
@@ -416,7 +429,66 @@ export async function insertWorkIssue(input: {
         [id, eventActor]
       );
     }
+
+    if (input.labels !== undefined) {
+      await replaceWorkIssueLabels(client, input.boardId, id, input.labels, eventActor);
+    }
+
     return id;
+  });
+}
+
+const issueDetailColumns = {
+  title: "title",
+  description: "description",
+  currentState: "current_state",
+  nextStep: "next_step",
+  outOfScope: "out_of_scope",
+  issueType: "issue_type",
+  priority: "priority",
+} as const;
+
+export async function updateWorkIssueDetails(
+  boardId: string,
+  issueId: string,
+  changes: WorkIssueDetailsInput,
+  actorAppUserId: string
+): Promise<boolean> {
+  const fields = (Object.keys(issueDetailColumns) as (keyof typeof issueDetailColumns)[])
+    .filter((field) => changes[field] !== undefined);
+
+  if (fields.length === 0 && changes.labels === undefined) return false;
+
+  return withCloudSqlTransaction("work-edit-issue", async (client) => {
+    if (changes.labels !== undefined) {
+      // Match creation's lock order and serialize label replacement within the project.
+      await client.query("SELECT id FROM work_projects WHERE id = $1 FOR UPDATE", [boardId]);
+    }
+
+    // Column names come only from this fixed mapping. Values remain parameters.
+    const assignments = fields.map((field, index) => `${issueDetailColumns[field]} = $${index + 3}`);
+    const result = await client.query(
+      `UPDATE work_issues SET ${assignments.length > 0 ? assignments.join(", ") : "updated_at = now()"}
+       WHERE project_id = $1 AND id = $2`,
+      [boardId, issueId, ...fields.map((field) => changes[field])]
+    );
+
+    if (result.rowCount !== 1) return false;
+
+    if (changes.labels !== undefined) {
+      await replaceWorkIssueLabels(client, boardId, issueId, changes.labels, actorAppUserId);
+    }
+
+    for (const field of fields) {
+      const column = issueDetailColumns[field];
+      await client.query(
+        `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+         VALUES ($1, $2, $3, $4)`,
+        [issueId, actorAppUserId, field === "issueType" ? "type" : column, `updated ${column.replaceAll("_", " ")}`]
+      );
+    }
+
+    return true;
   });
 }
 
@@ -665,17 +737,39 @@ export async function updateWorkIssueRequirementBody(
 }
 
 export async function updateWorkIssueRequirementDone(
+  boardId: string,
   issueId: string,
   requirementId: string,
-  isDone: boolean
+  isDone: boolean,
+  actorAppUserId: string
 ): Promise<boolean> {
-  const result = await cloudSqlPool.query(
-    `UPDATE work_issue_requirements
-     SET is_done = $3, updated_at = now()
-     WHERE id = $2 AND issue_id = $1`,
-    [issueId, requirementId, isDone]
-  );
-  return (result.rowCount ?? 0) === 1;
+  return withCloudSqlTransaction("work-check-requirement", async (client) => {
+    const { rows } = await client.query<{ is_done: boolean; kind: "acceptance" | "dod" }>(
+      `SELECT r.is_done, r.kind
+       FROM work_issue_requirements r
+       JOIN work_issues i ON i.id = r.issue_id
+       WHERE i.project_id = $1 AND i.id = $2 AND r.id = $3
+       FOR UPDATE OF r`,
+      [boardId, issueId, requirementId]
+    );
+    const requirement = rows[0];
+
+    if (!requirement) return false;
+    if (requirement.is_done === isDone) return true;
+
+    await client.query(
+      `UPDATE work_issue_requirements SET is_done = $2, updated_at = now() WHERE id = $1`,
+      [requirementId, isDone]
+    );
+    const item = requirement.kind === "dod" ? "a definition-of-done item" : "a requirement";
+    await client.query(
+      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+       VALUES ($1, $2, 'requirement', $3)`,
+      [issueId, actorAppUserId, `${isDone ? "checked" : "unchecked"} ${item}`]
+    );
+
+    return true;
+  });
 }
 
 export async function deleteWorkIssueRequirement(
@@ -791,11 +885,20 @@ export async function fetchIssueReferences(issueIds: string[]) {
 }
 
 export async function insertWorkIssueReference(input: {
+  boardId: string;
   issueId: string;
   url: string;
   label: string;
-}): Promise<{ id: string; sortOrder: number }> {
+  actorAppUserId: string;
+}): Promise<{ id: string; sortOrder: number } | null> {
   return withCloudSqlTransaction("work-add-reference", async (client) => {
+    const issue = await client.query(
+      `SELECT id FROM work_issues WHERE project_id = $1 AND id = $2 FOR UPDATE`,
+      [input.boardId, input.issueId]
+    );
+
+    if (issue.rowCount !== 1) return null;
+
     const { rows: orderRows } = await client.query<{ next: number }>(
       `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
        FROM work_issue_references
@@ -811,6 +914,13 @@ export async function insertWorkIssueReference(input: {
     );
     const id = rows[0]?.id;
     if (!id) throw new Error("Failed to create reference");
+
+    await client.query(
+      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+       VALUES ($1, $2, 'reference', 'added a reference')`,
+      [input.issueId, input.actorAppUserId]
+    );
+
     return { id, sortOrder };
   });
 }
@@ -904,9 +1014,11 @@ export async function removeWorkIssueAssignee(
 
 export async function findOrCreateBoardLabel(
   boardId: string,
-  name: string
+  name: string,
+  client?: PoolClient
 ): Promise<{ id: string; name: string }> {
-  const { rows: existing } = await cloudSqlPool.query<{
+  const db = client ?? cloudSqlPool;
+  const { rows: existing } = await db.query<{
     id: string;
     name: string;
   }>(
@@ -916,25 +1028,62 @@ export async function findOrCreateBoardLabel(
     [boardId, name]
   );
   if (existing[0]) return existing[0];
-  try {
-    const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
-      `INSERT INTO work_issue_labels (project_id, name)
-       VALUES ($1, $2)
-       RETURNING id, name`,
-      [boardId, name]
+
+  const { rows } = await db.query<WorkLabel>(
+    `INSERT INTO work_issue_labels (project_id, name)
+     VALUES ($1, $2)
+     ON CONFLICT (project_id, lower(name)) DO UPDATE SET name = work_issue_labels.name
+     RETURNING id, name`,
+    [boardId, name]
+  );
+  const row = rows[0];
+
+  if (!row) throw new Error("Failed to save label");
+
+  return row;
+}
+
+/** Caller verifies and locks the issue in its project before replacing its labels. */
+async function replaceWorkIssueLabels(
+  client: PoolClient,
+  boardId: string,
+  issueId: string,
+  names: string[],
+  actorAppUserId: string | null
+): Promise<void> {
+  const { rows: previous } = await client.query<{ label_id: string }>(
+    "SELECT label_id FROM work_issue_label_links WHERE issue_id = $1",
+    [issueId]
+  );
+  const labels = new Map<string, WorkLabel>();
+
+  for (const name of names) {
+    const label = await findOrCreateBoardLabel(boardId, name, client);
+    labels.set(label.id, label);
+  }
+
+  const labelIds = [...labels.keys()];
+
+  if (previous.length === labelIds.length && previous.every((row) => labels.has(row.label_id))) return;
+
+  await client.query(
+    "DELETE FROM work_issue_label_links WHERE issue_id = $1 AND NOT (label_id = ANY($2::uuid[]))",
+    [issueId, labelIds]
+  );
+
+  for (const labelId of labelIds) {
+    await client.query(
+      `INSERT INTO work_issue_label_links (issue_id, label_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [issueId, labelId]
     );
-    const row = rows[0];
-    if (!row) throw new Error("Failed to save label");
-    return row;
-  } catch (error) {
-    const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
-      `SELECT id, name
-       FROM work_issue_labels
-       WHERE project_id = $1 AND lower(name) = lower($2)`,
-      [boardId, name]
+  }
+
+  if (actorAppUserId) {
+    await client.query(
+      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+       VALUES ($1, $2, 'labels', $3)`,
+      [issueId, actorAppUserId, labels.size > 0 ? `set labels to ${[...labels.values()].map((label) => label.name).join(", ")}` : "cleared labels"]
     );
-    if (rows[0]) return rows[0];
-    throw error;
   }
 }
 
@@ -961,19 +1110,30 @@ export async function unlinkWorkIssueLabel(
 }
 
 export async function insertWorkIssueComment(input: {
+  boardId: string;
   issueId: string;
   authorAppUserId: string;
   body: string;
-}): Promise<string> {
-  const { rows } = await cloudSqlPool.query<{ id: string }>(
-    `INSERT INTO work_issue_comments (issue_id, author_app_user_id, body)
-     VALUES ($1, $2, $3)
-     RETURNING id`,
-    [input.issueId, input.authorAppUserId, input.body]
-  );
-  const id = rows[0]?.id;
-  if (!id) throw new Error("Failed to add comment");
-  return id;
+}): Promise<string | null> {
+  return withCloudSqlTransaction("work-add-comment", async (client) => {
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO work_issue_comments (issue_id, author_app_user_id, body)
+       SELECT id, $3, $4 FROM work_issues WHERE project_id = $1 AND id = $2
+       RETURNING id`,
+      [input.boardId, input.issueId, input.authorAppUserId, input.body]
+    );
+    const id = rows[0]?.id;
+
+    if (!id) return null;
+
+    await client.query(
+      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+       VALUES ($1, $2, 'comment', 'added a comment')`,
+      [input.issueId, input.authorAppUserId]
+    );
+
+    return id;
+  });
 }
 
 export async function updateWorkIssueComment(input: {
@@ -1021,15 +1181,41 @@ export async function moveWorkIssue(input: {
   boardId: string;
   issueId: string;
   status: WorkIssueStatus;
-  sortOrder: number;
-}): Promise<boolean> {
-  const result = await cloudSqlPool.query(
-    `UPDATE work_issues
-     SET status = $3, sort_order = $4
-     WHERE id = $2 AND project_id = $1`,
-    [input.boardId, input.issueId, input.status, input.sortOrder]
-  );
-  return (result.rowCount ?? 0) === 1;
+  sortOrder?: number;
+  actorAppUserId: string;
+  statusName: string;
+}): Promise<number | null> {
+  return withCloudSqlTransaction("work-move-issue", async (client) => {
+    // Serialize appends with issue creation so concurrent moves get distinct positions.
+    await client.query("SELECT id FROM work_projects WHERE id = $1 FOR UPDATE", [input.boardId]);
+    const { rows: previous } = await client.query<{ status: string }>(
+      "SELECT status FROM work_issues WHERE project_id = $1 AND id = $2 FOR UPDATE",
+      [input.boardId, input.issueId]
+    );
+
+    if (!previous[0]) return null;
+
+    const { rows } = await client.query<{ sort_order: number }>(
+      `UPDATE work_issues
+       SET status = $3, sort_order = COALESCE($4::int, (
+         SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_issues
+         WHERE project_id = $1 AND status = $3 AND id <> $2
+       ))
+       WHERE project_id = $1 AND id = $2
+       RETURNING sort_order`,
+      [input.boardId, input.issueId, input.status, input.sortOrder ?? null]
+    );
+
+    if (previous[0].status !== input.status) {
+      await client.query(
+        `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+         VALUES ($1, $2, 'status', $3)`,
+        [input.issueId, input.actorAppUserId, `changed status to ${input.statusName}`]
+      );
+    }
+
+    return rows[0].sort_order;
+  });
 }
 
 export async function fetchWorkIssueStatus(

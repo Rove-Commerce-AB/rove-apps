@@ -3,10 +3,11 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { workBoardHref, workIssueHref } from "@/lib/routes";
-import { getConsultantForCurrentUser } from "@/lib/consultants";
+import { fetchConsultantByAppUserId } from "@/lib/consultantsQueries";
 import { getCustomersForAppUser } from "@/lib/customerAppUsers";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
+import { WorkInputError } from "@/lib/workErrors";
 import { compareTextSv } from "@/lib/sort";
 import {
   canSeeWorkBoard,
@@ -35,6 +36,7 @@ import type {
   WorkLabel,
   WorkPerson,
   WorkPreDeployAction,
+  WorkProjectContext,
   WorkReference,
   WorkRequirement,
   WorkSelectorBoard,
@@ -114,7 +116,7 @@ async function linkedCustomerIdsForActor(
   for (const customer of await getCustomersForAppUser(actor.id)) {
     ids.add(customer.id);
   }
-  const consultant = await getConsultantForCurrentUser();
+  const consultant = await fetchConsultantByAppUserId(actor.id);
   if (consultant?.id) {
     for (const id of await getCustomerIdsForConsultant(consultant.id)) {
       ids.add(id);
@@ -178,9 +180,29 @@ export async function listWorkSelectorCustomers(): Promise<
   return loadWorkSelectorCustomers(actor);
 }
 
+export async function listAccessibleWorkProjects(
+  actor: WorkActor,
+  customerId?: string
+): Promise<Array<WorkSelectorBoard & { customerId: string; customerName: string }>> {
+  const customers = await loadWorkSelectorCustomers(actor);
+  const scopedCustomers = customerId ? customers.filter((customer) => customer.id === customerId) : customers;
+
+  if (customerId && scopedCustomers.length === 0) throw new WorkInputError("Customer not found or access denied.");
+
+  return scopedCustomers.flatMap((customer) => customer.boards.map((project) => ({
+    ...project,
+    customerId: customer.id,
+    customerName: customer.name,
+  })));
+}
+
 export async function listWorkNavCustomers(): Promise<WorkSelectorCustomer[]> {
   const actor = await getWorkActor();
   if (!actor) return [];
+  return listAssignedWorkCustomers(actor);
+}
+
+export async function listAssignedWorkCustomers(actor: WorkActor): Promise<WorkSelectorCustomer[]> {
   const assignedIds = await linkedCustomerIdsForActor(actor);
   const customers = (
     await q.fetchActiveCustomersByIds(assignedIds)
@@ -288,8 +310,12 @@ export async function redirectIfLegacyWorkIssueUrl(
   );
 }
 
-export async function requireVisibleWorkBoard(boardId: string) {
-  const actor = await requireWorkActorOrThrow();
+export async function requireVisibleWorkBoard(boardId: string, authenticatedActor?: WorkActor) {
+  const actor = authenticatedActor ?? await requireWorkActorOrThrow();
+  return visibleWorkBoardForActor(boardId, actor);
+}
+
+async function visibleWorkBoardForActor(boardId: string, actor: WorkActor) {
   const board = await q.fetchWorkBoardById(boardId);
   if (!board) return null;
 
@@ -306,6 +332,29 @@ export async function requireVisibleWorkBoard(boardId: string) {
     return null;
   }
   return { actor, board };
+}
+
+export async function getWorkProjectContext(projectId: string, actor: WorkActor): Promise<WorkProjectContext | null> {
+  const visible = await visibleWorkBoardForActor(projectId, actor);
+
+  if (!visible) {
+    return null;
+  }
+
+  const { board } = visible;
+  const columns = await q.fetchWorkBoardStatuses(board.id);
+
+  return {
+    project: {
+      id: board.id,
+      title: board.title,
+      prefix: board.prefix,
+      customerId: board.customer_id,
+      customerName: board.customer_name,
+    },
+    columns,
+    agentsMd: board.agents_md,
+  };
 }
 
 export async function getWorkBoardView(
@@ -568,6 +617,7 @@ export async function getWorkBoardView(
     id: board.id,
     title: board.title,
     prefix: board.prefix,
+    agentsMd: board.agents_md,
     customerId: board.customer_id,
     customerName: board.customer_name,
     plannerProjectId: board.planner_project_id ?? null,
@@ -699,6 +749,20 @@ export async function renameWorkBoard(
   if (!trimmed) throw new Error("Title is required");
   const nextTitle = await q.renameWorkBoard(boardId, trimmed);
   return { title: nextTitle, customerId: visible.board.customer_id };
+}
+
+export async function saveWorkProjectInstructions(projectId: string, agentsMd: string): Promise<string> {
+  if (typeof agentsMd !== "string") {
+    throw new Error("Project instructions must be text");
+  }
+
+  const visible = await requireVisibleWorkBoard(projectId);
+
+  if (!visible) {
+    throw new Error("Project not found");
+  }
+
+  return q.updateWorkProjectInstructions(projectId, agentsMd);
 }
 
 export async function archiveWorkBoard(boardId: string): Promise<string> {

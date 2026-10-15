@@ -1,6 +1,7 @@
 import "server-only";
 
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
+import type { WorkActor } from "@/lib/workAccess";
 import {
   applyDefaultSprintDates,
   closeWorkSprint,
@@ -14,8 +15,8 @@ import {
 import { insertWorkIssueEvent } from "@/lib/workIssuesQueries";
 import type { WorkSprint } from "@/lib/workTypes";
 
-async function requireBoardAccess(boardId: string) {
-  const visible = await requireVisibleWorkBoard(boardId);
+async function requireBoardAccess(boardId: string, authenticatedActor?: WorkActor) {
+  const visible = await requireVisibleWorkBoard(boardId, authenticatedActor);
   if (!visible) throw new Error("Unauthorized");
   return visible;
 }
@@ -130,9 +131,10 @@ export async function completeWorkSprint(
 export async function setWorkIssueSprint(
   boardId: string,
   issueId: string,
-  sprintId: string | null
+  sprintId: string | null,
+  authenticatedActor?: WorkActor
 ): Promise<void> {
-  const { actor } = await requireBoardAccess(boardId);
+  const { actor } = await requireBoardAccess(boardId, authenticatedActor);
   if (sprintId) {
     const sprint = await fetchWorkSprintById(sprintId);
     if (!sprint || sprint.project_id !== boardId) {

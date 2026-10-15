@@ -35,6 +35,11 @@ export function isRoveLoginRole(value: string): value is RoveLoginRole {
   return value === "admin" || value === "member";
 }
 
+export type PersonMcpAccess = {
+  hasToken: boolean;
+  mcpAppKeys: AppKey[];
+};
+
 export type PersonListItem = {
   key: string;
   appUserId: string | null;
@@ -43,6 +48,7 @@ export type PersonListItem = {
   email: string | null;
   userRole: AppUserRole | null;
   appKeys: AppKey[];
+  mcpAccess: PersonMcpAccess | null;
   consultant: ConsultantListItem | null;
   customers: PersonCustomerLink[];
 };

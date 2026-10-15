@@ -1,7 +1,7 @@
 # Database schema
 
 This document mirrors the **PostgreSQL** application schema after the
-People / customer-user / Work rollout (snapshot **2026-09-14**). Use it when
+People / customer-user / Work rollout, including MCP permissions (**2026-10-14**). Use it when
 generating queries, types, or UI logic.
 
 Terminology: we use **customer** (never client).
@@ -79,6 +79,7 @@ Many-to-many app access assigned to login accounts.
 |--------|------|--------|
 | app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
 | app_id | uuid | PK part, FK → `apps.id`, ON DELETE CASCADE |
+| mcp_access | boolean | NOT NULL, default `false`, MCP permission for this app |
 | created_at | timestamptz | NOT NULL, default `now()` |
 
 Index: `(app_id)`.
@@ -89,6 +90,26 @@ Trigger `app_user_apps_customer_user_enforce` (BEFORE INSERT/UPDATE) runs
 Application actions require every **Rove** account (`admin`, `member`)
 to retain at least one app. `customer` accounts must have
 none of the Rove apps.
+
+MCP permissions require an existing app grant. Removing that grant also removes
+its MCP permission. All MCP permissions start disabled.
+
+---
+
+## app_user_mcp_tokens
+
+One revocable MCP token per login account. Only admins can manage tokens through
+Settings / People. Token management does not grant app permissions.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| app_user_id | uuid | PK, FK to `app_users.id`, ON DELETE CASCADE |
+| token_hash | text | NOT NULL, UNIQUE, SHA-256 hex digest for token lookup |
+| encrypted_token | text | NOT NULL, AES-256-GCM ciphertext for explicit Show / Copy |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+The encryption key is derived from `AUTH_SECRET`, with `NEXTAUTH_SECRET` as a
+fallback. Revocation deletes the token row and preserves app permission settings.
 
 ---
 
@@ -749,6 +770,7 @@ are views on a project. Optionally linked to a Planner `projects` row.
 | id | uuid | PK, default `gen_random_uuid()` |
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
 | title | text | NOT NULL |
+| agents_md | text | NOT NULL, default `''`. Project instructions edited in Project settings / agents.md and returned by MCP |
 | prefix | text | NOT NULL; 2–8 chars `^[A-Z][A-Z0-9]{1,7}$`; unique per customer |
 | planner_project_id | uuid | nullable, FK → `projects.id`, ON DELETE SET NULL; at most one Work project per planner project |
 | created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
@@ -765,7 +787,8 @@ Visibility is `work_project_members`. Child tables use `project_id`
 
 DDL: [`scripts/20260913_rove_work_boards.sql`](../scripts/20260913_rove_work_boards.sql),
 [`scripts/20260914_work_board_archive.sql`](../scripts/20260914_work_board_archive.sql),
-[`scripts/20260925_work_boards_to_projects.sql`](../scripts/20260925_work_boards_to_projects.sql).
+[`scripts/20260925_work_boards_to_projects.sql`](../scripts/20260925_work_boards_to_projects.sql),
+[`scripts/20261015_work_project_context.sql`](../scripts/20261015_work_project_context.sql).
 
 ---
 

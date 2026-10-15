@@ -1,14 +1,14 @@
 import "server-only";
 
-import { getCurrentAppUser } from "@/lib/appUsers";
-import { canSeeWorkTime } from "@/lib/workAccess";
+import { canSeeWorkTime, type WorkActor } from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
+import { WorkInputError } from "@/lib/workErrors";
 import { workIssueKey } from "@/lib/workIssueKey";
 import {
   addWorkIssueAssignee,
   deleteWorkIssueFile,
   fetchWorkIssueNotifyMeta,
-  fetchWorkIssueStatus,
+  fetchWorkBoardMembers,
   countIssuesUsingComponent,
   deleteBoardComponent,
   findBoardComponentByName,
@@ -46,6 +46,7 @@ import {
   deleteWorkIssuePreDeployAction,
   deleteWorkIssueReference,
   updateWorkIssueTitle,
+  updateWorkIssueDetails,
   isWorkBoardMember,
   workIssueHasLoggedTime,
   deleteWorkIssue as deleteWorkIssueRow,
@@ -66,6 +67,7 @@ import {
   type WorkComponent,
   type WorkIssuePriority,
   type WorkIssueType,
+  type WorkIssueDetailsInput,
   type WorkRequirementKind,
 } from "@/lib/workTypes";
 import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
@@ -76,9 +78,11 @@ import { fetchWorkSprintById } from "@/lib/workSprintsQueries";
 
 export { WORK_FILE_MAX_BYTES };
 
-async function requireBoardAccess(boardId: string) {
-  const visible = await requireVisibleWorkBoard(boardId);
-  if (!visible) throw new Error("Unauthorized");
+async function requireBoardAccess(boardId: string, authenticatedActor?: WorkActor) {
+  const visible = await requireVisibleWorkBoard(boardId, authenticatedActor);
+
+  if (!visible) throw new WorkInputError("Project not found or access denied.");
+
   return visible;
 }
 
@@ -91,19 +95,23 @@ async function logEvent(
   await insertWorkIssueEvent({ issueId, actorAppUserId, kind, summary });
 }
 
-export async function createWorkIssue(input: {
+export async function createWorkIssue(input: WorkIssueDetailsInput & {
   boardId: string;
   title: string;
+  /** Defaults to assigning the creator as owner. False creates an unassigned issue. */
+  assignToMe?: boolean;
   /** Defaults to the board's first status (by sort order). */
   status?: WorkIssueStatus;
   issueType?: WorkIssueType;
   componentId?: string | null;
   /** When set, issue is placed in that sprint (current/next only). */
   sprintId?: string | null;
-}): Promise<string> {
-  const { actor } = await requireBoardAccess(input.boardId);
-  const title = input.title.trim();
-  if (!title) throw new Error("Title is required");
+}, authenticatedActor?: WorkActor): Promise<string> {
+  const { actor } = await requireBoardAccess(input.boardId, authenticatedActor);
+  const details = normalizeWorkIssueDetails(input);
+  const title = details.title;
+
+  if (!title) throw new WorkInputError("Title is required.");
 
   let status = input.status;
   if (status) {
@@ -111,7 +119,7 @@ export async function createWorkIssue(input: {
   } else {
     const statuses = await fetchWorkBoardStatuses(input.boardId);
     status = statuses[0]?.id;
-    if (!status) throw new Error("Board has no statuses");
+    if (!status) throw new WorkInputError("Project has no columns.");
   }
 
   const sprintId = input.sprintId?.trim() || null;
@@ -131,16 +139,91 @@ export async function createWorkIssue(input: {
     title,
     status,
     createdByAppUserId: actor.id,
-    ownerAppUserId: actor.id,
+    ownerAppUserId: input.assignToMe === false ? null : actor.id,
     issueType,
     componentId: input.componentId ?? null,
+    description: details.description,
+    currentState: details.currentState,
+    nextStep: details.nextStep,
+    outOfScope: details.outOfScope,
+    priority: details.priority,
+    labels: details.labels,
   });
 
   if (sprintId) {
-    await setWorkIssueSprint(input.boardId, issueId, sprintId);
+    await setWorkIssueSprint(input.boardId, issueId, sprintId, actor);
   }
 
   return issueId;
+}
+
+function normalizeWorkIssueDetails(input: WorkIssueDetailsInput): WorkIssueDetailsInput {
+  const details: WorkIssueDetailsInput = {};
+
+  for (const field of ["title", "description", "currentState", "nextStep", "outOfScope"] as const) {
+    const value = input[field];
+
+    if (value === undefined) continue;
+
+    if (typeof value !== "string") throw new WorkInputError(`${field} must be text.`);
+
+    details[field] = field === "title" ? value.trim() : value;
+  }
+
+  if (details.title === "") throw new WorkInputError("Title is required.");
+
+  if (input.issueType !== undefined) {
+    if (input.issueType !== "issue" && input.issueType !== "bug") throw new WorkInputError("Invalid issue type.");
+
+    details.issueType = input.issueType;
+  }
+
+  if (input.priority !== undefined) {
+    if (input.priority !== null && !["low", "medium", "high"].includes(input.priority)) {
+      throw new WorkInputError("Invalid priority.");
+    }
+
+    details.priority = input.priority;
+  }
+
+  if (input.labels !== undefined) {
+    if (!Array.isArray(input.labels) || input.labels.length > 50) {
+      throw new WorkInputError("Labels must be an array of up to 50 names.");
+    }
+
+    const names = new Map<string, string>();
+
+    for (const name of input.labels) {
+      if (typeof name !== "string" || !name.trim() || name.trim().length > 100) {
+        throw new WorkInputError("Each label must have a nonblank name of up to 100 characters.");
+      }
+
+      const trimmed = name.trim();
+      const key = trimmed.toLowerCase();
+
+      if (!names.has(key)) names.set(key, trimmed);
+    }
+
+    details.labels = [...names.values()];
+  }
+
+  return details;
+}
+
+export async function editWorkIssue(
+  boardId: string,
+  issueId: string,
+  changes: WorkIssueDetailsInput,
+  authenticatedActor?: WorkActor
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId, authenticatedActor);
+  const details = normalizeWorkIssueDetails(changes);
+
+  if (Object.keys(details).length === 0) throw new WorkInputError("Provide at least one field to update.");
+
+  const updated = await updateWorkIssueDetails(boardId, issueId, details, actor.id);
+
+  if (!updated) throw new WorkInputError("Issue not found in this project.");
 }
 
 export async function setWorkIssueTitle(
@@ -401,21 +484,22 @@ export async function setIssueRequirementDone(
   boardId: string,
   issueId: string,
   requirementId: string,
-  isDone: boolean
+  isDone: boolean,
+  authenticatedActor?: WorkActor
 ): Promise<void> {
-  const { actor } = await requireBoardAccess(boardId);
+  const { actor } = await requireBoardAccess(boardId, authenticatedActor);
+
+  if (typeof isDone !== "boolean") throw new WorkInputError("isDone must be a boolean.");
+
   const ok = await updateWorkIssueRequirementDone(
+    boardId,
     issueId,
     requirementId,
-    isDone
+    isDone,
+    actor.id
   );
-  if (!ok) throw new Error("Requirement not found");
-  await logEvent(
-    issueId,
-    actor.id,
-    "requirement",
-    isDone ? "checked a requirement" : "unchecked a requirement"
-  );
+
+  if (!ok) throw new WorkInputError("Requirement not found on this issue in this project.");
 }
 
 export async function removeIssueRequirement(
@@ -512,16 +596,20 @@ export async function removeIssuePreDeployAction(
 
 function normalizeReferenceUrl(raw: string): string {
   const trimmed = raw.trim();
-  if (!trimmed) throw new Error("URL is required");
+
+  if (!trimmed || trimmed.length > 4096) throw new WorkInputError("URL is required and must be at most 4096 characters.");
+
   let url: URL;
   try {
     url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
   } catch {
-    throw new Error("Enter a valid URL");
+    throw new WorkInputError("Enter a valid URL.");
   }
+
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("URL must start with http:// or https://");
+    throw new WorkInputError("URL must start with http:// or https://.");
   }
+
   return url.toString();
 }
 
@@ -529,16 +617,24 @@ export async function addIssueReference(
   boardId: string,
   issueId: string,
   url: string,
-  label: string
+  label: string,
+  authenticatedActor?: WorkActor
 ): Promise<{ id: string; sortOrder: number }> {
-  const { actor } = await requireBoardAccess(boardId);
+  const { actor } = await requireBoardAccess(boardId, authenticatedActor);
   const normalized = normalizeReferenceUrl(url);
+
+  if (label.trim().length > 1000) throw new WorkInputError("Reference label must be at most 1000 characters.");
+
   const created = await insertWorkIssueReference({
+    boardId,
     issueId,
     url: normalized,
     label: label.trim(),
+    actorAppUserId: actor.id,
   });
-  await logEvent(issueId, actor.id, "reference", "added a reference");
+
+  if (!created) throw new WorkInputError("Issue not found in this project.");
+
   return created;
 }
 
@@ -606,18 +702,22 @@ export async function removeIssueLabel(
 export async function addIssueComment(
   boardId: string,
   issueId: string,
-  body: string
-): Promise<void> {
-  const visible = await requireBoardAccess(boardId);
+  body: string,
+  authenticatedActor?: WorkActor
+): Promise<string> {
+  const visible = await requireBoardAccess(boardId, authenticatedActor);
   const { actor, board } = visible;
   const trimmed = body.trim();
-  if (!trimmed) throw new Error("Comment is required");
-  await insertWorkIssueComment({
+  if (!trimmed) throw new WorkInputError("Comment is required.");
+
+  const commentId = await insertWorkIssueComment({
+    boardId,
     issueId,
     authorAppUserId: actor.id,
     body: trimmed,
   });
-  await logEvent(issueId, actor.id, "comment", "added a comment");
+  if (!commentId) throw new WorkInputError("Issue not found in this project.");
+
   await notifyWorkIssueMentions({
     boardId,
     issueId,
@@ -628,6 +728,8 @@ export async function addIssueComment(
     boardTitle: board.title,
     boardPrefix: board.prefix,
   });
+
+  return commentId;
 }
 
 export async function updateIssueComment(
@@ -668,28 +770,28 @@ export async function setWorkIssueStatus(
   boardId: string,
   issueId: string,
   status: WorkIssueStatus,
-  sortOrder: number
-): Promise<void> {
-  const { actor } = await requireBoardAccess(boardId);
+  sortOrder?: number,
+  authenticatedActor?: WorkActor
+): Promise<number> {
+  const { actor } = await requireBoardAccess(boardId, authenticatedActor);
+
+  if (sortOrder !== undefined && (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 2147483646)) {
+    throw new WorkInputError("Sort order must be a non-negative integer below 2147483647.");
+  }
+
   const statuses = await assertBoardStatus(boardId, status);
-  const previous = await fetchWorkIssueStatus(boardId, issueId);
-  const ok = await moveWorkIssue({
+  const nextOrder = await moveWorkIssue({
     boardId,
     issueId,
     status,
     sortOrder,
+    actorAppUserId: actor.id,
+    statusName: statuses.find((row) => row.id === status)!.name,
   });
-  if (!ok) throw new Error("Issue not found");
-  if (previous && previous !== status) {
-    const nextName =
-      statuses.find((row) => row.id === status)?.name ?? "a new status";
-    await logEvent(
-      issueId,
-      actor.id,
-      "status",
-      `changed status to ${nextName}`
-    );
-  }
+
+  if (nextOrder === null) throw new WorkInputError("Issue not found in this project.");
+
+  return nextOrder;
 }
 
 export async function reorderWorkIssues(
@@ -705,7 +807,7 @@ export async function reorderWorkIssues(
 async function assertBoardStatus(boardId: string, statusId: string) {
   const statuses = await fetchWorkBoardStatuses(boardId);
   if (!statuses.some((status) => status.id === statusId)) {
-    throw new Error("Invalid status");
+    throw new WorkInputError("Column not found in this project.");
   }
   return statuses;
 }
@@ -759,11 +861,12 @@ async function notifyWorkIssueMentions(input: {
   );
   if (mentioned.length === 0) return;
   try {
-    const [issue, user] = await Promise.all([
+    const [issue, members] = await Promise.all([
       fetchWorkIssueNotifyMeta(input.boardId, input.issueId),
-      getCurrentAppUser(),
+      fetchWorkBoardMembers(input.boardId),
     ]);
     if (!issue) return;
+    const user = members.find((member) => member.id === input.actorId);
     const mentionerName = user?.name?.trim() || user?.email || "Someone";
     const payload = {
       customerId: input.customerId,
