@@ -1,4 +1,8 @@
 const nextConfig = {
+  // Feature/bug screenshots on create (up to 8 × 8 MB).
+  serverActions: {
+    bodySizeLimit: "40mb",
+  },
   async redirects() {
     return [
       { source: "/clients", destination: "/settings/customers", permanent: false },

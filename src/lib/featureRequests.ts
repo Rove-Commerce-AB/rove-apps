@@ -2,9 +2,12 @@
 
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { joinWorkInlineImages } from "@/lib/workInlineImages";
+import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
 
 const FEATURE_REQUEST_BOARD_TITLE = "Rove Apps";
 const STATUS_REQUEST = "Request";
+const MAX_SCREENSHOTS = 8;
 
 function titleFromContent(content: string): string {
   const firstLine = content.split(/\r?\n/).find((line) => line.trim()) ?? content;
@@ -69,28 +72,56 @@ async function resolveFeatureRequestBoard(): Promise<{
   return { boardId, requestStatusId };
 }
 
+function collectScreenshotFiles(formData: FormData): File[] {
+  const files = formData
+    .getAll("screenshots")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (files.length > MAX_SCREENSHOTS) {
+    throw new Error(`You can attach at most ${MAX_SCREENSHOTS} screenshots`);
+  }
+  for (const file of files) {
+    if (!file.type.toLowerCase().startsWith("image/")) {
+      throw new Error("Screenshots must be images");
+    }
+    if (file.size > WORK_FILE_MAX_BYTES) {
+      throw new Error("Each screenshot must be 8 MB or smaller");
+    }
+  }
+  return files;
+}
+
 /**
  * Creates a Work issue on the “Rove Apps” board (column Request).
  * Any signed-in user may submit; board membership is not required.
  * Reporter = submitter. Owner is left empty.
+ * Optional screenshots are stored as issue files and embedded in the description.
  */
 export async function createFeatureRequest(
-  content: string,
-  issueType: "issue" | "bug" = "issue"
+  formData: FormData
 ): Promise<void> {
-  const trimmed = content?.trim();
+  const trimmed = String(formData.get("content") ?? "").trim();
   if (!trimmed) throw new Error("Content is required");
-  const type = issueType === "bug" ? "bug" : "issue";
+  const type = formData.get("issueType") === "bug" ? "bug" : "issue";
+  const screenshots = collectScreenshotFiles(formData);
 
   const user = await getCurrentAppUser();
   if (!user?.id) throw new Error("Unauthorized");
 
   const { boardId, requestStatusId } = await resolveFeatureRequestBoard();
   const title = titleFromContent(trimmed);
-  const description = descriptionFromRequest({
+  const baseDescription = descriptionFromRequest({
     content: trimmed,
     requestedBy: user.email ?? null,
   });
+
+  const screenshotBytes = await Promise.all(
+    screenshots.map(async (file) => ({
+      name: file.name.trim() || "screenshot.png",
+      mimeType: file.type || "image/png",
+      byteSize: file.size,
+      content: Buffer.from(await file.arrayBuffer()),
+    }))
+  );
 
   await withCloudSqlTransaction("feature-request-create", async (client) => {
     await client.query("SELECT id FROM work_projects WHERE id = $1 FOR UPDATE", [
@@ -121,12 +152,46 @@ export async function createFeatureRequest(
         requestStatusId,
         orderRows[0]?.next ?? 0,
         user.id,
-        description,
+        baseDescription,
         type,
       ]
     );
     const issueId = rows[0]?.id;
     if (!issueId) throw new Error("Failed to create feature request");
+
+    const fileIds: string[] = [];
+    for (const file of screenshotBytes) {
+      const { rows: fileRows } = await client.query<{ id: string }>(
+        `INSERT INTO work_issue_files (
+           issue_id, file_name, mime_type, byte_size, content, uploaded_by_app_user_id
+         ) VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [
+          issueId,
+          file.name,
+          file.mimeType,
+          file.byteSize,
+          file.content,
+          user.id,
+        ]
+      );
+      const fileId = fileRows[0]?.id;
+      if (!fileId) throw new Error("Failed to attach screenshot");
+      fileIds.push(fileId);
+      await client.query(
+        `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+         VALUES ($1, $2, 'file', $3)`,
+        [issueId, user.id, `uploaded ${file.name}`]
+      );
+    }
+
+    if (fileIds.length > 0) {
+      await client.query(
+        `UPDATE work_issues SET description = $2 WHERE id = $1`,
+        [issueId, joinWorkInlineImages(baseDescription, fileIds)]
+      );
+    }
+
     await client.query(
       `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
        VALUES ($1, $2, 'created', $3)`,

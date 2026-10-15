@@ -15,8 +15,10 @@ import { WorkCreateProjectDialog } from "../WorkCreateProjectDialog";
 
 export function WorkCustomerPageClient({
   customer,
+  canCreateProject = true,
 }: {
   customer: WorkCustomerView;
+  canCreateProject?: boolean;
 }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
@@ -63,10 +65,12 @@ export function WorkCustomerPageClient({
           />
           <h1 className="text-heading-xl text-text-primary">{customer.name}</h1>
         </div>
-        <Button type="button" onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" aria-hidden />
-          New project
-        </Button>
+        {canCreateProject ? (
+          <Button type="button" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" aria-hidden />
+            New project
+          </Button>
+        ) : null}
       </header>
 
       {error ? (
@@ -141,11 +145,13 @@ export function WorkCustomerPageClient({
         </section>
       ) : null}
 
-      <WorkCreateProjectDialog
-        customer={customer}
-        open={creating}
-        onOpenChange={setCreating}
-      />
+      {canCreateProject ? (
+        <WorkCreateProjectDialog
+          customer={customer}
+          open={creating}
+          onOpenChange={setCreating}
+        />
+      ) : null}
     </div>
   );
 }

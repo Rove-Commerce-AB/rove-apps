@@ -21,7 +21,7 @@ UI: React + TypeScript
 Styling: Tailwind CSS
 Backend: Next.js (Server Components, server actions) + `src/lib/` med `pg` mot PostgreSQL
 Databas: PostgreSQL (Google Cloud SQL)
-Auth: Auth.js (NextAuth) med Google; `app_users` i samma databas
+Auth: Auth.js (NextAuth) med Google (personal) + e-post/lösenord för `customer`; `app_users` i samma databas
 Hosting: Google Cloud Run
 Versionering: Git + GitHub
 

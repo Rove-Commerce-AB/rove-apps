@@ -33,6 +33,13 @@ import type {
 } from "@/lib/workTypes";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import {
+  clearOptimisticIssuePatch,
+  mergeIssuesFromServer,
+  noteOptimisticIssuePatch,
+  type OptimisticIssuePatches,
+  type WorkIssueOptimisticPatch,
+} from "@/lib/workIssueMerge";
+import {
   addWorkBoardMemberAction,
   addWorkIssueAssigneeAction,
   removeWorkIssueAssigneeAction,
@@ -202,27 +209,6 @@ function computeMove(
   };
 }
 
-function mergeIssuesFromServer(
-  local: WorkIssue[],
-  server: WorkIssue[]
-): WorkIssue[] {
-  const localById = new Map(local.map((issue) => [issue.id, issue]));
-  return server.map((remote) => {
-    const current = localById.get(remote.id);
-    if (!current) return remote;
-    if (
-      current.status !== remote.status ||
-      current.sortOrder !== remote.sortOrder
-    ) {
-      return {
-        ...remote,
-        status: current.status,
-        sortOrder: current.sortOrder,
-      };
-    }
-    return remote;
-  });
-}
 
 function createTiltedDragImage(event: DragEvent<HTMLElement>): HTMLElement {
   const source = event.currentTarget;
@@ -290,6 +276,7 @@ export function WorkBoardPageClient({
     beforeIssueId: string | null;
   } | null>(null);
   const issuesRef = useRef(board.issues);
+  const optimisticPatchesRef = useRef<OptimisticIssuePatches>(new Map());
   const [addingStatus, setAddingStatus] = useState<WorkIssueStatus | null>(
     null
   );
@@ -352,8 +339,6 @@ export function WorkBoardPageClient({
   const [plannerProjectName, setPlannerProjectName] = useState(
     board.plannerProjectName
   );
-  const [renamingBoard, setRenamingBoard] = useState(false);
-  const [boardRenameDraft, setBoardRenameDraft] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] =
@@ -405,7 +390,11 @@ export function WorkBoardPageClient({
 
   useEffect(() => {
     setIssues((current) => {
-      const next = mergeIssuesFromServer(current, board.issues);
+      const next = mergeIssuesFromServer(
+        current,
+        board.issues,
+        optimisticPatchesRef.current
+      );
       issuesRef.current = next;
       return next;
     });
@@ -670,23 +659,6 @@ export function WorkBoardPageClient({
     setRenameDraft(column.name);
   }
 
-  function startRenameBoard() {
-    setSettingsOpen(false);
-    setRenamingBoard(true);
-    setBoardRenameDraft(boardTitle);
-  }
-
-  async function submitRenameBoard() {
-    if (!renamingBoard) return;
-    const trimmed = boardRenameDraft.trim();
-    setRenamingBoard(false);
-    if (!trimmed || trimmed === boardTitle) return;
-    const ok = await applyBoardRename(trimmed);
-    if (!ok) {
-      /* error already set */
-    }
-  }
-
   async function applyBoardRename(nextTitle: string): Promise<boolean> {
     const trimmed = nextTitle.trim();
     if (!trimmed || trimmed === boardTitle) return true;
@@ -926,43 +898,9 @@ export function WorkBoardPageClient({
       />
       <header className="mb-6 flex shrink-0 items-start justify-between gap-4">
         <div className="min-w-0">
-          {renamingBoard ? (
-            <form
-              className="min-w-0"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitRenameBoard();
-              }}
-            >
-              <input
-                value={boardRenameDraft}
-                onChange={(event) => setBoardRenameDraft(event.target.value)}
-                onBlur={() => {
-                  void submitRenameBoard();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setRenamingBoard(false);
-                  }
-                }}
-                aria-label="Rename project"
-                autoFocus
-                className={`${renameFieldClass} w-full max-w-xl text-heading-xl`}
-              />
-            </form>
-          ) : (
-            <button
-              type="button"
-              onClick={() => startRenameBoard()}
-              className="min-w-0 max-w-full text-left"
-              title="Rename project"
-            >
-              <h1 className="min-w-0 truncate text-heading-xl text-text-primary">
-                {boardTitle}
-              </h1>
-            </button>
-          )}
+          <h1 className="min-w-0 truncate text-heading-xl text-text-primary">
+            {boardTitle}
+          </h1>
           <p className="mt-1.5 text-[13px] text-text-secondary">
             <Link
               href={workCustomerHref(board.customerId)}
@@ -1989,6 +1927,7 @@ export function WorkBoardPageClient({
       >
         {selected ? (
           <WorkIssueDrawer
+            key={selected.id}
             board={{
               ...board,
               members,
@@ -2022,6 +1961,11 @@ export function WorkBoardPageClient({
                   )
                 );
               }
+              noteOptimisticIssuePatch(
+                optimisticPatchesRef.current,
+                selected.id,
+                patch as WorkIssueOptimisticPatch
+              );
               setIssues((current) => {
                 const next = current.map((issue) =>
                   issue.id === selected.id ? { ...issue, ...patch } : issue
@@ -2032,6 +1976,10 @@ export function WorkBoardPageClient({
             }}
             onDeleted={() => {
               const deletedId = selected.id;
+              clearOptimisticIssuePatch(
+                optimisticPatchesRef.current,
+                deletedId
+              );
               setIssues((current) => {
                 const next = current.filter((issue) => issue.id !== deletedId);
                 issuesRef.current = next;

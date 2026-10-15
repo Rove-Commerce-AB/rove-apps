@@ -11,6 +11,7 @@ declare module "next-auth" {
       role: AppUserRole;
       appUserId: string;
       appKeys: AppKey[];
+      mustChangePassword: boolean;
     };
   }
 }
@@ -21,5 +22,6 @@ declare module "next-auth/jwt" {
     role?: AppUserRole;
     appKeys?: AppKey[];
     appUserSyncedAt?: number;
+    mustChangePassword?: boolean;
   }
 }

@@ -11,9 +11,13 @@ import { WorkCreateProjectDialog } from "./WorkCreateProjectDialog";
 
 type Props = {
   customers: WorkSelectorCustomer[];
+  canCreateProject?: boolean;
 };
 
-export function WorkSelectorPageClient({ customers }: Props) {
+export function WorkSelectorPageClient({
+  customers,
+  canCreateProject = true,
+}: Props) {
   const [createForCustomerId, setCreateForCustomerId] = useState<string | null>(
     null
   );
@@ -26,7 +30,11 @@ export function WorkSelectorPageClient({ customers }: Props) {
     <div className="w-full">
       <PageHeader
         title="Select customer"
-        description="Open a project to start working, or create one for a customer that has none yet."
+        description={
+          canCreateProject
+            ? "Open a project to start working, or create one for a customer that has none yet."
+            : "Open a project to start working."
+        }
         className="mb-6"
       />
 
@@ -71,15 +79,17 @@ export function WorkSelectorPageClient({ customers }: Props) {
                     {customer.name}
                   </h2>
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => setCreateForCustomerId(customer.id)}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
-                  aria-label={`Create project for ${customer.name}`}
-                  title="Create project"
-                >
-                  <Plus className="h-4 w-4" aria-hidden />
-                </button>
+                {canCreateProject ? (
+                  <button
+                    type="button"
+                    onClick={() => setCreateForCustomerId(customer.id)}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                    aria-label={`Create project for ${customer.name}`}
+                    title="Create project"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                  </button>
+                ) : null}
               </div>
 
               {customer.boards.length > 0 ? (
@@ -105,13 +115,15 @@ export function WorkSelectorPageClient({ customers }: Props) {
         </div>
       )}
 
-      <WorkCreateProjectDialog
-        customer={createCustomer ?? null}
-        open={createForCustomerId != null}
-        onOpenChange={(open) => {
-          if (!open) setCreateForCustomerId(null);
-        }}
-      />
+      {canCreateProject ? (
+        <WorkCreateProjectDialog
+          customer={createCustomer ?? null}
+          open={createForCustomerId != null}
+          onOpenChange={(open) => {
+            if (!open) setCreateForCustomerId(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

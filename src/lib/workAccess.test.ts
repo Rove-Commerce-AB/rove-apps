@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canCreateWorkProject,
   canLogWorkTime,
   canSeeWorkBoard,
   canSeeWorkCustomer,
@@ -65,6 +66,14 @@ describe("canLogWorkTime", () => {
     expect(canLogWorkTime(customer)).toBe(false);
     expect(canLogWorkTime(admin)).toBe(true);
     expect(canLogWorkTime(member)).toBe(true);
+  });
+});
+
+describe("canCreateWorkProject", () => {
+  it("blocks customer users and allows others", () => {
+    expect(canCreateWorkProject(customer)).toBe(false);
+    expect(canCreateWorkProject(admin)).toBe(true);
+    expect(canCreateWorkProject(member)).toBe(true);
   });
 });
 

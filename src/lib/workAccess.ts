@@ -53,3 +53,8 @@ export function canSeeWorkTime(
 export function canLogWorkTime(actor: WorkActor): boolean {
   return actor.role !== "customer";
 }
+
+/** Customer-role users cannot create Work projects. */
+export function canCreateWorkProject(actor: WorkActor): boolean {
+  return actor.role !== "customer";
+}

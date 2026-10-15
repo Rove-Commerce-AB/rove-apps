@@ -10,6 +10,7 @@ import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
 import { WorkInputError } from "@/lib/workErrors";
 import { compareTextSv } from "@/lib/sort";
 import {
+  canCreateWorkProject,
   canSeeWorkBoard,
   canSeeWorkCustomer,
   canSeeWorkTime,
@@ -720,9 +721,14 @@ export async function addWorkBoardMember(
 ): Promise<void> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
-  const allowed = await fetchWorkUserById(appUserId);
-  if (!allowed) {
-    throw new Error("That person does not have access to Work");
+  const allowedStaff = await fetchWorkUserById(appUserId);
+  if (!allowedStaff) {
+    const customerPeople = await fetchWorkPeopleForCustomer(
+      visible.board.customer_id
+    );
+    if (!customerPeople.some((person) => person.id === appUserId)) {
+      throw new Error("That person does not have access to Work");
+    }
   }
   await q.insertWorkBoardMember(boardId, appUserId);
 }
@@ -800,6 +806,9 @@ export async function createWorkBoard(
   plannerProjectId?: string | null
 ): Promise<string> {
   const actor = await requireWorkActorOrThrow();
+  if (!canCreateWorkProject(actor)) {
+    throw new Error("Customer users cannot create projects");
+  }
   const trimmed = title.trim();
   if (!trimmed) {
     throw new Error("Title is required");

@@ -63,7 +63,11 @@ export type WorkAccessPickerRow = WorkUserRow & {
   on_customer: boolean;
 };
 
-/** Customer-linked people first, then other internal Work-capable users. */
+/**
+ * Access picker: people linked to this customer first (incl. that customer's
+ * customer-role users only — never other customers' users), then other
+ * internal Work-capable users (admins / consultants).
+ */
 export async function fetchWorkAccessPickerPeople(
   customerId: string
 ): Promise<WorkAccessPickerRow[]> {
@@ -89,6 +93,11 @@ export async function fetchWorkAccessPickerPeople(
              SELECT 1 FROM consultants c WHERE c.app_user_id = u.id
            )
          )
+       UNION
+       SELECT u.id, u.name, u.email
+       FROM app_users u
+       INNER JOIN customer_people cp ON cp.id = u.id
+       WHERE u.role = 'customer'
      )
      SELECT
        c.id,

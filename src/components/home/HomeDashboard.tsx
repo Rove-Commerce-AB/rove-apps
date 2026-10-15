@@ -178,8 +178,7 @@ export function HomeDashboard({ data }: Props) {
 
       {!planner && !timeReport && !work ? (
         <p className="mt-6 text-sm text-text-secondary">
-          No apps are enabled for your account yet. Ask an admin to grant access
-          under Settings → People.
+          No apps are enabled for your account yet. Ask an admin to grant access.
         </p>
       ) : null}
     </div>

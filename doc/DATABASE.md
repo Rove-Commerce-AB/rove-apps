@@ -25,8 +25,9 @@ Used by `projects.type`. Default `customer`.
 
 ## app_users
 
-Authenticated application users. Google sign-in resolves the account by email;
-all internal relationships use the account UUID.
+Authenticated application users. Google sign-in (staff) or email/password
+(`customer` role) resolves the account by email; all internal relationships use
+the account UUID.
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -36,6 +37,8 @@ all internal relationships use the account UUID.
 | name | text | nullable |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
+| password_hash | text | nullable; scrypt hash for `customer` password login |
+| must_change_password | boolean | NOT NULL, default false; force change after temp password |
 
 Indexes: unique `(email)`; btree `(email)`.
 
@@ -46,7 +49,8 @@ Underkonsult is not a login role. It is `consultants.is_external`. A
 subcontractor login is a `member` (or rarely `admin`) linked to that
 profile, with apps in `app_user_apps`.
 
-See [`scripts/20260913_drop_subcontractor_role.sql`](../scripts/20260913_drop_subcontractor_role.sql).
+See [`scripts/20260913_drop_subcontractor_role.sql`](../scripts/20260913_drop_subcontractor_role.sql)
+and [`scripts/20261015_customer_passwords.sql`](../scripts/20261015_customer_passwords.sql).
 
 ---
 

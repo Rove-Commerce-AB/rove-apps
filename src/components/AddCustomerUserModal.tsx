@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Dialog, Button, Input } from "@/components/ui";
+import { TemporaryPasswordReveal } from "@/components/TemporaryPasswordReveal";
 import { addCustomerUserToCustomer } from "@/lib/customerAppUsersClient";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import { createUserPerson } from "@/lib/people";
@@ -28,6 +29,10 @@ export function AddCustomerUserModal({
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [revealed, setRevealed] = useState<{
+    email: string;
+    temporaryPassword: string;
+  } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -35,6 +40,7 @@ export function AddCustomerUserModal({
       setSelectedIds([]);
       setName("");
       setEmail("");
+      setRevealed(null);
     }
   }, [isOpen]);
 
@@ -47,6 +53,12 @@ export function AddCustomerUserModal({
         ? prev.filter((id) => id !== userId)
         : [...prev, userId]
     );
+  }
+
+  function finish() {
+    setRevealed(null);
+    onSuccess();
+    onClose();
   }
 
   async function handleSubmit() {
@@ -71,16 +83,22 @@ export function AddCustomerUserModal({
         )
       );
       if (creating) {
-        await createUserPerson({
+        const result = await createUserPerson({
           name: trimmedName,
           email: trimmedEmail,
           role: "customer",
           appKeys: [],
           customerIds: [customerId],
         });
+        if (result.temporaryPassword) {
+          setRevealed({
+            email: trimmedEmail,
+            temporaryPassword: result.temporaryPassword,
+          });
+          return;
+        }
       }
-      onSuccess();
-      onClose();
+      finish();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add customer user");
     } finally {
@@ -92,88 +110,101 @@ export function AddCustomerUserModal({
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) {
+          if (revealed) finish();
+          else onClose();
+        }
       }}
-      title="Add customer user"
+      title={revealed ? "Temporary password" : "Add customer user"}
     >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void handleSubmit();
-        }}
-        className="modal-form-discreet mt-6 space-y-4"
-      >
-        {error ? (
-          <p className="text-sm text-danger" role="alert">
-            {error}
-          </p>
-        ) : null}
+      {revealed ? (
+        <div className="mt-6">
+          <TemporaryPasswordReveal
+            email={revealed.email}
+            temporaryPassword={revealed.temporaryPassword}
+            onDone={finish}
+          />
+        </div>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit();
+          }}
+          className="modal-form-discreet mt-6 space-y-4"
+        >
+          {error ? (
+            <p className="text-sm text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
 
-        {options.length > 0 ? (
+          {options.length > 0 ? (
+            <div>
+              <p className="mb-2 block text-sm font-medium text-text-primary">
+                Existing customer users
+              </p>
+              <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
+                {options.map((user) => (
+                  <label
+                    key={user.id}
+                    htmlFor={`add-customer-user-${user.id}`}
+                    className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
+                  >
+                    <input
+                      id={`add-customer-user-${user.id}`}
+                      type="checkbox"
+                      checked={selectedIds.includes(user.id)}
+                      onChange={() => toggleUser(user.id)}
+                      disabled={submitting}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate">{user.name}</span>
+                      <span className="block truncate text-text-tertiary">
+                        {user.email}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : allCustomerUsers.length > 0 ? (
+            <p className="text-sm text-text-primary opacity-70">
+              All customer users are already assigned to this customer.
+            </p>
+          ) : null}
+
           <div>
             <p className="mb-2 block text-sm font-medium text-text-primary">
-              Existing customer users
+              Create new
             </p>
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
-              {options.map((user) => (
-                <label
-                  key={user.id}
-                  htmlFor={`add-customer-user-${user.id}`}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                >
-                  <input
-                    id={`add-customer-user-${user.id}`}
-                    type="checkbox"
-                    checked={selectedIds.includes(user.id)}
-                    onChange={() => toggleUser(user.id)}
-                    disabled={submitting}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate">{user.name}</span>
-                    <span className="block truncate text-text-tertiary">
-                      {user.email}
-                    </span>
-                  </span>
-                </label>
-              ))}
+            <div className="space-y-3">
+              <Input
+                label="Name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                modalStyle
+              />
+              <Input
+                type="email"
+                label="Email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                modalStyle
+              />
             </div>
           </div>
-        ) : allCustomerUsers.length > 0 ? (
-          <p className="text-sm text-text-primary opacity-70">
-            All customer users are already assigned to this customer.
-          </p>
-        ) : null}
 
-        <div>
-          <p className="mb-2 block text-sm font-medium text-text-primary">
-            Create new
-          </p>
-          <div className="space-y-3">
-            <Input
-              label="Name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              modalStyle
-            />
-            <Input
-              type="email"
-              label="Email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              modalStyle
-            />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Adding…" : "Add"}
+            </Button>
           </div>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Adding…" : "Add"}
-          </Button>
-        </div>
-      </form>
+        </form>
+      )}
     </Dialog>
   );
 }

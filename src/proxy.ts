@@ -21,6 +21,7 @@ export default auth((req) => {
   const { pathname } = req.nextUrl;
 
   const isLogin = pathname === "/login";
+  const isChangePassword = pathname === "/change-password";
   const isAuthCallback = pathname.startsWith("/auth/");
   const isAccessDenied = pathname === "/access-denied";
 
@@ -30,14 +31,25 @@ export default auth((req) => {
   }
 
   // Signed in but not in app_users → /access-denied
-  // (Auth.js signIn callback already blocks this; extra guard)
   if (req.auth && !req.auth.user.appUserId && !isAccessDenied && !isLogin) {
     return NextResponse.redirect(new URL("/access-denied", req.url));
   }
 
-  // Signed in user hitting /login → Home
-  if (req.auth && isLogin) {
+  const mustChangePassword = Boolean(req.auth?.user.mustChangePassword);
+
+  if (req.auth && mustChangePassword && !isChangePassword && !isAccessDenied) {
+    return NextResponse.redirect(new URL("/change-password", req.url));
+  }
+
+  if (req.auth && isChangePassword && !mustChangePassword) {
     return NextResponse.redirect(new URL("/", req.url));
+  }
+
+  // Signed in user hitting /login → Home (or change-password if required)
+  if (req.auth && isLogin) {
+    return NextResponse.redirect(
+      new URL(mustChangePassword ? "/change-password" : "/", req.url)
+    );
   }
 
   const requiredApp = requiredAppForPath(pathname);

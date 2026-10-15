@@ -4,7 +4,8 @@ Planner, Time report, and Insights are apps inside Rove Apps.
 
 - **Platform:** Next.js app hosted on Google Cloud Run.
 - **Database:** PostgreSQL on Google Cloud SQL. Set `CLOUD_SQL_URL` in `.env.local` (see `src/lib/cloudSqlPool.ts`). Schema notes: [`doc/DATABASE.md`](doc/DATABASE.md).
-- **Auth:** Auth.js with Google; app users in PostgreSQL (`app_users`). Architecture: [`doc/PROJECT_RULES.md`](doc/PROJECT_RULES.md).
+- **Auth:** Auth.js with Google (staff) and email/password for `customer` users; app users in PostgreSQL (`app_users`). Architecture: [`doc/PROJECT_RULES.md`](doc/PROJECT_RULES.md).
+  - Customer passwords: admin generates a temporary password (shown once); customer must change it on first login. Migration: `scripts/20261015_customer_passwords.sql`.
 
 ## Getting Started
 
@@ -92,8 +93,17 @@ The API key may also be sent as `x-api-key`. Unknown `subscriptionId` values are
 | Concurrent requests / instance | 8 | **2–3** | Fewer parallel DB work per instance |
 | `CLOUD_SQL_POOL_MAX` | 10 | **5** | Limits connections per instance |
 | Max instances | 10 | **3–5** | Caps total pool × instances |
-| Request timeout | 900 s | **120 s** | Fail fast instead of hanging |
+| Request timeout | 900 s | **600 s** | Insights (Data Agent) needs several minutes for heavy questions; shorter values cause `upstream request timeout` |
 | `APP_DEBUG_LOGS` | 1 | **0** in prod | Less noise after debugging |
+
+Insights timeout: the app aborts Data Agent calls after `DATA_AGENT_TIMEOUT_MS` (default **600000** = 10 min). Cloud Run **request timeout must be ≥ that value**, otherwise heavy questions fail with a 504 / upstream timeout even though the agent is still working.
+
+```bash
+gcloud run services update rove-portal \
+  --region=europe-west1 \
+  --project=rove-portalstudio \
+  --timeout=600
+```
 
 After deploy, watch **PostgreSQL Connections** in GCP (target &lt; ~15 under normal load with the above).
 

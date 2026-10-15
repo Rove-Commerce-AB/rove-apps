@@ -18,6 +18,10 @@ import {
   type PersonListItem,
   type PersonMcpAccess,
 } from "@/lib/peopleTypes";
+import {
+  generateTemporaryPassword,
+  hashPassword,
+} from "@/lib/passwords";
 import { compareTextSv } from "@/lib/sort";
 import {
   getCustomersForAppUserIds,
@@ -197,7 +201,7 @@ export async function createUserPerson(input: {
   appKeys: AppKey[];
   consultantId?: string | null;
   customerIds?: string[];
-}): Promise<{ key: string }> {
+}): Promise<{ key: string; temporaryPassword?: string }> {
   await assertAdmin();
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
@@ -221,14 +225,26 @@ export async function createUserPerson(input: {
     if (appKeys.some((key) => !isAppKey(key))) throw new Error("Invalid app");
   }
 
+  const temporaryPassword =
+    input.role === "customer" ? generateTemporaryPassword() : null;
+  const passwordHash = temporaryPassword
+    ? hashPassword(temporaryPassword)
+    : null;
+
   const appUserId = await withCloudSqlTransaction(
     "people-create-user",
     async (client) => {
       const { rows } = await client.query<{ id: string }>(
-        `INSERT INTO app_users (email, name, role)
-         VALUES ($1, $2, $3)
+        `INSERT INTO app_users (email, name, role, password_hash, must_change_password)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [email, name || null, input.role]
+        [
+          email,
+          name || null,
+          input.role,
+          passwordHash,
+          Boolean(temporaryPassword),
+        ]
       );
       const id = rows[0]?.id;
       if (!id) throw new Error("Failed to create user");
@@ -282,7 +298,10 @@ export async function createUserPerson(input: {
 
   revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.customers);
-  return { key: `user-${appUserId}` };
+  return {
+    key: `user-${appUserId}`,
+    ...(temporaryPassword ? { temporaryPassword } : {}),
+  };
 }
 
 export async function createConsultantProfileForUser(input: {

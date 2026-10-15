@@ -20,11 +20,13 @@ import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { ConsultantDetailClient } from "@/components/ConsultantDetailClient";
 import { PersonCustomersTab, type PersonCustomerOption } from "@/components/PersonCustomersTab";
 import { PersonMcpAccessTab } from "@/components/PersonMcpAccessTab";
+import { TemporaryPasswordReveal } from "@/components/TemporaryPasswordReveal";
 import {
   createConsultantProfileForUser,
   createUserPerson,
   setPersonApps,
 } from "@/lib/people";
+import { setCustomerTemporaryPassword } from "@/lib/customerPasswords";
 import { deleteConsultantAction } from "@/app/(app)/consultants/actions";
 import {
   APP_KEYS,
@@ -222,6 +224,11 @@ function UserFormDialog({
   const [customerIds, setCustomerIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [revealed, setRevealed] = useState<{
+    key: string;
+    email: string;
+    temporaryPassword: string;
+  } | null>(null);
   const isCustomer = kind === "customer";
   const assignableCustomers = customers.filter((customer) => !customer.isInternal);
 
@@ -230,7 +237,14 @@ function UserFormDialog({
     setAppKeys(isCustomer ? [] : ["planner", "time_report", "insights"]);
     setCustomerIds([]);
     setError(null);
+    setRevealed(null);
   }, [open, isCustomer]);
+
+  function finishCreated(key: string) {
+    setRevealed(null);
+    onCreated(key);
+    onOpenChange(false);
+  }
 
   async function submit() {
     setError(null);
@@ -261,8 +275,15 @@ function UserFormDialog({
               consultantId,
             }
       );
-      onCreated(result.key);
-      onOpenChange(false);
+      if (result.temporaryPassword) {
+        setRevealed({
+          key: result.key,
+          email: email.trim(),
+          temporaryPassword: result.temporaryPassword,
+        });
+        return;
+      }
+      finishCreated(result.key);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to create user");
     } finally {
@@ -273,15 +294,32 @@ function UserFormDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next) => {
+        if (!next && revealed) {
+          finishCreated(revealed.key);
+          return;
+        }
+        onOpenChange(next);
+      }}
       title={
-        isCustomer
-          ? "Add customer user"
-          : consultantId
-            ? "Create user account"
-            : "Add user"
+        revealed
+          ? "Temporary password"
+          : isCustomer
+            ? "Add customer user"
+            : consultantId
+              ? "Create user account"
+              : "Add user"
       }
     >
+      {revealed ? (
+        <div className="mt-6">
+          <TemporaryPasswordReveal
+            email={revealed.email}
+            temporaryPassword={revealed.temporaryPassword}
+            onDone={() => finishCreated(revealed.key)}
+          />
+        </div>
+      ) : (
       <form
         className="modal-form-discreet mt-6 space-y-4"
         onSubmit={(event) => {
@@ -387,6 +425,7 @@ function UserFormDialog({
           </Button>
         </div>
       </form>
+      )}
     </Dialog>
   );
 }
@@ -623,11 +662,34 @@ function PersonDangerZone({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"login" | "consultant" | null>(null);
+  const [busy, setBusy] = useState<"login" | "consultant" | "password" | null>(
+    null
+  );
   const [confirm, setConfirm] = useState<"login" | "consultant" | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
 
   const canRemoveLogin = Boolean(person.appUserId);
   const canRemoveConsultant = Boolean(person.consultantId);
+  const canResetPassword =
+    Boolean(person.appUserId) && person.userRole === "customer";
+
+  async function resetPassword() {
+    if (!person.appUserId) return;
+    setError(null);
+    setBusy("password");
+    try {
+      const result = await setCustomerTemporaryPassword(person.appUserId);
+      setTempPassword(result.temporaryPassword);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Failed to reset temporary password"
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function removeLogin() {
     if (!person.appUserId) return;
@@ -677,7 +739,7 @@ function PersonDangerZone({
     }
   }
 
-  if (!canRemoveLogin && !canRemoveConsultant) {
+  if (!canRemoveLogin && !canRemoveConsultant && !canResetPassword) {
     return (
       <div className="px-6 py-6">
         <p className="text-sm text-text-secondary">
@@ -701,6 +763,37 @@ function PersonDangerZone({
           <p className="text-sm text-danger" role="alert">
             {error}
           </p>
+        ) : null}
+
+        {canResetPassword ? (
+          <div>
+            <h3 className="text-sm font-medium text-text-primary">
+              Reset temporary password
+            </h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              Generates a new temporary password and requires the customer to
+              change it on next login. Share it out of band; it is shown once.
+            </p>
+            {tempPassword && person.email ? (
+              <div className="mt-4">
+                <TemporaryPasswordReveal
+                  email={person.email}
+                  temporaryPassword={tempPassword}
+                  onDone={() => setTempPassword(null)}
+                />
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-4"
+                disabled={busy !== null}
+                onClick={() => void resetPassword()}
+              >
+                {busy === "password" ? "Generating…" : "Generate temporary password"}
+              </Button>
+            )}
+          </div>
         ) : null}
 
         {canRemoveLogin ? (

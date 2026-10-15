@@ -1,11 +1,18 @@
 import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import {
   cloudSqlPool,
   isTransientCloudSqlConnectError,
 } from "@/lib/cloudSqlPool";
+import { findCustomerForPasswordLogin } from "@/lib/customerPasswordQueries";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
 import { upsertGoogleUserConnection } from "@/lib/googleTasksSyncQueries";
+import {
+  isValidEmailFormat,
+  normalizeEmail,
+  verifyPassword,
+} from "@/lib/passwords";
 import { isAppKey, type AppKey } from "@/lib/peopleTypes";
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -33,6 +40,10 @@ async function fetchAppKeysForUserId(appUserId: string): Promise<AppKey[]> {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  pages: {
+    signIn: "/login",
+    error: "/login",
+  },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -46,10 +57,38 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         },
       },
     }),
+    Credentials({
+      id: "customer-password",
+      name: "Email and password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const emailRaw =
+          typeof credentials?.email === "string" ? credentials.email : "";
+        const password =
+          typeof credentials?.password === "string" ? credentials.password : "";
+        const email = normalizeEmail(emailRaw);
+
+        if (!isValidEmailFormat(email) || !password) {
+          return null;
+        }
+
+        const user = await findCustomerForPasswordLogin(email);
+        if (!user?.password_hash) return null;
+        if (!verifyPassword(password, user.password_hash)) return null;
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        };
+      },
+    }),
   ],
   callbacks: {
     async signIn({ user }) {
-      // Blockera inloggning om e-post inte finns i app_users
       const email = user.email ?? null;
       try {
         const { rows } = await timedDebug(
@@ -57,7 +96,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           "signIn app_user lookup",
           () =>
             cloudSqlPool.query(
-              "SELECT id FROM app_users WHERE email = $1",
+              "SELECT id FROM app_users WHERE lower(trim(email)) = lower(trim($1))",
               [email]
             ),
           { email }
@@ -111,6 +150,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         id: string;
         role: string;
         name: string | null;
+        must_change_password: boolean;
         app_keys: string[];
       }[] = [];
       try {
@@ -123,6 +163,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                  u.id,
                  u.role,
                  u.name,
+                 u.must_change_password,
                  COALESCE(
                    array_agg(a.key) FILTER (WHERE a.key IS NOT NULL),
                    ARRAY[]::text[]
@@ -130,8 +171,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                FROM app_users u
                LEFT JOIN app_user_apps aua ON aua.app_user_id = u.id
                LEFT JOIN apps a ON a.id = aua.app_id
-               WHERE u.email = $1
-               GROUP BY u.id, u.role, u.name`,
+               WHERE lower(trim(u.email)) = lower(trim($1))
+               GROUP BY u.id, u.role, u.name, u.must_change_password`,
               [email]
             ),
           { email, trigger: trigger ?? "session" }
@@ -165,11 +206,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
         token.appKeys = rows[0].app_keys.filter(isAppKey);
         token.name = rows[0].name ?? token.name;
+        token.mustChangePassword = Boolean(rows[0].must_change_password);
         token.appUserSyncedAt = Date.now();
       } else {
         token.appUserId = undefined;
         token.role = undefined;
         token.appKeys = undefined;
+        token.mustChangePassword = false;
         token.appUserSyncedAt = Date.now();
       }
 
@@ -177,6 +220,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email,
         found: Boolean(rows[0]),
         role: token.role ?? null,
+        mustChangePassword: token.mustChangePassword ?? false,
       });
 
       if (
@@ -185,7 +229,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         account.providerAccountId
       ) {
         const expiresAt =
-          typeof account.expires_at === "number" && Number.isFinite(account.expires_at)
+          typeof account.expires_at === "number" &&
+          Number.isFinite(account.expires_at)
             ? new Date(account.expires_at * 1000)
             : null;
         try {
@@ -193,11 +238,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             appUserId: token.appUserId,
             googleSub: account.providerAccountId,
             googleEmail:
-              typeof profile?.email === "string"
-                ? profile.email
-                : email,
-            scope:
-              typeof account.scope === "string" ? account.scope : null,
+              typeof profile?.email === "string" ? profile.email : email,
+            scope: typeof account.scope === "string" ? account.scope : null,
             accessToken:
               typeof account.access_token === "string"
                 ? account.access_token
@@ -233,6 +275,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.user.appUserId =
         typeof token.appUserId === "string" ? token.appUserId : "";
       session.user.appKeys = Array.isArray(token.appKeys) ? token.appKeys : [];
+      session.user.mustChangePassword = Boolean(token.mustChangePassword);
       if (typeof token.name === "string") {
         session.user.name = token.name;
       }
@@ -240,6 +283,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: session.user.email ?? null,
         hasAppUserId: Boolean(session.user.appUserId),
         role: session.user.role,
+        mustChangePassword: session.user.mustChangePassword,
       });
       return session;
     },
