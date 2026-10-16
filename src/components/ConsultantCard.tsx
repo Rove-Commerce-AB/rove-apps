@@ -30,7 +30,7 @@ export function ConsultantCard({ consultant }: Props) {
               <div className="flex items-center gap-2">
                 <h3 className="text-heading-m text-text-primary">{consultant.name}</h3>
                 {consultant.isExternal && (
-                  <span className="rounded-sm bg-brand-blue/60 px-1.5 py-0.5 text-xs font-medium text-text-primary">
+                  <span className="rounded-sm bg-accent-primary-subtle px-1.5 py-0.5 text-xs font-medium text-accent-primary-text">
                     External
                   </span>
                 )}

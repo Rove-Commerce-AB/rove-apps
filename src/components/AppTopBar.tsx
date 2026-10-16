@@ -7,6 +7,7 @@ import { breadcrumbsForPathname } from "@/lib/breadcrumbs";
 import { useWorkTrail } from "@/components/WorkTrailContext";
 import { ShortcutStarButton } from "@/components/ShortcutStarButton";
 import { NotificationsBellDropdown } from "@/components/NotificationsBellDropdown";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type AppTopBarProps = {
   unreadNotificationCount?: number;
@@ -76,7 +77,10 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
         </Suspense>
       </div>
 
-      <NotificationsBellDropdown unreadCount={unreadNotificationCount} />
+      <div className="flex shrink-0 items-center">
+        <ThemeToggle />
+        <NotificationsBellDropdown unreadCount={unreadNotificationCount} />
+      </div>
     </header>
   );
 }

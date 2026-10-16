@@ -86,7 +86,7 @@ export function CustomerFavicon({ name, url, color, size = "sm" }: Props) {
   if (color) {
     return (
       <span
-        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-full ${scale.initials} font-semibold text-text-inverse`}
+        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-full ${scale.initials} font-semibold text-white`}
         style={{ backgroundColor: color || DEFAULT_CUSTOMER_COLOR }}
         aria-hidden
       >
@@ -98,7 +98,7 @@ export function CustomerFavicon({ name, url, color, size = "sm" }: Props) {
   if (size === "nav") {
     return (
       <span
-        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-full ${scale.initials} font-semibold text-text-inverse`}
+        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-full ${scale.initials} font-semibold text-white`}
         style={{ backgroundColor: color || DEFAULT_CUSTOMER_COLOR }}
         aria-hidden
       >

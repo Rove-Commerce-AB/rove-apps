@@ -10,13 +10,13 @@ const TYPE_STYLE: Record<
 > = {
   issue: {
     icon: CircleDot,
-    iconClass: "text-sky-600",
-    selectedClass: "bg-sky-500/15 ring-1 ring-sky-500/35",
+    iconClass: "text-sky-700 dark:text-sky-300",
+    selectedClass: "bg-sky-500/15 ring-1 ring-sky-500/40",
   },
   bug: {
     icon: Bug,
-    iconClass: "text-rose-600",
-    selectedClass: "bg-rose-500/15 ring-1 ring-rose-500/35",
+    iconClass: "text-rose-700 dark:text-rose-300",
+    selectedClass: "bg-rose-500/15 ring-1 ring-rose-500/40",
   },
 };
 

@@ -33,7 +33,7 @@ function ProjectRow({
       </span>
       <span
         className={`shrink-0 tabular-nums text-xs font-medium ${
-          emphasizeConfirmed ? "text-emerald-700" : "text-text-muted"
+          emphasizeConfirmed ? "text-success" : "text-text-muted"
         }`}
       >
         {pct}%

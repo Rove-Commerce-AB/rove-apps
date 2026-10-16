@@ -33,7 +33,7 @@ export function CustomerCard({ customer }: Props) {
             </div>
           ) : (
             <div
-              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg text-sm font-medium text-text-inverse"
+              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg text-sm font-medium text-white"
               style={{ backgroundColor: color }}
             >
               {customer.initials}
@@ -41,7 +41,7 @@ export function CustomerCard({ customer }: Props) {
           )}
           <div className="min-w-0">
             <h3 className="text-heading-m text-text-primary">{customer.name}</h3>
-            <span className="inline-block rounded-full bg-brand-lilac/40 px-2 py-0.5 text-xs text-text-primary">
+            <span className="inline-block rounded-full bg-accent-primary-subtle px-2 py-0.5 text-xs text-accent-primary-text">
               {customer.activeProjectCount} active project
               {customer.activeProjectCount !== 1 ? "s" : ""}
             </span>

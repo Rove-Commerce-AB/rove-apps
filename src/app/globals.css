@@ -3,6 +3,9 @@
 @import "../../styles/utilities.css";
 @import "tailwindcss";
 
+/* Follow the .dark class on html, not the operating system. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-background: var(--color-surface-page);
   --color-foreground: var(--color-text-primary);
@@ -76,6 +79,28 @@
   --shadow-xl: var(--shadow-xl);
   --shadow-primary: var(--shadow-primary);
   --shadow-panel-header: var(--panel-header-shadow);
+}
+
+html {
+  color-scheme: light;
+  /* Focus rings sit on the page, not on a white halo. */
+  --tw-ring-offset-color: var(--color-surface-page);
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Browser autofill paints a light box. Keep field text and fill on the theme. */
+html.dark input:-webkit-autofill,
+html.dark input:-webkit-autofill:hover,
+html.dark input:-webkit-autofill:focus,
+html.dark textarea:-webkit-autofill,
+html.dark select:-webkit-autofill {
+  -webkit-text-fill-color: var(--color-text-primary);
+  caret-color: var(--color-text-primary);
+  box-shadow: 0 0 0 1000px var(--color-surface-default) inset;
+  transition: background-color 9999s ease-out 0s;
 }
 
 body {

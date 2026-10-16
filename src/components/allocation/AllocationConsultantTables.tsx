@@ -381,7 +381,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 </span>
                               )}
                               {row.consultant.isExternal && (
-                                <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                                <span className="ml-1.5 shrink-0 rounded-sm bg-accent-primary-subtle px-1 py-0.5 text-[10px] text-accent-primary-text">
                                   External
                                 </span>
                               )}
@@ -933,7 +933,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                   ({row.consultant.teamName})
                                 </span>
                               )}
-                              <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                              <span className="ml-1.5 shrink-0 rounded-sm bg-accent-primary-subtle px-1 py-0.5 text-[10px] text-accent-primary-text">
                                 External
                               </span>
                             </span>

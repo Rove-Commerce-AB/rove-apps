@@ -88,7 +88,7 @@ export function EntryFilterMultiSelect({
           aria-haspopup="listbox"
           onClick={() => setOpen((o) => !o)}
           className={
-            `flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-white px-3 py-1.5 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-border-default)] focus:border-[var(--color-border-default)] focus:outline-none focus:ring-1 focus:ring-[var(--color-border-default)] ${triggerClassName}`.trim()
+            `flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-bg-default px-3 py-1.5 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-border-default)] focus:border-[var(--color-border-default)] focus:outline-none focus:ring-1 focus:ring-[var(--color-border-default)] ${triggerClassName}`.trim()
           }
         >
           <span className="min-w-0 flex-1 truncate">{summary}</span>

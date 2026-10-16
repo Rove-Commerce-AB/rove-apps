@@ -113,7 +113,7 @@ function CustomerAvatar({
 
   return (
     <span
-      className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-full font-semibold text-text-inverse`}
+      className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-full font-semibold text-white`}
       style={{ backgroundColor: customer.color }}
       aria-hidden
     >

@@ -621,7 +621,7 @@ export function ProjectDetailClient({
               style={{ backgroundColor: initial.color }}
               aria-hidden
             >
-              <span className="text-xs font-semibold text-text-inverse">
+              <span className="text-xs font-semibold text-white">
                 {projectInitials}
               </span>
             </div>

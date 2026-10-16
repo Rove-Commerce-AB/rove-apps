@@ -161,7 +161,7 @@ export function Combobox({
   const isFilter = variant === "filter";
   const inputSize = isFilter ? "py-1.5 px-3 text-xs" : size === "sm" ? "py-1.5 px-3 text-sm" : "py-2 px-3 text-sm";
   const inputShape = isFilter
-    ? "rounded-lg border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-inset focus:ring-[var(--color-border-default)] focus:outline-none"
+    ? "rounded-lg border border-[var(--color-border-subtle)] bg-bg-default text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-inset focus:ring-[var(--color-border-default)] focus:outline-none"
     : "rounded-lg border border-form bg-bg-default text-text-primary placeholder-text-muted focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-inset focus:ring-[var(--color-border-default)] focus:outline-none";
   const listBorderClass = isFilter
     ? "border-[var(--color-border-subtle)]"

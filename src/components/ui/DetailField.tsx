@@ -51,7 +51,7 @@ export function InlineEditStatus({ status, message }: InlineEditStatusProps) {
 export function SavedCheckmark() {
   return (
     <Check
-      className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400 animate-[savedCheckFade_2s_ease-out]"
+      className="h-4 w-4 shrink-0 text-success animate-[savedCheckFade_2s_ease-out]"
       aria-hidden
     />
   );

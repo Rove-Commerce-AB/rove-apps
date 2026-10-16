@@ -2899,7 +2899,7 @@ export function TimeReportPageClient({
                 Saving…
               </span>
               {saveState === "error" && saveError && (
-                <span className="text-xs text-red-600" role="alert">
+                <span className="text-xs text-danger" role="alert">
                   {saveError}
                 </span>
               )}
@@ -3134,7 +3134,7 @@ export function TimeReportPageClient({
                           </td>
                           <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
                             <div
-                              className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.projectId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
+                              className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.projectId ? "ring-2 ring-danger ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
                               <Select
                                 value={entry.projectId}
@@ -3158,7 +3158,7 @@ export function TimeReportPageClient({
                           </td>
                           <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
                             <div
-                              className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.roleId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
+                              className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.roleId ? "ring-2 ring-danger ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
                               <Select
                                 value={entry.roleId}
@@ -3589,7 +3589,7 @@ export function TimeReportPageClient({
                               </td>
                               <td className="min-w-0 px-1 py-0.5">
                                 <div
-                                  className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && mergedRowHasContent(row) && !row.projectId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
+                                  className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && mergedRowHasContent(row) && !row.projectId ? "ring-2 ring-danger ring-offset-1 ring-offset-bg-default" : ""}`}
                                 >
                                   <Select
                                     value={row.projectId}
@@ -3614,7 +3614,7 @@ export function TimeReportPageClient({
                               </td>
                               <td className="min-w-0 px-1 py-0.5">
                                 <div
-                                  className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && mergedRowHasContent(row) && !row.roleId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
+                                  className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && mergedRowHasContent(row) && !row.roleId ? "ring-2 ring-danger ring-offset-1 ring-offset-bg-default" : ""}`}
                                 >
                                   <Select
                                     value={row.roleId}

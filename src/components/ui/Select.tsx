@@ -120,7 +120,7 @@ export function Select({
   const triggerShape = isInlineEdit
     ? ""
     : isFilter
-    ? "rounded-lg border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-inset focus:ring-[var(--color-border-default)]"
+    ? "rounded-lg border border-[var(--color-border-subtle)] bg-bg-default text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-inset focus:ring-[var(--color-border-default)]"
     : isModal
       ? "rounded-lg border border-form bg-bg-default text-text-primary focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-inset focus:ring-[var(--color-border-default)]"
       : "rounded-lg border border-form bg-bg-default text-text-primary focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-inset focus:ring-[var(--color-border-default)]";
