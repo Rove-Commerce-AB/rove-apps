@@ -11,9 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
-  FoldVertical,
   Percent,
-  UnfoldVertical,
 } from "lucide-react";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { consultantHref, customerHref } from "@/lib/routes";
@@ -144,6 +142,9 @@ export type AllocationCustomerProjectTabsProps = {
   perCustomer: unknown[];
   expandedProjects: Set<string>;
   toggleProject: (id: string) => void;
+  expandableCustomerIds?: Set<string>;
+  onExpandAllCustomers?: () => void;
+  onCollapseAllCustomers?: () => void;
   expandableProjectIds?: Set<string>;
   onExpandAllProjects?: () => void;
   onCollapseAllProjects?: () => void;
@@ -340,7 +341,30 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
 
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-        <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pt-2">
+        <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default">
+          {p.expandableCustomerIds &&
+          p.expandableCustomerIds.size > 0 &&
+          p.onExpandAllCustomers &&
+          p.onCollapseAllCustomers ? (
+            <div className="flex items-center gap-2 pl-2 pt-0.5 pb-0">
+              <button
+                type="button"
+                onClick={p.onExpandAllCustomers}
+                className="rounded-sm px-0.5 py-0.5 text-[10px] text-text-secondary opacity-70 transition-opacity hover:bg-bg-muted hover:text-text-primary hover:opacity-100"
+              >
+                Expand all
+              </button>
+              <button
+                type="button"
+                onClick={p.onCollapseAllCustomers}
+                className="rounded-sm px-0.5 py-0.5 text-[10px] text-text-secondary opacity-70 transition-opacity hover:bg-bg-muted hover:text-text-primary hover:opacity-100"
+              >
+                Collapse all
+              </button>
+            </div>
+          ) : (
+            <div className="h-0.5" aria-hidden />
+          )}
           <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
             {renderCustomerColgroup("h")}
             <thead>
@@ -779,7 +803,30 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pt-2">
+      <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default">
+        {p.expandableProjectIds &&
+        p.expandableProjectIds.size > 0 &&
+        p.onExpandAllProjects &&
+        p.onCollapseAllProjects ? (
+          <div className="flex items-center gap-2 pl-2 pt-0.5 pb-0">
+            <button
+              type="button"
+              onClick={p.onExpandAllProjects}
+              className="rounded-sm px-0.5 py-0.5 text-[10px] text-text-secondary opacity-70 transition-opacity hover:bg-bg-muted hover:text-text-primary hover:opacity-100"
+            >
+              Expand all
+            </button>
+            <button
+              type="button"
+              onClick={p.onCollapseAllProjects}
+              className="rounded-sm px-0.5 py-0.5 text-[10px] text-text-secondary opacity-70 transition-opacity hover:bg-bg-muted hover:text-text-primary hover:opacity-100"
+            >
+              Collapse all
+            </button>
+          </div>
+        ) : (
+          <div className="h-0.5" aria-hidden />
+        )}
         <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
           {renderProjectColgroup("h")}
           <thead>
@@ -788,34 +835,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                 rowSpan={2}
                 className="allocation-name-col border-r border-border-subtle px-3 py-1 text-left text-label-s text-text-secondary"
               >
-                <div className="flex items-center justify-between gap-1">
-                  <span className="min-w-0">Project / Consultant</span>
-                  {p.expandableProjectIds &&
-                  p.expandableProjectIds.size > 0 &&
-                  p.onExpandAllProjects &&
-                  p.onCollapseAllProjects ? (
-                    <div className="flex shrink-0 items-center">
-                      <button
-                        type="button"
-                        onClick={p.onExpandAllProjects}
-                        className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
-                        aria-label="Expand all"
-                        title="Expand all"
-                      >
-                        <UnfoldVertical className="h-3.5 w-3.5" aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={p.onCollapseAllProjects}
-                        className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
-                        aria-label="Collapse all"
-                        title="Collapse all"
-                      >
-                        <FoldVertical className="h-3.5 w-3.5" aria-hidden />
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                Project / Consultant
               </th>
               {p.renderMonthHeaderCells("border-grid")}
               <th

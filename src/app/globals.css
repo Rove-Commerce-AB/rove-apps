@@ -156,11 +156,12 @@ textarea.border-form {
   --allocation-name-col-width: 300px;
   --allocation-total-col-width: 4.5rem;
   --allocation-actions-col-width: 1.5rem;
-  /* Set from JS so weeks fill leftover space without crushing Total or collapsing. */
+  /*
+   * Week width is a calc() from React (share leftover after name/actions/Total).
+   * No JS measure → no post-paint jump.
+   */
   --allocation-week-col-width: 1.75rem;
   --allocation-week-col-width-embed: 10px;
-  /* Classic vertical scrollbar width — mirrored on frozen header padding. */
-  --allocation-scrollbar-gutter: 0px;
 }
 
 .allocation-tables table,
@@ -171,8 +172,8 @@ textarea.border-form {
 }
 
 /*
- * No horizontal scroll. Week width is computed in JS from the scrollport so
- * name + weeks + actions + Total always fit; Total keeps a fixed width.
+ * No horizontal scroll. Header + body both use scrollbar-gutter: stable and the
+ * same horizontal padding so columns line up without measuring scrollbar width.
  */
 .allocation-tables-scroll {
   overflow-x: hidden;
@@ -186,8 +187,9 @@ textarea.border-form {
 .allocation-tables-frozen {
   overflow-x: hidden;
   overflow-y: hidden;
+  scrollbar-gutter: stable;
   padding-left: 0.5rem;
-  padding-right: calc(0.5rem + var(--allocation-scrollbar-gutter, 0px)) !important;
+  padding-right: 0.5rem;
 }
 
 .allocation-tables table {

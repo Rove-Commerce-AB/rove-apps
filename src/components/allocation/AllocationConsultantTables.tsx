@@ -16,11 +16,9 @@ import Link from "next/link";
 import {
   ChevronDown,
   ChevronRight,
-  FoldVertical,
   Percent,
   ExternalLink,
   Trash2,
-  UnfoldVertical,
 } from "lucide-react";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
@@ -255,7 +253,27 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
 
   return (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-              <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pt-2">
+              <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default">
+                {expandableConsultantIds.size > 0 ? (
+                  <div className="flex items-center gap-2 pl-2 pt-0.5 pb-0">
+                    <button
+                      type="button"
+                      onClick={onExpandAll}
+                      className="rounded-sm px-0.5 py-0.5 text-[10px] text-text-secondary opacity-70 transition-opacity hover:bg-bg-muted hover:text-text-primary hover:opacity-100"
+                    >
+                      Expand all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onCollapseAll}
+                      className="rounded-sm px-0.5 py-0.5 text-[10px] text-text-secondary opacity-70 transition-opacity hover:bg-bg-muted hover:text-text-primary hover:opacity-100"
+                    >
+                      Collapse all
+                    </button>
+                  </div>
+                ) : (
+                  <div className="h-0.5" aria-hidden />
+                )}
                 <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
                   {renderInternalColgroup("h")}
                   <thead>
@@ -264,44 +282,12 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         rowSpan={2}
                         className="allocation-name-col border-r border-border-subtle px-3 py-1 text-left text-label-s text-text-secondary"
                       >
-                        <div className="flex items-start justify-between gap-1">
-                          <div className="min-w-0">
-                            <span className="block">Consultant / Project</span>
-                            {!embedMode && (
-                              <span className="mt-0.5 block text-[9px] font-normal uppercase tracking-wider text-text-tertiary">
-                                Internal
-                              </span>
-                            )}
-                          </div>
-                          {expandableConsultantIds.size > 0 ? (
-                            <div className="flex shrink-0 items-center">
-                              <button
-                                type="button"
-                                onClick={onExpandAll}
-                                className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
-                                aria-label="Expand all"
-                                title="Expand all"
-                              >
-                                <UnfoldVertical
-                                  className="h-3.5 w-3.5"
-                                  aria-hidden
-                                />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={onCollapseAll}
-                                className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
-                                aria-label="Collapse all"
-                                title="Collapse all"
-                              >
-                                <FoldVertical
-                                  className="h-3.5 w-3.5"
-                                  aria-hidden
-                                />
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
+                        <span className="block">Consultant / Project</span>
+                        {!embedMode && (
+                          <span className="mt-0.5 block text-[9px] font-normal uppercase tracking-wider text-text-tertiary">
+                            Internal
+                          </span>
+                        )}
                       </th>
                       {renderMonthHeaderCells()}
                       {!embedMode && (
@@ -467,7 +453,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           0
                         );
                         return (
-                          <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
+                          <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
                             {rowTotal > 0
                               ? embedMode
                                 ? `${rowTotal}`
@@ -479,7 +465,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       {embedMode && data.consultantTotalHours != null && (() => {
                         const allTimeTotal = data.consultantTotalHours[row.consultant.id] ?? 0;
                         return (
-                          <td className="allocation-total-col border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary font-medium">
+                          <td className="allocation-total-col border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums text-text-primary font-medium">
                             {allTimeTotal > 0 ? `${allTimeTotal}` : "\u00A0"}
                           </td>
                         );
@@ -754,7 +740,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               prRowTotal += hours;
                             });
                             return (
-                              <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
+                              <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
                                 {prRowTotal > 0
                                   ? embedMode
                                     ? `${prRowTotal}`
@@ -764,7 +750,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                             );
                           })()}
                           {embedMode && data.consultantTotalHours != null && (
-                            <td className="allocation-total-col border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] text-text-primary align-middle">
+                            <td className="allocation-total-col border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] text-text-primary align-middle">
                               {"\u00A0"}
                             </td>
                           )}
@@ -796,7 +782,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           {weekTotalsHours[i] > 0 ? `${weekTotalsHours[i]}` : "\u00A0"}
                         </td>
                       ))}
-                      <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
+                      <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
                         {grandTotalHours > 0 ? `${grandTotalHours}` : "\u00A0"}
                       </td>
                       {data.consultantTotalHours != null && (
@@ -1017,7 +1003,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           0
                         );
                         return (
-                          <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
+                          <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
                             {rowTotal > 0 ? `${rowTotal}h` : "\u00A0"}
                           </td>
                         );
@@ -1282,7 +1268,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               prRowTotal += hours;
                             });
                             return (
-                              <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
+                              <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
                                 {prRowTotal > 0 ? `${prRowTotal}h` : "\u00A0"}
                               </td>
                             );

@@ -4,7 +4,6 @@ import {
   useState,
   Fragment,
   useEffect,
-  useLayoutEffect,
   useCallback,
   useRef,
   useMemo,
@@ -400,63 +399,17 @@ function AllocationPageClientImpl({
     setMounted(true);
   }, []);
 
-  // Sync header gutter with body scrollbar, and size week columns so name +
-  // weeks + actions + Total fit the scrollport (grid visible, Total not crushed).
-  useLayoutEffect(() => {
-    const root = allocationTablesRef.current;
-    if (!root) return;
-    const scroll = root.querySelector(".allocation-tables-scroll");
-    if (!(scroll instanceof HTMLElement)) return;
-
-    const weekCount = data?.weeks?.length ?? 0;
-    const namePx = 300;
-    const totalPx = embedMode
-      ? data?.consultantTotalHours != null
-        ? 72 * 2
-        : 72
-      : 72;
-    // Actions col only on standalone consultant view.
-    const actionsPx =
-      !embedMode && activeTab === "consultant" ? 24 : 0;
-    const preferredWeekPx = embedMode ? 10 : 28;
-    const minWeekPx = embedMode ? 4 : 8;
-
-    const syncLayout = () => {
-      if (scroll.clientWidth < 80) return;
-      const measured = Math.min(
-        40,
-        Math.max(0, scroll.offsetWidth - scroll.clientWidth)
-      );
-      root.style.setProperty("--allocation-scrollbar-gutter", `${measured}px`);
-
-      if (weekCount <= 0) return;
-      // clientWidth already excludes classic scrollbar; subtract horizontal padding.
-      const inner = Math.max(0, scroll.clientWidth - 16);
-      const leftover = inner - namePx - totalPx - actionsPx;
-      const weekPx = Math.max(
-        minWeekPx,
-        Math.min(preferredWeekPx, Math.floor(leftover / weekCount))
-      );
-      root.style.setProperty(
-        embedMode
-          ? "--allocation-week-col-width-embed"
-          : "--allocation-week-col-width",
-        `${weekPx}px`
-      );
-    };
-
-    syncLayout();
-    const raf = requestAnimationFrame(syncLayout);
-    const observer = new ResizeObserver(syncLayout);
-    observer.observe(scroll);
-    if (scroll.firstElementChild) observer.observe(scroll.firstElementChild);
-    window.addEventListener("resize", syncLayout);
-    return () => {
-      cancelAnimationFrame(raf);
-      observer.disconnect();
-      window.removeEventListener("resize", syncLayout);
-    };
-  }, [data, activeTab, embedMode]);
+  const weekCount = data?.weeks?.length ?? 0;
+  const hasBudgetTotal = Boolean(embedMode && data?.consultantTotalHours != null);
+  const allocationNameColWidth = embedMode ? "72px" : "300px";
+  const allocationActionsColWidth =
+    !embedMode && activeTab === "consultant" ? "1.5rem" : "0px";
+  const allocationTrailingTotalsWidth = hasBudgetTotal ? "9rem" : "4.5rem";
+  // Pure CSS: week cols share leftover space on first paint — no measure/jump.
+  const allocationWeekColWidth =
+    weekCount > 0
+      ? `calc((100% - ${allocationNameColWidth} - ${allocationActionsColWidth} - ${allocationTrailingTotalsWidth}) / ${weekCount})`
+      : "1.75rem";
 
   useEffect(() => {
     if (!data?.allocations) return;
@@ -1000,6 +953,15 @@ function AllocationPageClientImpl({
       ),
     [perProjectFiltered]
   );
+  const expandableCustomerIds = useMemo(
+    () =>
+      new Set(
+        perCustomer
+          .filter((r) => r.projectGroups.length > 0)
+          .map((r) => r.customer.id)
+      ),
+    [perCustomer]
+  );
   const currentWeek = currentWeekProp;
   const currentYear = currentYearProp;
   const monthSpans = useMemo(() => getMonthSpansForWeeks(data.weeks), [data.weeks]);
@@ -1196,9 +1158,12 @@ function AllocationPageClientImpl({
         }`}
         style={{
           ...gridPanStyle,
-          ["--allocation-name-col-width" as string]: embedMode
-            ? "72px"
-            : "300px",
+          ["--allocation-name-col-width" as string]: allocationNameColWidth,
+          ["--allocation-actions-col-width" as string]:
+            allocationActionsColWidth,
+          ["--allocation-week-col-width" as string]: allocationWeekColWidth,
+          ["--allocation-week-col-width-embed" as string]:
+            allocationWeekColWidth,
         }}
       >
           {showConsultantView && (
@@ -1268,6 +1233,11 @@ function AllocationPageClientImpl({
               perCustomer={perCustomer}
               expandedProjects={expandedProjects}
               toggleProject={toggleProject}
+              expandableCustomerIds={expandableCustomerIds}
+              onExpandAllCustomers={() =>
+                setExpandedCustomers(new Set(expandableCustomerIds))
+              }
+              onCollapseAllCustomers={() => setExpandedCustomers(new Set())}
               expandableProjectIds={expandableProjectIds}
               onExpandAllProjects={() =>
                 setExpandedProjects(new Set(expandableProjectIds))

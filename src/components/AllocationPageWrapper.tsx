@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getAllocationData } from "@/app/(app)/allocation/actions";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { AllocationPageClient } from "./AllocationPageClient";
+import { useAllocationViewportWeekCount } from "./AllocationViewportAdapter";
 import type { PlannerView } from "@/lib/routes";
 import {
   allocationHrefWithWeek,
@@ -43,6 +44,7 @@ export function AllocationPageWrapper({
   const [weekFrom, setWeekFrom] = useState(initialWeekFrom);
   const [weekTo, setWeekTo] = useState(initialWeekTo);
   const [loading, setLoading] = useState(false);
+  const viewportWeekCount = useAllocationViewportWeekCount();
 
   useEffect(() => {
     setData(initialData);
@@ -51,6 +53,18 @@ export function AllocationPageWrapper({
     setWeekFrom(initialWeekFrom);
     setWeekTo(initialWeekTo);
   }, [initialData, initialError, initialYear, initialWeekFrom, initialWeekTo]);
+
+  // Slice to viewport width before URL/server catch up — avoids crushed 52-week flash.
+  const dataForView = useMemo(() => {
+    if (!data || viewportWeekCount == null) return data;
+    if (data.weeks.length <= viewportWeekCount) return data;
+    return { ...data, weeks: data.weeks.slice(0, viewportWeekCount) };
+  }, [data, viewportWeekCount]);
+
+  const weekToForView =
+    dataForView && dataForView.weeks.length > 0
+      ? dataForView.weeks[dataForView.weeks.length - 1]!.week
+      : weekTo;
 
   const weekRangeFetchGenRef = useRef(0);
 
@@ -90,11 +104,11 @@ export function AllocationPageWrapper({
     <div className="flex min-h-0 flex-1 flex-col">
       <AllocationPageClient
         view={view}
-        data={data}
+        data={dataForView}
         error={error}
         year={year}
         weekFrom={weekFrom}
-        weekTo={weekTo}
+        weekTo={weekToForView}
         currentYear={currentYear}
         currentWeek={currentWeek}
         onWeekRangeChange={handleWeekRangeChange}
