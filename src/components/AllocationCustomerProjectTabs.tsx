@@ -329,15 +329,18 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
       <colgroup>
         <col className="allocation-name-col" />
         {data.weeks.map((w) => (
-          <col key={`${keyPrefix}-${w.year}-${w.week}`} className="w-[29px]" />
+          <col
+            key={`${keyPrefix}-${w.year}-${w.week}`}
+            className="allocation-week-col"
+          />
         ))}
-        <col className="w-[4rem]" />
+        <col className="allocation-total-col" />
       </colgroup>
     );
 
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-        <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pl-2 pt-2">
+        <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pt-2">
           <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
             {renderCustomerColgroup("h")}
             <thead>
@@ -351,7 +354,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                 {p.renderMonthHeaderCells("border-grid")}
                 <th
                   rowSpan={2}
-                  className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                  className="allocation-total-col border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
                 >
                   Total
                 </th>
@@ -362,7 +365,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
             </thead>
           </table>
         </div>
-        <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1 px-2 pb-2">
+        <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1">
           <table className="w-full min-w-0 table-fixed border border-form border-t-0 text-[10px]">
             {renderCustomerColgroup("b")}
             <tbody>
@@ -446,7 +449,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         </td>
                       );
                     })}
-                    <td className="border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
+                    <td className="allocation-total-col border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
                       {(() => {
                         const customerTotal = data.weeks.reduce(
                           (sum, w) => sum + (row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
@@ -556,7 +559,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                               </td>
                             );
                           })}
-                          <td className="border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
+                          <td className="allocation-total-col border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
                             {(() => {
                               const projectTotal = data.weeks.reduce(
                                 (sum, w) => sum + (pg.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
@@ -716,7 +719,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                             </td>
                           );
                         })}
-                        <td className="border-r border-grid-light px-1 py-1" aria-hidden />
+                        <td className="allocation-total-col border-r border-grid-light px-1 py-1" aria-hidden />
                       </tr>
                         ))}
                       </Fragment>
@@ -765,15 +768,18 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
     <colgroup>
       <col className="allocation-name-col" />
       {data.weeks.map((w) => (
-        <col key={`${keyPrefix}-${w.year}-${w.week}`} className="w-[29px]" />
+        <col
+          key={`${keyPrefix}-${w.year}-${w.week}`}
+          className="allocation-week-col"
+        />
       ))}
-      <col className="w-[4rem]" />
+      <col className="allocation-total-col" />
     </colgroup>
   );
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pl-2 pt-2">
+      <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pt-2">
         <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
           {renderProjectColgroup("h")}
           <thead>
@@ -814,7 +820,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
               {p.renderMonthHeaderCells("border-grid")}
               <th
                 rowSpan={2}
-                className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                className="allocation-total-col border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
               >
                 Total
               </th>
@@ -825,7 +831,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
           </thead>
         </table>
       </div>
-      <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1 px-2 pb-2">
+      <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1">
         <table className="w-full min-w-0 table-fixed border border-form border-t-0 text-[10px]">
           {renderProjectColgroup("b")}
           <tbody>
@@ -893,7 +899,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       </td>
                     );
                   })}
-                  <td className="border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
+                  <td className="allocation-total-col border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
                     {(() => {
                       const projectTotal = data.weeks.reduce(
                         (sum, w) => sum + (row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
@@ -1068,7 +1074,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           </td>
                         );
                       })}
-                      <td className="border-r border-grid-light px-1 py-1" aria-hidden />
+                      <td className="allocation-total-col border-r border-grid-light px-1 py-1" aria-hidden />
                     </tr>
                   ))}
               </Fragment>

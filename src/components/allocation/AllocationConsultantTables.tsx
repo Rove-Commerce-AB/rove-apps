@@ -240,18 +240,22 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
       {data.weeks.map((w) => (
         <col
           key={`${keyPrefix}-${w.year}-${w.week}`}
-          className={embedMode ? "w-[10px]" : "w-[1.75rem]"}
+          className={
+            embedMode ? "allocation-week-col-embed" : "allocation-week-col"
+          }
         />
       ))}
-      {embedMode && <col className="w-5" />}
-      {embedMode && data.consultantTotalHours != null && <col className="w-5" />}
-      {!embedMode && <col className="w-6" />}
+      {!embedMode && <col className="allocation-actions-col" />}
+      <col className="allocation-total-col" />
+      {embedMode && data.consultantTotalHours != null && (
+        <col className="allocation-total-col" />
+      )}
     </colgroup>
   );
 
   return (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-              <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pl-2 pt-2">
+              <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pt-2">
                 <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
                   {renderInternalColgroup("h")}
                   <thead>
@@ -300,30 +304,28 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         </div>
                       </th>
                       {renderMonthHeaderCells()}
-                      {embedMode && (
+                      {!embedMode && (
                         <th
                           rowSpan={2}
-                          className="w-5 border-l border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
-                        >
-                          Tot view
-                        </th>
+                          className="allocation-actions-col border-r border-grid-subtle px-0 py-0.5 text-center"
+                          aria-label="Remove booking"
+                        />
                       )}
+                      <th
+                        rowSpan={2}
+                        className="allocation-total-col border-l border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                      >
+                        {embedMode ? "Tot view" : "Total"}
+                      </th>
                       {embedMode && data.consultantTotalHours != null && (
                         <th
                           rowSpan={2}
-                          className="w-5 border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                          className="allocation-total-col border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
                         >
                           Tot
                           <br />
                           <span className="font-normal opacity-70">(Budget)</span>
                         </th>
-                      )}
-                      {!embedMode && (
-                        <th
-                          rowSpan={2}
-                          className="w-6 border-r border-grid-subtle px-0 py-0.5 text-center"
-                          aria-label="Remove booking"
-                        />
                       )}
                     </tr>
                     <tr className="border-b border-grid-subtle">
@@ -332,7 +334,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                   </thead>
                 </table>
               </div>
-              <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1 px-2 pb-2">
+              <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1">
                 <table className="w-full min-w-0 table-fixed border border-form border-t-0 text-[10px]">
                   {renderInternalColgroup("b")}
                   <tbody>
@@ -456,26 +458,32 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           </td>
                         );
                       })}
-                      {embedMode && (() => {
+                      {!embedMode && (
+                        <td className="allocation-actions-col border-r border-grid-light-subtle px-0 py-0.5" />
+                      )}
+                      {(() => {
                         const rowTotal = (row.percentDetailsByWeek ?? []).reduce(
                           (s, d) => s + (d?.total ?? 0),
                           0
                         );
                         return (
-                          <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
-                            {rowTotal > 0 ? `${rowTotal}` : "\u00A0"}
+                          <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
+                            {rowTotal > 0
+                              ? embedMode
+                                ? `${rowTotal}`
+                                : `${rowTotal}h`
+                              : "\u00A0"}
                           </td>
                         );
                       })()}
                       {embedMode && data.consultantTotalHours != null && (() => {
                         const allTimeTotal = data.consultantTotalHours[row.consultant.id] ?? 0;
                         return (
-                          <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary font-medium">
+                          <td className="allocation-total-col border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary font-medium">
                             {allTimeTotal > 0 ? `${allTimeTotal}` : "\u00A0"}
                           </td>
                         );
                       })()}
-                      {!embedMode && <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6" />}
                     </tr>
                     {expanded &&
                       row.projectRows.map((pr) => {
@@ -686,37 +694,8 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                             </td>
                           );
                           })}
-                          {embedMode && (() => {
-                            let prRowTotal = 0;
-                            pr.weeks.forEach((w, i) => {
-                              const weekKey = data.weeks[i];
-                              if (!weekKey) return;
-                              const roleId = w.cell?.roleId ?? projectRoleId;
-                              const cellKey = allocationCellKey(
-                                row.consultant.id,
-                                pr.projectId,
-                                roleId,
-                                weekKey.year,
-                                w.week
-                              );
-                              const opt = optimisticCellHours[cellKey];
-                              const hours =
-                                opt != null ? opt : (w.cell?.displayHours ?? 0);
-                              prRowTotal += hours;
-                            });
-                            return (
-                              <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
-                                {prRowTotal > 0 ? `${prRowTotal}` : "\u00A0"}
-                              </td>
-                            );
-                          })()}
-                          {embedMode && data.consultantTotalHours != null && (
-                            <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] text-text-primary align-middle">
-                              {"\u00A0"}
-                            </td>
-                          )}
                           {!embedMode && (
-                            <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6 align-middle text-center">
+                            <td className="allocation-actions-col border-r border-grid-light-subtle px-0 py-0.5 align-middle text-center">
                               {hasAnyBooking ? (
                                 <button
                                   type="button"
@@ -754,6 +733,39 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
                               ) : null}
+                            </td>
+                          )}
+                          {(() => {
+                            let prRowTotal = 0;
+                            pr.weeks.forEach((w, i) => {
+                              const weekKey = data.weeks[i];
+                              if (!weekKey) return;
+                              const roleId = w.cell?.roleId ?? projectRoleId;
+                              const cellKey = allocationCellKey(
+                                row.consultant.id,
+                                pr.projectId,
+                                roleId,
+                                weekKey.year,
+                                w.week
+                              );
+                              const opt = optimisticCellHours[cellKey];
+                              const hours =
+                                opt != null ? opt : (w.cell?.displayHours ?? 0);
+                              prRowTotal += hours;
+                            });
+                            return (
+                              <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
+                                {prRowTotal > 0
+                                  ? embedMode
+                                    ? `${prRowTotal}`
+                                    : `${prRowTotal}h`
+                                  : "\u00A0"}
+                              </td>
+                            );
+                          })()}
+                          {embedMode && data.consultantTotalHours != null && (
+                            <td className="allocation-total-col border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] text-text-primary align-middle">
+                              {"\u00A0"}
                             </td>
                           )}
                         </tr>
@@ -800,7 +812,9 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           )}
                         </td>
                       )}
-                      {!embedMode && <td className="w-6 border-r border-grid-light-subtle px-0 py-0.5" />}
+                      {!embedMode && (
+                        <td className="allocation-actions-col border-r border-grid-light-subtle px-0 py-0.5" />
+                      )}
                     </tr>
                     <tr
                       className={`border-t border-grid-subtle bg-bg-muted/40 ${allocationRowHoverClass("int-foot-revenue")}`}
@@ -841,7 +855,9 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           )}
                         </td>
                       )}
-                      {!embedMode && <td className="w-6 border-r border-grid-light-subtle px-0 py-0.5" />}
+                      {!embedMode && (
+                        <td className="allocation-actions-col border-r border-grid-light-subtle px-0 py-0.5" />
+                      )}
                     </tr>
                   </tfoot>
                   )}
@@ -855,9 +871,13 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                   <colgroup>
                     <col className="allocation-name-col" />
                     {data.weeks.map((w) => (
-                      <col key={`ext-${w.year}-${w.week}`} className="w-[1.75rem]" />
+                      <col
+                        key={`ext-${w.year}-${w.week}`}
+                        className="allocation-week-col"
+                      />
                     ))}
-                    <col className="w-6" />
+                    <col className="allocation-actions-col" />
+                    <col className="allocation-total-col" />
                   </colgroup>
                   <tbody>
                     {perConsultantExternal.map((row) => {
@@ -990,7 +1010,18 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           </td>
                         );
                       })}
-                      <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6" />
+                      <td className="allocation-actions-col border-r border-grid-light-subtle px-0 py-0.5" />
+                      {(() => {
+                        const rowTotal = (row.percentDetailsByWeek ?? []).reduce(
+                          (s, d) => s + (d?.total ?? 0),
+                          0
+                        );
+                        return (
+                          <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
+                            {rowTotal > 0 ? `${rowTotal}h` : "\u00A0"}
+                          </td>
+                        );
+                      })()}
                     </tr>
                     {expanded &&
                       row.projectRows.map((pr) => {
@@ -1193,7 +1224,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                             </td>
                           );
                           })}
-                          <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6 align-middle text-center">
+                          <td className="allocation-actions-col border-r border-grid-light-subtle px-0 py-0.5 align-middle text-center">
                             {hasAnyBooking ? (
                               <button
                                 type="button"
@@ -1232,6 +1263,30 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               </button>
                             ) : null}
                           </td>
+                          {(() => {
+                            let prRowTotal = 0;
+                            pr.weeks.forEach((w, i) => {
+                              const weekKey = data.weeks[i];
+                              if (!weekKey) return;
+                              const roleId = w.cell?.roleId ?? projectRoleId;
+                              const cellKey = allocationCellKey(
+                                row.consultant.id,
+                                pr.projectId,
+                                roleId,
+                                weekKey.year,
+                                w.week
+                              );
+                              const opt = optimisticCellHours[cellKey];
+                              const hours =
+                                opt != null ? opt : (w.cell?.displayHours ?? 0);
+                              prRowTotal += hours;
+                            });
+                            return (
+                              <td className="allocation-total-col border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
+                                {prRowTotal > 0 ? `${prRowTotal}h` : "\u00A0"}
+                              </td>
+                            );
+                          })()}
                         </tr>
                       );
                       })}

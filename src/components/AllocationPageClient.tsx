@@ -400,28 +400,61 @@ function AllocationPageClientImpl({
     setMounted(true);
   }, []);
 
-  // Keep frozen header column widths equal to the body scrollport. Without this,
-  // a classic scrollbar appears a frame after paint and the header jumps right
-  // relative to the grid (current-week lines no longer line up).
+  // Sync header gutter with body scrollbar, and size week columns so name +
+  // weeks + actions + Total fit the scrollport (grid visible, Total not crushed).
   useLayoutEffect(() => {
     const root = allocationTablesRef.current;
     if (!root) return;
     const scroll = root.querySelector(".allocation-tables-scroll");
     if (!(scroll instanceof HTMLElement)) return;
 
-    const syncGutter = () => {
-      const gutter = Math.max(0, scroll.offsetWidth - scroll.clientWidth);
-      root.style.setProperty("--allocation-scrollbar-gutter", `${gutter}px`);
+    const weekCount = data?.weeks?.length ?? 0;
+    const namePx = 300;
+    const totalPx = embedMode
+      ? data?.consultantTotalHours != null
+        ? 72 * 2
+        : 72
+      : 72;
+    // Actions col only on standalone consultant view.
+    const actionsPx =
+      !embedMode && activeTab === "consultant" ? 24 : 0;
+    const preferredWeekPx = embedMode ? 10 : 28;
+    const minWeekPx = embedMode ? 4 : 8;
+
+    const syncLayout = () => {
+      if (scroll.clientWidth < 80) return;
+      const measured = Math.min(
+        40,
+        Math.max(0, scroll.offsetWidth - scroll.clientWidth)
+      );
+      root.style.setProperty("--allocation-scrollbar-gutter", `${measured}px`);
+
+      if (weekCount <= 0) return;
+      // clientWidth already excludes classic scrollbar; subtract horizontal padding.
+      const inner = Math.max(0, scroll.clientWidth - 16);
+      const leftover = inner - namePx - totalPx - actionsPx;
+      const weekPx = Math.max(
+        minWeekPx,
+        Math.min(preferredWeekPx, Math.floor(leftover / weekCount))
+      );
+      root.style.setProperty(
+        embedMode
+          ? "--allocation-week-col-width-embed"
+          : "--allocation-week-col-width",
+        `${weekPx}px`
+      );
     };
 
-    syncGutter();
-    const observer = new ResizeObserver(syncGutter);
+    syncLayout();
+    const raf = requestAnimationFrame(syncLayout);
+    const observer = new ResizeObserver(syncLayout);
     observer.observe(scroll);
     if (scroll.firstElementChild) observer.observe(scroll.firstElementChild);
-    window.addEventListener("resize", syncGutter);
+    window.addEventListener("resize", syncLayout);
     return () => {
+      cancelAnimationFrame(raf);
       observer.disconnect();
-      window.removeEventListener("resize", syncGutter);
+      window.removeEventListener("resize", syncLayout);
     };
   }, [data, activeTab, embedMode]);
 

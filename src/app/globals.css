@@ -154,7 +154,12 @@ textarea.border-form {
 .allocation-tables {
   --allocation-pan-x: 0px;
   --allocation-name-col-width: 300px;
-  /* Synced from the body scrollport so frozen header matches column widths. */
+  --allocation-total-col-width: 4.5rem;
+  --allocation-actions-col-width: 1.5rem;
+  /* Set from JS so weeks fill leftover space without crushing Total or collapsing. */
+  --allocation-week-col-width: 1.75rem;
+  --allocation-week-col-width-embed: 10px;
+  /* Classic vertical scrollbar width — mirrored on frozen header padding. */
   --allocation-scrollbar-gutter: 0px;
 }
 
@@ -166,23 +171,59 @@ textarea.border-form {
 }
 
 /*
- * Body reserves scrollbar space (stable gutter) so columns don't jump when
- * content overflows. Frozen header has no scrollbar; it gets the same width
- * via padding-right = Tailwind px-2 (0.5rem) + --allocation-scrollbar-gutter.
+ * No horizontal scroll. Week width is computed in JS from the scrollport so
+ * name + weeks + actions + Total always fit; Total keeps a fixed width.
  */
 .allocation-tables-scroll {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  padding-bottom: 0.5rem;
 }
 
 .allocation-tables-frozen {
   overflow-x: hidden;
   overflow-y: hidden;
+  padding-left: 0.5rem;
   padding-right: calc(0.5rem + var(--allocation-scrollbar-gutter, 0px)) !important;
 }
 
-/* Lock name column so row content changes never reflow week columns. */
+.allocation-tables table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.allocation-tables col.allocation-week-col {
+  width: var(--allocation-week-col-width);
+}
+
+.allocation-tables col.allocation-week-col-embed {
+  width: var(--allocation-week-col-width-embed);
+}
+
+.allocation-tables col.allocation-total-col,
+.allocation-tables th.allocation-total-col,
+.allocation-tables td.allocation-total-col {
+  width: var(--allocation-total-col-width);
+  min-width: var(--allocation-total-col-width);
+  max-width: var(--allocation-total-col-width);
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.allocation-tables col.allocation-actions-col,
+.allocation-tables th.allocation-actions-col,
+.allocation-tables td.allocation-actions-col {
+  width: var(--allocation-actions-col-width);
+  min-width: var(--allocation-actions-col-width);
+  max-width: var(--allocation-actions-col-width);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 .allocation-tables col.allocation-name-col,
 .allocation-tables th.allocation-name-col,
 .allocation-tables td.allocation-name-col {
@@ -190,10 +231,6 @@ textarea.border-form {
   min-width: var(--allocation-name-col-width);
   max-width: var(--allocation-name-col-width);
   box-sizing: border-box;
-}
-
-.allocation-tables th.allocation-name-col,
-.allocation-tables td.allocation-name-col {
   overflow: hidden;
 }
 
