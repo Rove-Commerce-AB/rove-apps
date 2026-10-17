@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getCurrentAppUser } from "@/lib/appUsers";
 import {
   addWorkBoardMember,
   archiveWorkBoard,
@@ -87,6 +88,16 @@ import type {
   WorkIssueTimeLogEntry,
   WorkIssueTimeLogState,
 } from "@/lib/workIssueTimeLogTypes";
+import {
+  importJiraIssueBatch,
+  importJiraRelations,
+  prepareJiraImport,
+  type JiraImportBatchResult,
+  type JiraImportIssuePayload,
+  type JiraImportMappings,
+  type JiraImportRelationsResult,
+} from "@/lib/workJiraImport";
+import type { JiraRelationEdge } from "@/lib/jiraXmlParse";
 
 type Ok = { ok: true };
 type OkBoard = { ok: true; boardId: string };
@@ -116,11 +127,15 @@ export async function listWorkCustomerPeopleAction(
 
 export async function listWorkAccessPeopleAction(
   customerId: string
-): Promise<WorkAccessPerson[]> {
+): Promise<{ people: WorkAccessPerson[]; currentUserId: string | null }> {
   try {
-    return await listWorkAccessPeople(customerId);
+    const [people, actor] = await Promise.all([
+      listWorkAccessPeople(customerId),
+      getCurrentAppUser(),
+    ]);
+    return { people, currentUserId: actor?.id ?? null };
   } catch {
-    return [];
+    return { people: [], currentUserId: null };
   }
 }
 
@@ -1032,6 +1047,54 @@ export async function deleteWorkIssueTimeEntryAction(
       loggedHours: result.loggedHours,
       entries: result.entries,
     };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function prepareJiraImportAction(
+  boardId: string,
+  statusMap: Record<string, string>,
+  allKeys: string[]
+): Promise<
+  | (Ok & {
+      existingKeys: string[];
+      createdStatuses: { id: string; name: string }[];
+      statusMap: Record<string, string>;
+    })
+  | Err
+> {
+  try {
+    const result = await prepareJiraImport(boardId, statusMap, allKeys);
+    revalidateBoard(boardId);
+    return { ok: true, ...result };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function importJiraIssuesBatchAction(
+  boardId: string,
+  issues: JiraImportIssuePayload[],
+  mappings: JiraImportMappings
+): Promise<(Ok & JiraImportBatchResult) | Err> {
+  try {
+    const result = await importJiraIssueBatch(boardId, issues, mappings);
+    revalidateBoard(boardId);
+    return { ok: true, ...result };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function importJiraRelationsAction(
+  boardId: string,
+  edges: JiraRelationEdge[]
+): Promise<(Ok & JiraImportRelationsResult) | Err> {
+  try {
+    const result = await importJiraRelations(boardId, edges);
+    revalidateBoard(boardId);
+    return { ok: true, ...result };
   } catch (error) {
     return fail(error);
   }

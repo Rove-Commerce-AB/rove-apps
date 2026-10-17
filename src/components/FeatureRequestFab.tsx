@@ -2,13 +2,14 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
   type FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCirclePlus, X } from "lucide-react";
+import { Check, MessageCirclePlus, X } from "lucide-react";
 import { createFeatureRequest } from "@/lib/featureRequests";
 import { WORK_FILE_MAX_BYTES, type WorkIssueType } from "@/lib/workTypes";
 import { WorkIssueTypePicker } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueTypeIcon";
@@ -21,6 +22,12 @@ type PendingShot = {
 };
 
 const MAX_SCREENSHOTS = 8;
+const SENT_HOLD_MS = 1500;
+const CLOSED_SIZE = 48;
+const SENT_WIDTH = 112;
+const OPEN_WIDTH = 320;
+
+type ComposerPhase = "closed" | "open" | "sent";
 
 function pasteFileName(file: File, index: number) {
   const ext =
@@ -42,15 +49,65 @@ function pasteFileName(file: File, index: number) {
 }
 
 export function FeatureRequestFab() {
-  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<ComposerPhase>("closed");
   const [message, setMessage] = useState("");
   const [issueType, setIssueType] = useState<WorkIssueType>("issue");
   const [shots, setShots] = useState<PendingShot[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formHeight, setFormHeight] = useState(CLOSED_SIZE);
+  /** Panel corners while expanding/open; circle only when fully closed/sent. */
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
+  const sentTimerRef = useRef<number | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
+  const open = phase === "open";
+  const panelCorners = open;
+
+  useEffect(() => {
+    return () => {
+      if (sentTimerRef.current != null) window.clearTimeout(sentTimerRef.current);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = formRef.current;
+    if (!el) return;
+    const apply = () => setFormHeight(el.offsetHeight);
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (phase === "open") textareaRef.current?.focus();
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "open") return;
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (!target || rootRef.current?.contains(target)) return;
+      if (submitting) return;
+      setPhase("closed");
+      setError(null);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || submitting) return;
+      setPhase("closed");
+      setError(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [phase, submitting]);
 
   useEffect(() => {
     return () => {
@@ -68,8 +125,26 @@ export function FeatureRequestFab() {
   }
 
   function close() {
-    setOpen(false);
+    if (submitting) return;
+    setPhase("closed");
     setError(null);
+  }
+
+  function openComposer() {
+    if (sentTimerRef.current != null) {
+      window.clearTimeout(sentTimerRef.current);
+      sentTimerRef.current = null;
+    }
+    setPhase("open");
+  }
+
+  function showSentConfirmation() {
+    setPhase("sent");
+    if (sentTimerRef.current != null) window.clearTimeout(sentTimerRef.current);
+    sentTimerRef.current = window.setTimeout(() => {
+      sentTimerRef.current = null;
+      setPhase((current) => (current === "sent" ? "closed" : current));
+    }, SENT_HOLD_MS);
   }
 
   function resetForm() {
@@ -148,7 +223,7 @@ export function FeatureRequestFab() {
       }
       await createFeatureRequest(formData);
       resetForm();
-      setOpen(false);
+      showSentConfirmation();
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit");
@@ -163,13 +238,64 @@ export function FeatureRequestFab() {
       ? "What went wrong? Steps to reproduce help…"
       : "Describe your idea or improvement…";
 
+  const shellWidth = open ? OPEN_WIDTH : phase === "sent" ? SENT_WIDTH : CLOSED_SIZE;
+  const shellHeight = open ? Math.max(formHeight + 2, CLOSED_SIZE) : CLOSED_SIZE;
+
   return (
-    <div className="fixed bottom-6 right-6 z-40">
-      {open ? (
+    <div
+      ref={rootRef}
+      className="fixed bottom-6 right-6 z-40 flex flex-col items-end justify-end"
+    >
+      <div
+        data-phase={phase}
+        className={`feature-request-organism relative border shadow-lg ${
+          panelCorners ? "is-panel" : ""
+        } ${
+          open
+            ? "border-form bg-bg-default text-text-primary"
+            : phase === "sent"
+              ? "border-transparent bg-brand-signal text-text-inverse"
+              : "border-transparent bg-brand-signal text-text-inverse hover:bg-accent-primary-hover"
+        }`}
+        style={{
+          width: shellWidth,
+          height: shellHeight,
+        }}
+      >
         <div
-          className="w-80 rounded-lg border border-form bg-bg-default p-4 shadow-lg"
-          style={{ borderColor: "var(--panel-border)" }}
+          className={`feature-request-organism-layer absolute inset-0 flex items-center justify-center ${
+            phase === "closed" ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={openComposer}
+            className="flex h-full w-full items-center justify-center"
+            aria-label="Send feature request or bug report"
+            title="Feature request"
+          >
+            <MessageCirclePlus className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div
+          className={`feature-request-organism-layer absolute inset-0 flex items-center justify-center gap-2 ${
+            phase === "sent" ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <Check className="h-4 w-4" aria-hidden />
+          <span className="text-sm font-medium">Sent</span>
+        </div>
+
+        <div
+          ref={formRef}
+          inert={open ? undefined : true}
           onPaste={handlePaste}
+          className={`feature-request-organism-layer feature-request-organism-layer--form w-80 p-4 ${
+            open
+              ? "relative is-visible"
+              : "pointer-events-none absolute bottom-0 right-0"
+          }`}
         >
           <div className="mb-3 flex items-center justify-between gap-2">
             <span className="min-w-0 truncate text-sm font-medium text-text-primary">
@@ -204,6 +330,7 @@ export function FeatureRequestFab() {
             </div>
             <div>
               <textarea
+                ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder={placeholder}
@@ -222,16 +349,7 @@ export function FeatureRequestFab() {
                 Paste screenshots from the clipboard (max {MAX_SCREENSHOTS}).
               </p>
             </div>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={close}
-                disabled={submitting}
-                className="rounded-lg border bg-bg-default px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg-muted disabled:opacity-50"
-                style={{ borderColor: "var(--color-border-form)" }}
-              >
-                Cancel
-              </button>
+            <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={submitting || !message.trim()}
@@ -242,17 +360,10 @@ export function FeatureRequestFab() {
             </div>
           </form>
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-signal text-text-inverse shadow-lg transition-colors hover:bg-accent-primary-hover active:bg-accent-primary-active"
-          aria-label="Send feature request or bug report"
-          title="Feature request"
-        >
-          <MessageCirclePlus className="h-5 w-5" />
-        </button>
-      )}
+      </div>
+      <p className="sr-only" role="status" aria-live="polite">
+        {phase === "sent" ? "Request sent" : ""}
+      </p>
     </div>
   );
 }

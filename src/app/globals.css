@@ -731,6 +731,73 @@ body.allocation-project-row-dragging * {
   100% { opacity: 0; }
 }
 
+/*
+ * Feature request control: one surface, anchored bottom-right.
+ * Corners switch to a panel immediately on open (via JS), so size growth
+ * reads as a sheet rising from the button instead of a ballooning circle.
+ */
+.feature-request-organism {
+  overflow: hidden;
+  transform-origin: bottom right;
+  border-radius: 9999px;
+  /* Radius rounds in parallel with shrink so it never rests as a square pill. */
+  transition:
+    width 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    height 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 240ms ease,
+    border-color 240ms ease,
+    color 200ms ease,
+    box-shadow 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 420ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.feature-request-organism.is-panel {
+  border-radius: 16px;
+  /* Snap to panel corners as soon as expand starts. */
+  transition:
+    width 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    height 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 240ms ease,
+    border-color 240ms ease,
+    color 200ms ease,
+    box-shadow 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 70ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.feature-request-organism-layer {
+  transition: opacity 160ms ease;
+}
+
+.feature-request-organism-layer--form {
+  transition:
+    opacity 220ms ease,
+    transform 360ms cubic-bezier(0.32, 0.72, 0, 1);
+  transform: translateY(10px);
+}
+
+.feature-request-organism-layer--form.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 70ms;
+}
+
+.feature-request-organism-layer--form:not(.is-visible) {
+  opacity: 0;
+  transition-delay: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-request-organism,
+  .feature-request-organism-layer,
+  .feature-request-organism-layer--form {
+    transition: none;
+  }
+
+  .feature-request-organism-layer--form {
+    transform: none;
+  }
+}
+
 /* Semantic-like dropdown open animation (short, no jump). */
 @keyframes dropdownIn {
   from {

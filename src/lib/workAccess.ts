@@ -49,6 +49,25 @@ export function canSeeWorkTime(
   return customerAllowsTimeForCustomerUsers;
 }
 
+/**
+ * Activity rows that reveal an estimate or a time report.
+ * Customer users never see these, even when the customer setting shows the Time tab.
+ */
+const CUSTOMER_HIDDEN_ACTIVITY_KINDS = new Set([
+  "estimate",
+  "time",
+  "time_log",
+  "time_report",
+]);
+
+export function isWorkActivityVisibleToActor(
+  actor: WorkActor,
+  kind: string
+): boolean {
+  if (actor.role !== "customer") return true;
+  return !CUSTOMER_HIDDEN_ACTIVITY_KINDS.has(kind);
+}
+
 /** Customer-role users never log time on Work issues. */
 export function canLogWorkTime(actor: WorkActor): boolean {
   return actor.role !== "customer";

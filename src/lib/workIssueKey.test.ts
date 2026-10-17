@@ -14,9 +14,13 @@ describe("work board prefix", () => {
     expect(isValidWorkBoardPrefix("rt")).toBe(false);
   });
 
-  it("suggests initials from the customer name", () => {
+  it("suggests from customer name, combined with project title when set", () => {
     expect(suggestWorkBoardPrefix("Riverstone Technologies")).toBe("RT");
     expect(suggestWorkBoardPrefix("Acme")).toBe("ACM");
+    expect(suggestWorkBoardPrefix("Göhlins", "Wholesale")).toBe("GOWH");
+    expect(suggestWorkBoardPrefix("Riverstone Technologies", "Mobile App")).toBe(
+      "RTMA"
+    );
   });
 
   it("builds a per-board issue key", () => {

@@ -14,6 +14,7 @@ import {
   canSeeWorkBoard,
   canSeeWorkCustomer,
   canSeeWorkTime,
+  isWorkActivityVisibleToActor,
   type WorkActor,
 } from "@/lib/workAccess";
 import * as q from "@/lib/workBoardsQueries";
@@ -452,6 +453,7 @@ export async function getWorkBoardView(
   }
   const eventsByIssue = new Map<string, WorkEvent[]>();
   for (const row of eventRows) {
+    if (!isWorkActivityVisibleToActor(actor, row.kind)) continue;
     const list = eventsByIssue.get(row.issue_id) ?? [];
     list.push({
       id: row.id,
@@ -835,7 +837,10 @@ export async function createWorkBoard(
   const customerPeople = await fetchWorkPeopleForCustomer(customerId);
   const customerPeopleIds = new Set(customerPeople.map((row) => row.id));
   const requestedIds = [
-    ...new Set(memberAppUserIds ?? customerPeople.map((row) => row.id)),
+    ...new Set([
+      actor.id,
+      ...(memberAppUserIds ?? customerPeople.map((row) => row.id)),
+    ]),
   ];
   const allowedRows = await Promise.all(
     requestedIds.map((id) => fetchWorkUserById(id))
@@ -845,6 +850,9 @@ export async function createWorkBoard(
     if (customerPeopleIds.has(id)) return true;
     return allowedRows[index] != null;
   });
+  if (requested.length === 0) {
+    throw new Error("A project needs at least one person with access");
+  }
 
   try {
     return await q.insertWorkBoard({

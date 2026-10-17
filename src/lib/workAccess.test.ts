@@ -6,6 +6,7 @@ import {
   canSeeWorkCustomer,
   canSeeWorkTime,
   filterVisibleWorkBoards,
+  isWorkActivityVisibleToActor,
 } from "./workAccess";
 
 const admin = { id: "admin-1", role: "admin" as const };
@@ -58,6 +59,25 @@ describe("canSeeWorkTime", () => {
   it("follows the customer setting for customer users", () => {
     expect(canSeeWorkTime(customer, false)).toBe(false);
     expect(canSeeWorkTime(customer, true)).toBe(true);
+  });
+});
+
+describe("isWorkActivityVisibleToActor", () => {
+  it("hides estimate and time-report activity from customer users", () => {
+    expect(isWorkActivityVisibleToActor(customer, "estimate")).toBe(false);
+    expect(isWorkActivityVisibleToActor(customer, "time")).toBe(false);
+    expect(isWorkActivityVisibleToActor(customer, "time_log")).toBe(false);
+    expect(isWorkActivityVisibleToActor(customer, "time_report")).toBe(false);
+  });
+
+  it("keeps other activity visible to customer users", () => {
+    expect(isWorkActivityVisibleToActor(customer, "status")).toBe(true);
+    expect(isWorkActivityVisibleToActor(customer, "comment")).toBe(true);
+  });
+
+  it("shows estimate and time activity to staff", () => {
+    expect(isWorkActivityVisibleToActor(admin, "estimate")).toBe(true);
+    expect(isWorkActivityVisibleToActor(member, "time_report")).toBe(true);
   });
 });
 

@@ -89,6 +89,7 @@ import {
   WorkProjectSettingsDrawer,
   type WorkProjectSettingsTab,
 } from "./WorkProjectSettingsDrawer";
+import { WorkJiraImportDialog } from "./WorkJiraImportDialog";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
@@ -343,6 +344,7 @@ export function WorkBoardPageClient({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] =
     useState<WorkProjectSettingsTab>("details");
+  const [jiraImportOpen, setJiraImportOpen] = useState(false);
   const [renamingStatusId, setRenamingStatusId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [draggingStatusId, setDraggingStatusId] = useState<string | null>(null);
@@ -1801,6 +1803,18 @@ export function WorkBoardPageClient({
           setSettingsOpen(false);
           setArchiveOpen(true);
         }}
+        onImportFromJira={() => {
+          setSettingsOpen(false);
+          setJiraImportOpen(true);
+        }}
+      />
+
+      <WorkJiraImportDialog
+        open={jiraImportOpen}
+        onOpenChange={setJiraImportOpen}
+        boardId={board.id}
+        columns={statuses}
+        members={members}
       />
 
       <ConfirmModal

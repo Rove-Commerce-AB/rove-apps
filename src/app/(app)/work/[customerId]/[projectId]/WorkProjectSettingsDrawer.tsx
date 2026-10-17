@@ -20,6 +20,7 @@ export type WorkProjectSettingsTab =
   | "details"
   | "access"
   | "components"
+  | "import"
   | "agents.md"
   | "danger";
 
@@ -45,6 +46,7 @@ export function WorkProjectSettingsDrawer({
   onRenameComponent,
   onDeleteComponent,
   onArchive,
+  onImportFromJira,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -72,6 +74,7 @@ export function WorkProjectSettingsDrawer({
   ) => Promise<WorkComponent | null>;
   onDeleteComponent: (component: WorkComponent) => Promise<boolean>;
   onArchive: () => void;
+  onImportFromJira?: () => void;
 }) {
   const [tab, setTab] = useState<WorkProjectSettingsTab>(initialTab);
   const [nameDraft, setNameDraft] = useState(title);
@@ -204,6 +207,9 @@ export function WorkProjectSettingsDrawer({
                 </TabsTrigger>
                 <TabsTrigger value="components" className="px-3 !px-3">
                   Components
+                </TabsTrigger>
+                <TabsTrigger value="import" className="px-3 !px-3">
+                  Import
                 </TabsTrigger>
                 <TabsTrigger value="agents.md" className="px-3 !px-3">
                   agents.md
@@ -428,6 +434,37 @@ export function WorkProjectSettingsDrawer({
                   Add component
                 </button>
               )}
+            </TabsContent>
+
+            <TabsContent
+              value="import"
+              className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5"
+            >
+              <p className="text-sm text-text-secondary">
+                Bring issues into this project from another tool. Existing
+                imports are skipped when the same external key is already
+                linked.
+              </p>
+              <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
+                <li className="flex items-center justify-between gap-3 px-3 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text-primary">
+                      Jira
+                    </p>
+                    <p className="text-xs text-text-tertiary">
+                      RSS/XML export from Jira Cloud or Server
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => onImportFromJira?.()}
+                  >
+                    Import…
+                  </Button>
+                </li>
+              </ul>
             </TabsContent>
 
             <TabsContent

@@ -19,6 +19,15 @@ type Customer = {
 
 type CreateMode = "link" | "standalone";
 
+function withRequiredMember(
+  ids: string[],
+  requiredId: string | null
+): string[] {
+  if (!requiredId) return ids;
+  if (ids.includes(requiredId)) return ids;
+  return [...ids, requiredId];
+}
+
 export function WorkCreateProjectDialog({
   customer,
   open,
@@ -33,12 +42,14 @@ export function WorkCreateProjectDialog({
   const [mode, setMode] = useState<CreateMode>("standalone");
   const [title, setTitle] = useState("");
   const [prefix, setPrefix] = useState("");
+  const [prefixTouched, setPrefixTouched] = useState(false);
   const [plannerProjectId, setPlannerProjectId] = useState<string>("");
   const [plannerProjects, setPlannerProjects] = useState<
     { id: string; name: string }[]
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [people, setPeople] = useState<WorkAccessPerson[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const selectAllCustomerRef = useRef<HTMLInputElement | null>(null);
@@ -57,9 +68,11 @@ export function WorkCreateProjectDialog({
     setReady(false);
     setTitle("");
     setPrefix(suggestWorkBoardPrefix(customer.name));
+    setPrefixTouched(false);
     setPlannerProjectId("");
     setError(null);
     setPeople([]);
+    setCurrentUserId(null);
     setMemberIds([]);
     setPlannerProjects([]);
     setMode("standalone");
@@ -68,12 +81,14 @@ export function WorkCreateProjectDialog({
       listWorkAccessPeopleAction(customer.id),
       listLinkablePlannerProjectsAction(customer.id),
     ])
-      .then(([rows, projects]) => {
+      .then(([access, projects]) => {
         if (cancelled) return;
-        setPeople(rows);
-        setMemberIds(
-          rows.filter((person) => person.onCustomer).map((person) => person.id)
-        );
+        setPeople(access.people);
+        setCurrentUserId(access.currentUserId);
+        const onCustomerIds = access.people
+          .filter((person) => person.onCustomer)
+          .map((person) => person.id);
+        setMemberIds(withRequiredMember(onCustomerIds, access.currentUserId));
         setPlannerProjects(projects);
         setMode(projects.length > 0 ? "link" : "standalone");
         setReady(true);
@@ -107,11 +122,16 @@ export function WorkCreateProjectDialog({
 
   function toggleGroup(ids: string[]) {
     const allSelected = ids.every((id) => memberIds.includes(id));
-    setMemberIds((current) =>
-      allSelected
-        ? current.filter((id) => !ids.includes(id))
-        : [...new Set([...current, ...ids])]
-    );
+    setMemberIds((current) => {
+      if (allSelected) {
+        const next = current.filter((id) => !ids.includes(id));
+        return withRequiredMember(next, currentUserId);
+      }
+      return withRequiredMember(
+        [...new Set([...current, ...ids])],
+        currentUserId
+      );
+    });
   }
 
   useEffect(() => {
@@ -119,27 +139,47 @@ export function WorkCreateProjectDialog({
     const selected = plannerProjects.find((row) => row.id === plannerProjectId);
     if (!selected) return;
     setTitle(selected.name);
-    setPrefix(suggestWorkBoardPrefix(selected.name));
-  }, [mode, plannerProjectId, plannerProjects]);
+    setPrefix(
+      suggestWorkBoardPrefix(customer?.name ?? "", selected.name)
+    );
+    setPrefixTouched(false);
+  }, [mode, plannerProjectId, plannerProjects, customer?.name]);
+
+  function onTitleChange(value: string) {
+    setTitle(value);
+    if (prefixTouched) return;
+    setPrefix(suggestWorkBoardPrefix(customer?.name ?? "", value));
+  }
 
   function toggleMember(id: string) {
-    setMemberIds((current) =>
-      current.includes(id)
+    if (currentUserId && id === currentUserId) return;
+    setMemberIds((current) => {
+      const next = current.includes(id)
         ? current.filter((row) => row !== id)
-        : [...current, id]
-    );
+        : [...current, id];
+      return withRequiredMember(next, currentUserId);
+    });
   }
 
   function renderPersonRow(person: WorkAccessPerson) {
     const checked = memberIds.includes(person.id);
+    const isSelf = Boolean(currentUserId && person.id === currentUserId);
     return (
       <li key={person.id}>
-        <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1.5 hover:bg-bg-muted">
+        <label
+          className={`flex items-center gap-2 rounded-md px-1 py-1.5 ${
+            isSelf
+              ? "cursor-default"
+              : "cursor-pointer hover:bg-bg-muted"
+          }`}
+        >
           <input
             type="checkbox"
             checked={checked}
+            disabled={isSelf}
             onChange={() => toggleMember(person.id)}
-            className="h-4 w-4 rounded border-border-form"
+            className="h-4 w-4 rounded border-border-form disabled:cursor-not-allowed disabled:opacity-60"
+            title={isSelf ? "You always have access" : undefined}
           />
           <InitialsAvatar
             name={person.name}
@@ -149,6 +189,9 @@ export function WorkCreateProjectDialog({
           />
           <span className="min-w-0 truncate text-sm text-text-primary">
             {person.name}
+            {isSelf ? (
+              <span className="text-text-tertiary"> (you)</span>
+            ) : null}
           </span>
         </label>
       </li>
@@ -176,13 +219,18 @@ export function WorkCreateProjectDialog({
             setError("Choose a customer project to link");
             return;
           }
+          const members = withRequiredMember(memberIds, currentUserId);
+          if (members.length === 0) {
+            setError("A project needs at least one person with access");
+            return;
+          }
           setError(null);
           startTransition(async () => {
             const result = await createWorkBoardAction(
               customer.id,
               title,
               prefix,
-              memberIds,
+              members,
               mode === "link" ? plannerProjectId : null
             );
             if (!result.ok) {
@@ -286,7 +334,7 @@ export function WorkCreateProjectDialog({
           id="new-work-project-title"
           label="Title"
           value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => onTitleChange(event.target.value)}
           placeholder="Project name"
           modalStyle
           disabled={mode === "link"}
@@ -296,9 +344,12 @@ export function WorkCreateProjectDialog({
           id="new-work-project-prefix"
           label="Issue prefix"
           value={prefix}
-          onChange={(event) => setPrefix(event.target.value.toUpperCase())}
+          onChange={(event) => {
+            setPrefixTouched(true);
+            setPrefix(event.target.value.toUpperCase());
+          }}
           placeholder="RT"
-          title="Used for issue keys on this project, e.g. RT-12"
+          title="Used for issue keys on this project, e.g. RT-12. Suggested from the title until you edit it."
           modalStyle
         />
         <fieldset className="space-y-2">
@@ -391,7 +442,7 @@ export function WorkCreateProjectDialog({
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" disabled={pending || memberIds.length === 0}>
             Create
           </Button>
         </div>
