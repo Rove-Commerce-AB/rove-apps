@@ -129,7 +129,7 @@ export async function createWorkIssue(input: WorkIssueDetailsInput & {
       throw new Error("Sprint not found");
     }
     if (sprint.status !== "current" && sprint.status !== "next") {
-      throw new Error("Can only add issues to the current or next sprint");
+      throw new Error("Can only add issues to the current or an upcoming sprint");
     }
   }
 

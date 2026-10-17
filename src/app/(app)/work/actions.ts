@@ -8,6 +8,7 @@ import {
   createWorkBoard,
   createWorkBoardStatus,
   deleteWorkBoardStatus,
+  getWorkProjectByPlannerProjectId,
   linkWorkProjectToPlannerProject,
   listLinkablePlannerProjects,
   listWorkAccessPeople,
@@ -169,6 +170,16 @@ export async function listLinkablePlannerProjectsAction(
     return await listLinkablePlannerProjects(customerId);
   } catch {
     return [];
+  }
+}
+
+export async function getWorkProjectByPlannerProjectIdAction(
+  plannerProjectId: string
+): Promise<{ id: string; customerId: string } | null> {
+  try {
+    return await getWorkProjectByPlannerProjectId(plannerProjectId);
+  } catch {
+    return null;
   }
 }
 
@@ -856,6 +867,20 @@ export async function moveWorkIssueAction(input: {
     );
     await reorderWorkIssues(input.boardId, input.status, input.issueIds);
     revalidateBoard(input.boardId, input.issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function reorderWorkIssuesInStatusAction(input: {
+  boardId: string;
+  status: WorkIssueStatus;
+  issueIds: string[];
+}): Promise<Ok | Err> {
+  try {
+    await reorderWorkIssues(input.boardId, input.status, input.issueIds);
+    revalidateBoard(input.boardId);
     return { ok: true };
   } catch (error) {
     return fail(error);

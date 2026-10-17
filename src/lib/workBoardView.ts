@@ -279,3 +279,75 @@ export function workIssuePriorityLabel(
   if (priority === "low") return "Low";
   return "No priority";
 }
+
+export type WorkColumnSortBy =
+  | "priority"
+  | "key"
+  | "title"
+  | "estimate"
+  | "owner"
+  | "created"
+  | "updated";
+
+export function workColumnSortLabel(sortBy: WorkColumnSortBy): string {
+  if (sortBy === "priority") return "Priority";
+  if (sortBy === "key") return "Key";
+  if (sortBy === "title") return "Title";
+  if (sortBy === "estimate") return "Estimate";
+  if (sortBy === "owner") return "Owner";
+  if (sortBy === "created") return "Created";
+  return "Updated";
+}
+
+function prioritySortRank(priority: WorkIssuePriority | null): number {
+  if (priority === "high") return 0;
+  if (priority === "medium") return 1;
+  if (priority === "low") return 2;
+  return 3;
+}
+
+/** Stable sort of column issues for persisting a new board order. */
+export function sortWorkIssuesForColumn(
+  issues: readonly WorkIssue[],
+  sortBy: WorkColumnSortBy
+): WorkIssue[] {
+  return issues.slice().sort((a, b) => {
+    if (sortBy === "priority") {
+      const byPriority =
+        prioritySortRank(a.priority) - prioritySortRank(b.priority);
+      if (byPriority !== 0) return byPriority;
+    } else if (sortBy === "key") {
+      const byNumber = a.number - b.number;
+      if (byNumber !== 0) return byNumber;
+    } else if (sortBy === "title") {
+      const byTitle = a.title.localeCompare(b.title, undefined, {
+        sensitivity: "base",
+      });
+      if (byTitle !== 0) return byTitle;
+    } else if (sortBy === "estimate") {
+      const aEst = a.estimateHours;
+      const bEst = b.estimateHours;
+      if (aEst == null && bEst != null) return 1;
+      if (aEst != null && bEst == null) return -1;
+      if (aEst != null && bEst != null && aEst !== bEst) {
+        return bEst - aEst;
+      }
+    } else if (sortBy === "owner") {
+      const aName = a.owner?.name ?? "";
+      const bName = b.owner?.name ?? "";
+      if (!aName && bName) return 1;
+      if (aName && !bName) return -1;
+      const byOwner = aName.localeCompare(bName, undefined, {
+        sensitivity: "base",
+      });
+      if (byOwner !== 0) return byOwner;
+    } else if (sortBy === "created") {
+      const byCreated = b.createdAt.localeCompare(a.createdAt);
+      if (byCreated !== 0) return byCreated;
+    } else if (sortBy === "updated") {
+      const byUpdated = b.updatedAt.localeCompare(a.updatedAt);
+      if (byUpdated !== 0) return byUpdated;
+    }
+    return a.number - b.number || a.sortOrder - b.sortOrder;
+  });
+}

@@ -50,7 +50,7 @@ export async function PlannerAllocationPage({
         weekFrom={weekFrom}
         weekTo={weekTo}
       >
-        <div>
+        <div className="flex min-h-0 flex-1 flex-col">
           <AllocationPageWrapper
             view={view}
             data={data}

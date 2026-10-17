@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  forwardRef,
   useEffect,
   useMemo,
   useRef,
@@ -77,6 +78,7 @@ import {
   updateWorkIssueTypeAction,
   uploadWorkIssueFileAction,
 } from "../../actions";
+import { WorkDescriptionEditor } from "@/components/WorkDescriptionEditor";
 import { WorkCardTypeBadge } from "./WorkBoardViewControls";
 import { WorkCommentComposer, WorkInlineImageThumbs } from "./WorkCommentComposer";
 import { WorkIssueComment } from "./WorkIssueComment";
@@ -107,34 +109,42 @@ const propertyChipClass =
 const addPropertyClass =
   "inline-flex items-center rounded-md px-1.5 py-0.5 text-[13px] text-text-tertiary hover:bg-bg-muted hover:text-text-secondary disabled:opacity-50";
 
-function AutosizeTextarea({
-  value,
-  className,
-  minRows = 2,
-  ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  value: string;
-  minRows?: number;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+const AutosizeTextarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement> & {
+    value: string;
+    minRows?: number;
+  }
+>(function AutosizeTextarea(
+  { value, className, minRows = 2, ...props },
+  forwardedRef
+) {
+  const localRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    const node = localRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
   }, [value]);
 
   return (
     <textarea
       {...props}
-      ref={ref}
+      ref={(node) => {
+        localRef.current = node;
+        if (typeof forwardedRef === "function") {
+          forwardedRef(node);
+        } else if (forwardedRef) {
+          forwardedRef.current = node;
+        }
+      }}
       value={value}
       rows={minRows}
       className={className}
     />
   );
-}
+});
 
 function isImageMime(mimeType: string) {
   return mimeType.toLowerCase().startsWith("image/");
@@ -708,6 +718,26 @@ export function WorkIssueDrawer({
     saveField("description", next, issue.description);
   }
 
+  function pasteDescriptionImages(files: File[]) {
+    if (pending || files.length === 0) return;
+    files.forEach((image, index) => {
+      const named = new File([image], pasteFileName(image, index), {
+        type: image.type || "image/png",
+      });
+      const localId = crypto.randomUUID();
+      const previewUrl = URL.createObjectURL(named);
+      const thumb: InlinePasteThumb = {
+        localId,
+        previewUrl,
+        fileId: null,
+        uploading: true,
+        revokeOnClear: true,
+      };
+      setDescriptionThumbs((prev) => [...prev, thumb]);
+      uploadFile(named, { zone: "description", localId, previewUrl });
+    });
+  }
+
   function saveEstimate() {
     const parsed = parseWorkEstimateHours(estimateDraft);
     if (!parsed.ok) {
@@ -1243,17 +1273,18 @@ export function WorkIssueDrawer({
             </div>
 
             <div className="space-y-4">
-              <label className="block" data-paste-zone="description">
+              <div className="block" data-paste-zone="description">
                 <span className="mb-0.5 block text-[13px] text-text-secondary">
                   Description
                 </span>
-                <AutosizeTextarea
-                  className={textFieldClass}
+                <WorkDescriptionEditor
+                  contentKey={issue.id}
                   value={description}
                   disabled={pending}
                   placeholder="Add description…"
-                  onChange={(event) => setDescription(event.target.value)}
+                  onChange={setDescription}
                   onBlur={saveDescription}
+                  onPasteImages={pasteDescriptionImages}
                 />
                 <WorkInlineImageThumbs
                   items={descriptionThumbs.map((thumb) => ({
@@ -1273,7 +1304,7 @@ export function WorkIssueDrawer({
                     });
                   }}
                 />
-              </label>
+              </div>
 
               {showCurrentState ? (
                 <label className="block">

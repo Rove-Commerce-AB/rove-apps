@@ -55,6 +55,7 @@ import {
   renameWorkBoardStatusAction,
   removeWorkBoardMemberAction,
   reorderWorkBoardStatusesAction,
+  reorderWorkIssuesInStatusAction,
   linkWorkProjectToPlannerProjectAction,
   setWorkProjectPreferredViewAction,
   updateWorkIssueEstimateAction,
@@ -65,9 +66,12 @@ import {
   collectBoardComponents,
   collectOwnerFilterPeople,
   columnIssueGroups,
+  sortWorkIssuesForColumn,
   visibleWorkIssueIds,
+  workColumnSortLabel,
   type WorkBoardGroupBy,
   type WorkBoardPriorityFilterId,
+  type WorkColumnSortBy,
 } from "@/lib/workBoardView";
 import {
   issueScrollElFromPoint,
@@ -525,6 +529,37 @@ export function WorkBoardPageClient({
     });
   }
 
+  function sortStatusColumn(status: WorkIssueStatus, sortBy: WorkColumnSortBy) {
+    setStatusMenu(null);
+    const columnIssues = issuesInStatus(issuesRef.current, status);
+    if (columnIssues.length < 2) return;
+    const sorted = sortWorkIssuesForColumn(columnIssues, sortBy);
+    const orderedIds = sorted.map((issue) => issue.id);
+    const unchanged = orderedIds.every(
+      (id, index) => columnIssues[index]?.id === id
+    );
+    if (unchanged) return;
+    const orderById = new Map(orderedIds.map((id, index) => [id, index]));
+    const next = issuesRef.current.map((issue) => {
+      const sortOrder = orderById.get(issue.id);
+      return sortOrder == null ? issue : { ...issue, sortOrder };
+    });
+    const previous = issuesRef.current;
+    issuesRef.current = next;
+    setIssues(next);
+    setError(null);
+    void reorderWorkIssuesInStatusAction({
+      boardId: board.id,
+      status,
+      issueIds: orderedIds,
+    }).then((actionResult) => {
+      if (actionResult.ok) return;
+      issuesRef.current = previous;
+      setIssues(previous);
+      setError(actionResult.error);
+    });
+  }
+
   function moveStatus(statusId: string, beforeStatusId: string | null) {
     if (statusId === beforeStatusId) return;
     const list = statusesRef.current;
@@ -973,8 +1008,25 @@ export function WorkBoardPageClient({
             className="h-7 py-0 pl-8 text-[13px]"
           />
         </div>
-        <div className="ml-auto flex items-center gap-1">
-          {boardMode === "board" ? (
+      </div>
+
+      {error ? (
+        <p className="mb-3 shrink-0 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {boardMode === "board" ? (
+        <div className="mb-1.5 flex shrink-0 items-center gap-3">
+          {orderedSprints.length > 0 ? (
+            <WorkSprintPicker
+              sprints={orderedSprints}
+              selectedIds={sprintFilterIds}
+              onChange={setSprintFilterIds}
+              multi
+            />
+          ) : null}
+          <div className="ml-auto flex items-center gap-1">
             <WorkBoardViewControls
               people={ownerPeople}
               components={filterComponents}
@@ -989,24 +1041,7 @@ export function WorkBoardPageClient({
               groupBy={groupBy}
               onGroupByChange={setGroupBy}
             />
-          ) : null}
-        </div>
-      </div>
-
-      {error ? (
-        <p className="mb-3 shrink-0 text-sm text-danger" role="alert">
-          {error}
-        </p>
-      ) : null}
-
-      {boardMode === "board" && orderedSprints.length > 0 ? (
-        <div className="mb-3 shrink-0">
-          <WorkSprintPicker
-            sprints={orderedSprints}
-            selectedIds={sprintFilterIds}
-            onChange={setSprintFilterIds}
-            multi
-          />
+          </div>
         </div>
       ) : null}
 
@@ -1238,7 +1273,7 @@ export function WorkBoardPageClient({
                         return;
                       }
                       const rect = event.currentTarget.getBoundingClientRect();
-                      const width = 128;
+                      const width = 176;
                       setStatusMenu({
                         id: status,
                         top: rect.bottom + 4,
@@ -1832,7 +1867,7 @@ export function WorkBoardPageClient({
             <div
               data-status-menu
               role="menu"
-              className="fixed z-50 min-w-32 rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
+              className="fixed z-50 min-w-44 rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
               style={{ top: statusMenu.top, left: statusMenu.left }}
             >
               <button
@@ -1848,20 +1883,54 @@ export function WorkBoardPageClient({
               >
                 Rename
               </button>
-              {statuses.length > 1 ? (
+              <div
+                className="my-1 border-t border-border-subtle"
+                role="separator"
+              />
+              <p className="px-3 py-1 text-caption text-text-tertiary">
+                Sort by
+              </p>
+              {(
+                [
+                  "priority",
+                  "key",
+                  "title",
+                  ...(board.showTime ? (["estimate"] as const) : []),
+                  "owner",
+                  "created",
+                  "updated",
+                ] as WorkColumnSortBy[]
+              ).map((sortBy) => (
                 <button
+                  key={sortBy}
                   type="button"
                   role="menuitem"
-                  className="flex w-full px-3 py-1.5 text-left text-body-m text-danger hover:bg-danger/10"
-                  onClick={() => {
-                    const column = statuses.find(
-                      (status) => status.id === statusMenu.id
-                    );
-                    if (column) openDeleteStatus(column);
-                  }}
+                  className="flex w-full px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
+                  onClick={() => sortStatusColumn(statusMenu.id, sortBy)}
                 >
-                  Remove
+                  {workColumnSortLabel(sortBy)}
                 </button>
+              ))}
+              {statuses.length > 1 ? (
+                <>
+                  <div
+                    className="my-1 border-t border-border-subtle"
+                    role="separator"
+                  />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full px-3 py-1.5 text-left text-body-m text-danger hover:bg-danger/10"
+                    onClick={() => {
+                      const column = statuses.find(
+                        (status) => status.id === statusMenu.id
+                      );
+                      if (column) openDeleteStatus(column);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </>
               ) : null}
             </div>,
             document.body

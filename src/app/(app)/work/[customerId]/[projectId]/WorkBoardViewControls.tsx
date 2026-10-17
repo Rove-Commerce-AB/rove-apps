@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Box, Check, Group, ListFilter, Rocket, User } from "lucide-react";
 import { InitialsAvatar } from "@/components/ui";
@@ -223,11 +223,13 @@ export function WorkColumnGroupHeader({
   group,
   showTime = true,
   className = "",
+  actions,
 }: {
   groupBy: WorkBoardGroupBy;
   group: WorkColumnGroup;
   showTime?: boolean;
   className?: string;
+  actions?: ReactNode;
 }) {
   if (groupBy === "none") return null;
   const estimateSum = group.issues.reduce(
@@ -281,6 +283,9 @@ export function WorkColumnGroupHeader({
           </>
         ) : null}
       </span>
+      {actions ? (
+        <div className="ml-auto flex shrink-0 items-center gap-1">{actions}</div>
+      ) : null}
     </div>
   );
 }

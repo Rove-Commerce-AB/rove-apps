@@ -317,6 +317,13 @@ export async function requireVisibleWorkBoard(boardId: string, authenticatedActo
   return visibleWorkBoardForActor(boardId, actor);
 }
 
+/** Linked Work project for a planner project, if one exists. */
+export async function getWorkProjectByPlannerProjectId(
+  plannerProjectId: string
+): Promise<{ id: string; customerId: string } | null> {
+  return q.fetchWorkProjectByPlannerProjectId(plannerProjectId);
+}
+
 async function visibleWorkBoardForActor(boardId: string, actor: WorkActor) {
   const board = await q.fetchWorkBoardById(boardId);
   if (!board) return null;
@@ -584,6 +591,8 @@ export async function getWorkBoardView(
       sprintId: row.sprint_id,
       startDate: pgDateToDateOnlyOrNull(row.start_date),
       dueDate: pgDateToDateOnlyOrNull(row.due_date),
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
     }));
 
   const doneByStatus = new Map(

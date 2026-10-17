@@ -42,8 +42,8 @@ export async function fetchWorkSprintsForBoard(
          WHEN 'next' THEN 1
          ELSE 2
        END,
-       starts_on DESC,
-       number DESC`,
+       starts_on ASC,
+       number ASC`,
     [boardId]
   );
   return rows;
@@ -79,16 +79,6 @@ export async function insertWorkSprint(input: {
         throw new Error("This board already has a current sprint");
       }
     }
-    if (input.status === "next") {
-      const { rows: existing } = await client.query<{ id: string }>(
-        `SELECT id FROM work_sprints WHERE project_id = $1 AND status = 'next'`,
-        [input.boardId]
-      );
-      if (existing[0]) {
-        throw new Error("This board already has a next sprint");
-      }
-    }
-
     const { rows: numberRows } = await client.query<{ next: number }>(
       `SELECT COALESCE(MAX(number), 0) + 1 AS next
        FROM work_sprints
@@ -180,9 +170,11 @@ export async function closeWorkSprint(
       throw new Error("Only the current sprint can be closed");
     }
 
+    // Promote the soonest upcoming sprint (supports planning many ahead).
     const { rows: nextRows } = await client.query<{ id: string }>(
       `SELECT id FROM work_sprints
        WHERE project_id = $1 AND status = 'next'
+       ORDER BY starts_on ASC, number ASC
        FOR UPDATE`,
       [boardId]
     );

@@ -13,7 +13,6 @@ import {
   updateWorkIssueScheduleAction,
   updateWorkIssueTypeAction,
 } from "../../actions";
-import { WorkAddIssueInline } from "./WorkAddIssueInline";
 import { getCalendarHolidays } from "@/lib/calendarHolidaysClient";
 import { getCalendars } from "@/lib/calendarsClient";
 import {
@@ -31,12 +30,12 @@ import type {
   WorkSprint,
 } from "@/lib/workTypes";
 import { workSprintLabel } from "@/lib/workSprintLabel";
+import { WorkAddIssueInline } from "./WorkAddIssueInline";
 import {
-  WorkBoardViewControls,
   WorkCardTypeBadge,
   WorkColumnGroupHeader,
 } from "./WorkBoardViewControls";
-import { WorkSprintPicker } from "./WorkSprintPicker";
+import { WorkViewToolbar } from "./WorkViewToolbar";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -140,6 +139,7 @@ export function WorkTimelineView({
     WorkBoardPriorityFilterId[]
   >([]);
   const [groupBy, setGroupBy] = useState<WorkBoardGroupBy>("none");
+  const [addingIssue, setAddingIssue] = useState(false);
   const dragRef = useRef<{
     issueId: string;
     mode: "move" | "start" | "end";
@@ -621,7 +621,7 @@ export function WorkTimelineView({
   const headerH = 56;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {dragTip ? (
         <div
           className="pointer-events-none fixed z-[100] rounded-md bg-text-primary px-2 py-1 text-[12px] font-medium tabular-nums text-bg-default shadow-md"
@@ -633,41 +633,29 @@ export function WorkTimelineView({
           {formatScheduleTip(dragTip.start, dragTip.end)}
         </div>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {orderedSprints.length > 0 ? (
-          <WorkSprintPicker
-            sprints={orderedSprints}
-            selectedIds={focusedSprint?.id ? [focusedSprint.id] : []}
-            onChange={(ids) => {
-              const sprintId = ids[ids.length - 1];
-              const sprint = orderedSprints.find((row) => row.id === sprintId);
-              if (sprint) goToSprint(sprint);
-            }}
-          />
-        ) : null}
-        <div className="ml-auto">
-          <WorkBoardViewControls
-            people={ownerPeople}
-            components={filterComponents}
-            ownerFilterIds={ownerFilterIds}
-            onOwnerFilterChange={setOwnerFilterIds}
-            typeFilterIds={typeFilterIds}
-            onTypeFilterChange={setTypeFilterIds}
-            componentFilterIds={componentFilterIds}
-            onComponentFilterChange={setComponentFilterIds}
-            priorityFilterIds={priorityFilterIds}
-            onPriorityFilterChange={setPriorityFilterIds}
-            groupBy={groupBy}
-            onGroupByChange={setGroupBy}
-          />
-        </div>
-      </div>
-
-      <div className="shrink-0">
-        <WorkAddIssueInline
-          disabled={pending}
-          buttonClassName="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-body-m text-text-secondary hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
-          onCreate={createIssue}
+      <div className="mb-2 shrink-0">
+        <WorkViewToolbar
+          sprints={orderedSprints}
+          selectedSprintIds={focusedSprint?.id ? [focusedSprint.id] : []}
+          onSelectedSprintIdsChange={(ids) => {
+            const sprintId = ids[ids.length - 1];
+            const sprint = orderedSprints.find((row) => row.id === sprintId);
+            if (sprint) goToSprint(sprint);
+          }}
+          filters={{
+            people: ownerPeople,
+            components: filterComponents,
+            ownerFilterIds,
+            onOwnerFilterChange: setOwnerFilterIds,
+            typeFilterIds,
+            onTypeFilterChange: setTypeFilterIds,
+            componentFilterIds,
+            onComponentFilterChange: setComponentFilterIds,
+            priorityFilterIds,
+            onPriorityFilterChange: setPriorityFilterIds,
+            groupBy,
+            onGroupByChange: setGroupBy,
+          }}
         />
       </div>
 
@@ -693,10 +681,21 @@ export function WorkTimelineView({
             style={{ height: headerH }}
           >
             <div
-              className="sticky left-0 z-30 flex shrink-0 items-end border-r border-border-subtle bg-bg-default px-3 pb-2 text-label-s text-text-secondary"
+              className="sticky left-0 z-30 flex shrink-0 items-end justify-between gap-1 border-r border-border-subtle bg-bg-default px-2 pb-2 text-label-s text-text-secondary"
               style={{ width: LABEL_W }}
             >
-              Issue
+              <span>Issue</span>
+              {!addingIssue ? (
+                <WorkAddIssueInline
+                  iconOnly
+                  disabled={pending}
+                  buttonClassName="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
+                  onOpenChange={(open) => {
+                    if (open) setAddingIssue(true);
+                  }}
+                  onCreate={createIssue}
+                />
+              ) : null}
             </div>
             <div
               className={`relative touch-none select-none ${
@@ -765,6 +764,18 @@ export function WorkTimelineView({
               ))}
             </div>
           </div>
+
+          {addingIssue ? (
+            <div className="sticky left-0 z-10 border-b border-border-subtle bg-bg-default px-2 py-1.5">
+              <WorkAddIssueInline
+                open
+                disabled={pending}
+                className="max-w-md"
+                onOpenChange={setAddingIssue}
+                onCreate={createIssue}
+              />
+            </div>
+          ) : null}
 
           <div
             className="pointer-events-none absolute bottom-0"

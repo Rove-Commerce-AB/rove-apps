@@ -92,5 +92,9 @@ export function AllocationViewportAdapter({
     };
   }, [applyWeeks]);
 
-  return <div ref={containerRef}>{children}</div>;
+  return (
+    <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
+      {children}
+    </div>
+  );
 }

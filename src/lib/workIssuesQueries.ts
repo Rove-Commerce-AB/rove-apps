@@ -34,6 +34,8 @@ export type WorkIssueRow = {
   sprint_id: string | null;
   start_date: Date | string | null;
   due_date: Date | string | null;
+  created_at: Date;
+  updated_at: Date;
 };
 
 export async function fetchWorkPeopleForCustomer(
@@ -217,7 +219,9 @@ export async function fetchWorkIssuesForBoard(
        i.estimate_hours,
        i.sprint_id,
        i.start_date,
-       i.due_date
+       i.due_date,
+       i.created_at,
+       i.updated_at
      FROM work_issues i
      LEFT JOIN work_components c ON c.id = i.component_id
      LEFT JOIN app_users r ON r.id = i.created_by_app_user_id

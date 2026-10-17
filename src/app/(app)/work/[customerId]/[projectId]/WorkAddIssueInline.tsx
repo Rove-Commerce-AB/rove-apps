@@ -54,21 +54,34 @@ export function WorkAddIssueInline({
   disabled = false,
   className = "",
   buttonClassName = "",
+  iconOnly = false,
+  open: openControlled,
+  onOpenChange,
   onCreate,
 }: {
   disabled?: boolean;
   className?: string;
   buttonClassName?: string;
+  /** Show only a + icon trigger (for column / Issue headers). */
+  iconOnly?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onCreate: (input: {
     title: string;
     issueType: WorkIssueType;
   }) => Promise<boolean> | boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openInternal, setOpenInternal] = useState(false);
+  const open = openControlled ?? openInternal;
   const [title, setTitle] = useState("");
   const [issueType, setIssueType] = useState<WorkIssueType>("issue");
   const [saving, setSaving] = useState(false);
   const rootRef = useRef<HTMLFormElement>(null);
+
+  function setOpen(next: boolean) {
+    onOpenChange?.(next);
+    if (openControlled === undefined) setOpenInternal(next);
+  }
 
   function cancel() {
     if (saving) return;
@@ -106,9 +119,13 @@ export function WorkAddIssueInline({
       <button
         type="button"
         disabled={disabled}
+        aria-label="Add issue"
+        title="Add issue"
         className={
           buttonClassName ||
-          "flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-body-m text-text-secondary hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
+          (iconOnly
+            ? "inline-flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
+            : "flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-body-m text-text-secondary hover:bg-bg-muted hover:text-text-primary disabled:opacity-50")
         }
         onClick={() => {
           setOpen(true);
@@ -117,7 +134,7 @@ export function WorkAddIssueInline({
         }}
       >
         <Plus className="h-4 w-4" aria-hidden />
-        Add issue
+        {iconOnly ? null : "Add issue"}
       </button>
     );
   }

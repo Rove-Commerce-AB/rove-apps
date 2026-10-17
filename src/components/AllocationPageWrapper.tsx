@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getAllocationData } from "@/app/(app)/allocation/actions";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
@@ -52,8 +52,11 @@ export function AllocationPageWrapper({
     setWeekTo(initialWeekTo);
   }, [initialData, initialError, initialYear, initialWeekFrom, initialWeekTo]);
 
+  const weekRangeFetchGenRef = useRef(0);
+
   const handleWeekRangeChange = useCallback(
     async (newYear: number, newWeekFrom: number, newWeekTo: number) => {
+      const gen = ++weekRangeFetchGenRef.current;
       setLoading(true);
       try {
         const { data: nextData, error: nextError } = await getAllocationData(
@@ -61,6 +64,8 @@ export function AllocationPageWrapper({
           newWeekFrom,
           newWeekTo
         );
+        if (gen !== weekRangeFetchGenRef.current) return;
+        // Single update so pan offset clears in the same render as new weeks.
         setData(nextData);
         setError(nextError);
         setYear(newYear);
@@ -75,25 +80,27 @@ export function AllocationPageWrapper({
           { scroll: false }
         );
       } finally {
-        setLoading(false);
+        if (gen === weekRangeFetchGenRef.current) setLoading(false);
       }
     },
     [pathname, router, searchParams]
   );
 
   return (
-    <AllocationPageClient
-      view={view}
-      data={data}
-      error={error}
-      year={year}
-      weekFrom={weekFrom}
-      weekTo={weekTo}
-      currentYear={currentYear}
-      currentWeek={currentWeek}
-      onWeekRangeChange={handleWeekRangeChange}
-      embedWeekNavLoading={loading}
-      initialFilters={initialFilters}
-    />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AllocationPageClient
+        view={view}
+        data={data}
+        error={error}
+        year={year}
+        weekFrom={weekFrom}
+        weekTo={weekTo}
+        currentYear={currentYear}
+        currentWeek={currentWeek}
+        onWeekRangeChange={handleWeekRangeChange}
+        embedWeekNavLoading={loading}
+        initialFilters={initialFilters}
+      />
+    </div>
   );
 }

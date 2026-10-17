@@ -10,6 +10,7 @@ import {
   groupIssuesByLabel,
   groupIssuesByOwner,
   issueMatchesOwnerFilter,
+  sortWorkIssuesForColumn,
   visibleWorkIssueIds,
 } from "./workBoardView";
 
@@ -53,6 +54,8 @@ function issue(
     sprintId: null,
     startDate: null,
     dueDate: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
     ...partial,
   };
 }
@@ -152,5 +155,86 @@ describe("columnIssueGroups", () => {
     expect(groupByTriggerLabel("label")).toBe("Label");
     expect(groupByTriggerLabel("component")).toBe("Component");
     expect(groupByTriggerLabel("priority")).toBe("Priority");
+  });
+});
+
+describe("sortWorkIssuesForColumn", () => {
+  it("orders by priority high to none, then stable by sortOrder", () => {
+    const rows = [
+      issue({
+        id: "a",
+        title: "A",
+        number: 1,
+        sortOrder: 0,
+        priority: "low",
+      }),
+      issue({
+        id: "b",
+        title: "B",
+        number: 2,
+        sortOrder: 1,
+        priority: "high",
+      }),
+      issue({
+        id: "c",
+        title: "C",
+        number: 3,
+        sortOrder: 2,
+        priority: null,
+      }),
+      issue({
+        id: "d",
+        title: "D",
+        number: 4,
+        sortOrder: 3,
+        priority: "medium",
+      }),
+    ];
+    expect(sortWorkIssuesForColumn(rows, "priority").map((row) => row.id)).toEqual([
+      "b",
+      "d",
+      "a",
+      "c",
+    ]);
+  });
+
+  it("orders by title, then key number", () => {
+    const rows = [
+      issue({ id: "a", title: "Zebra", number: 10, sortOrder: 0 }),
+      issue({ id: "b", title: "Alpha", number: 2, sortOrder: 1 }),
+      issue({ id: "c", title: "Alpha", number: 1, sortOrder: 2 }),
+    ];
+    expect(sortWorkIssuesForColumn(rows, "title").map((row) => row.id)).toEqual([
+      "c",
+      "b",
+      "a",
+    ]);
+  });
+
+  it("orders by created and updated newest first", () => {
+    const rows = [
+      issue({
+        id: "a",
+        title: "A",
+        number: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+      issue({
+        id: "b",
+        title: "B",
+        number: 2,
+        createdAt: "2026-02-01T00:00:00.000Z",
+        updatedAt: "2026-01-15T00:00:00.000Z",
+      }),
+    ];
+    expect(sortWorkIssuesForColumn(rows, "created").map((row) => row.id)).toEqual([
+      "b",
+      "a",
+    ]);
+    expect(sortWorkIssuesForColumn(rows, "updated").map((row) => row.id)).toEqual([
+      "a",
+      "b",
+    ]);
   });
 });

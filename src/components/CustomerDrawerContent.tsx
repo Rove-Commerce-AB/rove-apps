@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
@@ -11,6 +11,7 @@ import {
   InitialsAvatar,
   Input,
   OptionSegments,
+  PageLoading,
   Tabs,
   TabsContent,
   TabsList,
@@ -21,6 +22,7 @@ import { AddCustomerRateModal } from "@/components/AddCustomerRateModal";
 import { AddCustomerUserModal } from "@/components/AddCustomerUserModal";
 import { CustomerDrawerOverview } from "@/components/CustomerDrawerOverview";
 import { CustomerRatesTab } from "@/components/CustomerRatesTab";
+import { ProjectSettingsPanel } from "@/components/ProjectSettingsPanel";
 import {
   deleteCustomerAction,
   updateCustomerAction,
@@ -30,13 +32,20 @@ import { removeCustomerUserFromCustomer } from "@/lib/customerAppUsersClient";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
-import { createProject } from "@/lib/projectsClient";
+import {
+  createProject,
+  getProjectWithDetailsById,
+} from "@/lib/projectsClient";
 import {
   personHrefForConsultant,
   personHrefForUser,
   ROUTES,
 } from "@/lib/routes";
-import type { CustomerProjectSummary, CustomerWithDetails } from "@/types";
+import type {
+  CustomerProjectSummary,
+  CustomerWithDetails,
+  ProjectWithDetails,
+} from "@/types";
 
 type CustomerTab = "overview" | "projects" | "people" | "rates" | "danger";
 
@@ -310,6 +319,13 @@ export function CustomerDrawerContent({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<CustomerTab>("overview");
   const [creatingProject, setCreatingProject] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    null
+  );
+  const [selectedProject, setSelectedProject] =
+    useState<ProjectWithDetails | null>(null);
+  const [projectLoadError, setProjectLoadError] = useState<string | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
   const [showInactiveProjects, setShowInactiveProjects] = useState(false);
   const [addConsultantOpen, setAddConsultantOpen] = useState(false);
   const [addUserOpen, setAddUserOpen] = useState(false);
@@ -330,8 +346,48 @@ export function CustomerDrawerContent({
 
   function returnToProjects() {
     setCreatingProject(false);
+    setSelectedProjectId(null);
+    setSelectedProject(null);
+    setProjectLoadError(null);
     setActiveTab("projects");
   }
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setSelectedProject(null);
+      setProjectLoadError(null);
+      setProjectLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setProjectLoading(true);
+    setProjectLoadError(null);
+    void getProjectWithDetailsById(selectedProjectId)
+      .then((project) => {
+        if (cancelled) return;
+        if (!project) {
+          setSelectedProject(null);
+          setProjectLoadError("Project not found.");
+          setProjectLoading(false);
+          return;
+        }
+        setSelectedProject(project);
+        setProjectLoading(false);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setSelectedProject(null);
+        setProjectLoadError(
+          e instanceof Error ? e.message : "Failed to load project"
+        );
+        setProjectLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProjectId]);
 
   async function confirmRemoveUser() {
     if (!removeUserTarget) return;
@@ -373,6 +429,46 @@ export function CustomerDrawerContent({
         customerId={customer.id}
         onCancel={returnToProjects}
         onCreated={returnToProjects}
+      />
+    );
+  }
+
+  if (selectedProjectId) {
+    if (projectLoading) {
+      return (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12">
+          <PageLoading />
+        </div>
+      );
+    }
+
+    if (projectLoadError || !selectedProject) {
+      return (
+        <div className="flex min-h-0 flex-1 flex-col px-6 py-6">
+          <button
+            type="button"
+            onClick={returnToProjects}
+            className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
+          >
+            Back to projects
+          </button>
+          <p className="mt-4 text-sm text-danger" role="alert">
+            {projectLoadError ?? "Project not found."}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <ProjectSettingsPanel
+        key={selectedProject.id}
+        project={selectedProject}
+        isAdmin={isAdmin}
+        onBack={returnToProjects}
+        onDeleted={() => {
+          returnToProjects();
+          router.refresh();
+        }}
       />
     );
   }
@@ -436,13 +532,13 @@ export function CustomerDrawerContent({
             <ProjectGroup
               title="Confirmed"
               projects={confirmed}
-              onOpen={(id) => router.push(`/projects/${id}`)}
+              onOpen={setSelectedProjectId}
             />
             <ProjectGroup
               title="Pipeline"
               projects={pipeline}
               tone="pipeline"
-              onOpen={(id) => router.push(`/projects/${id}`)}
+              onOpen={setSelectedProjectId}
             />
 
             {inactive.length > 0 ? (
@@ -466,7 +562,7 @@ export function CustomerDrawerContent({
                       title="Inactive"
                       projects={inactive}
                       tone="inactive"
-                      onOpen={(id) => router.push(`/projects/${id}`)}
+                      onOpen={setSelectedProjectId}
                     />
                   </div>
                 ) : null}

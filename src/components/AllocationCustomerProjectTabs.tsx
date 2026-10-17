@@ -7,8 +7,14 @@ import {
 } from "@/components/TimeGridColumnHighlight";
 import type { Dispatch, SetStateAction } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Percent, ExternalLink } from "lucide-react";
-import { AllocationWeekNav } from "@/components/allocation/AllocationWeekNav";
+import {
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FoldVertical,
+  Percent,
+  UnfoldVertical,
+} from "lucide-react";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { consultantHref, customerHref } from "@/lib/routes";
 
@@ -131,15 +137,16 @@ export type AllocationCustomerProjectTabsProps = {
   data: AllocationPageData;
   monthSpans: { colSpan: number; label: string }[];
   isCurrentWeek: (w: { year: number; week: number }) => boolean;
+  renderMonthHeaderCells: (borderClass?: string) => React.ReactNode;
   renderWeekHeaderCells: (tableKey: string, borderClass?: string) => React.ReactNode;
-  shiftWeeks: (weeks: number) => void;
-  getShiftUrl: (weeks: number) => string;
-  router: { prefetch: (url: string) => void };
   expandedCustomers: Set<string>;
   toggleCustomer: (id: string) => void;
   perCustomer: unknown[];
   expandedProjects: Set<string>;
   toggleProject: (id: string) => void;
+  expandableProjectIds?: Set<string>;
+  onExpandAllProjects?: () => void;
+  onCollapseAllProjects?: () => void;
   perProject: unknown[];
   editingCell: EditingCellCustomerProject | null;
   setEditingCell: Dispatch<SetStateAction<EditingCellCustomerProject | null>>;
@@ -164,16 +171,6 @@ export type AllocationCustomerProjectTabsProps = {
   formatWeekLabel: (week: number, year: number) => string;
 };
 
-const weekNav = (p: AllocationCustomerProjectTabsProps) => (
-  <div className="mb-2 flex items-center justify-end px-1">
-    <AllocationWeekNav
-      onShift={p.shiftWeeks}
-      getUrl={p.getShiftUrl}
-      prefetch={p.router.prefetch}
-    />
-  </div>
-);
-
 export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTabsProps) {
   const p = props;
   const { data, tab } = p;
@@ -196,7 +193,9 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
     hoverRowKey === rowKey ? "time-grid-row-hover" : "";
 
   const allocColHoverClass = (weekIndex: number) =>
-    highlightedColumnIndex === weekIndex ? "time-grid-column-hover" : "";
+    `allocation-pan-cell${
+      highlightedColumnIndex === weekIndex ? " time-grid-column-hover" : ""
+    }`;
 
   const [customerDragState, setCustomerDragState] = useState<{
     mode: "consultant" | "project";
@@ -326,48 +325,47 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
   }, [tab, customerDragState, customerDragMoved, data, p]);
 
   if (tab === "customer") {
+    const renderCustomerColgroup = (keyPrefix: string) => (
+      <colgroup>
+        <col className="allocation-name-col" />
+        {data.weeks.map((w) => (
+          <col key={`${keyPrefix}-${w.year}-${w.week}`} className="w-[29px]" />
+        ))}
+        <col className="w-[4rem]" />
+      </colgroup>
+    );
+
     return (
-      <div className="p-2">
-        {weekNav(p)}
-        <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
-          <colgroup>
-            <col style={{ width: 300 }} />
-            {data.weeks.map((w) => (
-              <col key={`${w.year}-${w.week}`} className="w-[29px]" />
-            ))}
-            <col className="w-[4rem]" />
-          </colgroup>
-          <thead>
-            <tr className="border-b border-grid-subtle">
-              <th
-                rowSpan={2}
-                style={{ width: 300, maxWidth: 300, boxSizing: "border-box" }}
-                className="border-r border-grid-subtle px-2 py-1 text-left font-medium text-text-primary opacity-80"
-              >
-                Customer / Consultant
-              </th>
-              {p.monthSpans.map((span, i) => (
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+        <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default px-2 pt-2">
+          <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
+            {renderCustomerColgroup("h")}
+            <thead>
+              <tr className="border-b border-grid-subtle">
                 <th
-                  key={i}
-                  colSpan={span.colSpan}
-                  title={span.label}
-                  className="overflow-hidden border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                  rowSpan={2}
+                  className="allocation-name-col border-r border-border-subtle px-3 py-1 text-left text-label-s text-text-secondary"
                 >
-                  <span className="block truncate">{span.label}</span>
+                  Customer / Consultant
                 </th>
-              ))}
-              <th
-                rowSpan={2}
-                className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
-              >
-                Total
-              </th>
-            </tr>
-            <tr className="border-b border-grid-subtle">
-              {p.renderWeekHeaderCells("customer", "border-grid")}
-            </tr>
-          </thead>
-          <tbody>
+                {p.renderMonthHeaderCells("border-grid")}
+                <th
+                  rowSpan={2}
+                  className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                >
+                  Total
+                </th>
+              </tr>
+              <tr className="border-b border-grid-subtle">
+                {p.renderWeekHeaderCells("customer", "border-grid")}
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1 px-2 pb-2">
+          <table className="w-full min-w-0 table-fixed border border-form border-t-0 text-[10px]">
+            {renderCustomerColgroup("b")}
+            <tbody>
             {(p.perCustomer as Array<{
               customer: { id: string; name: string };
               projectGroups: Array<{
@@ -401,7 +399,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                     className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`cust-name-${row.customer.id}`)}`}
                     {...allocationRowHoverHandlers(`cust-name-${row.customer.id}`)}
                   >
-                    <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
+                    <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1.5 align-top">
                       <div className="flex items-center justify-between gap-1 w-full">
                         <button
                           type="button"
@@ -465,7 +463,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           className={`border-b border-grid-light-subtle bg-bg-muted/30 ${allocationRowHoverClass(`cust-proj-${row.customer.id}-${pg.project.id}`)}`}
                           {...allocationRowHoverHandlers(`cust-proj-${row.customer.id}-${pg.project.id}`)}
                         >
-                          <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
+                          <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
                             <Link
                               href={`/projects/${pg.project.id}`}
                               prefetch={false}
@@ -574,7 +572,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`cust-cell-${row.customer.id}-${pg.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}`}
                         {...allocationRowHoverHandlers(`cust-cell-${row.customer.id}-${pg.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}
                       >
-                        <td className="border-r border-grid-light-subtle px-2 py-1 pl-14 text-text-primary">
+                        <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1 pl-14 text-text-primary">
                           <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
                             <Link
                               href={consultantHref(cr.consultantId)}
@@ -728,6 +726,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
             })}
           </tbody>
         </table>
+        </div>
       </div>
     );
   }
@@ -762,49 +761,75 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
     totalByWeek: Map<string, number>;
   }>;
 
+  const renderProjectColgroup = (keyPrefix: string) => (
+    <colgroup>
+      <col className="allocation-name-col" />
+      {data.weeks.map((w) => (
+        <col key={`${keyPrefix}-${w.year}-${w.week}`} className="w-[29px]" />
+      ))}
+      <col className="w-[4rem]" />
+    </colgroup>
+  );
+
   return (
-    <div className="p-2">
-      {weekNav(p)}
-      <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
-        <colgroup>
-          <col style={{ width: 300 }} />
-          {data.weeks.map((w) => (
-            <col key={`${w.year}-${w.week}`} className="w-[29px]" />
-          ))}
-          <col className="w-[4rem]" />
-        </colgroup>
-        <thead>
-          <tr className="border-b border-grid-subtle">
-            <th
-              rowSpan={2}
-              style={{ width: 300, maxWidth: 300, boxSizing: "border-box" }}
-              className="border-r border-grid-subtle px-2 py-1 text-left font-medium text-text-primary opacity-80"
-            >
-              Project / Consultant
-            </th>
-            {p.monthSpans.map((span, i) => (
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default px-2 pt-2">
+        <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
+          {renderProjectColgroup("h")}
+          <thead>
+            <tr className="border-b border-grid-subtle">
               <th
-                key={i}
-                colSpan={span.colSpan}
-                title={span.label}
-                className="overflow-hidden border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                rowSpan={2}
+                className="allocation-name-col border-r border-border-subtle px-3 py-1 text-left text-label-s text-text-secondary"
               >
-                <span className="block truncate">{span.label}</span>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="min-w-0">Project / Consultant</span>
+                  {p.expandableProjectIds &&
+                  p.expandableProjectIds.size > 0 &&
+                  p.onExpandAllProjects &&
+                  p.onCollapseAllProjects ? (
+                    <div className="flex shrink-0 items-center">
+                      <button
+                        type="button"
+                        onClick={p.onExpandAllProjects}
+                        className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
+                        aria-label="Expand all"
+                        title="Expand all"
+                      >
+                        <UnfoldVertical className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={p.onCollapseAllProjects}
+                        className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
+                        aria-label="Collapse all"
+                        title="Collapse all"
+                      >
+                        <FoldVertical className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </th>
-            ))}
-            <th
-              rowSpan={2}
-              className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
-            >
-              Total
-            </th>
-          </tr>
-          <tr className="border-b border-grid-subtle">
-            {p.renderWeekHeaderCells("project", "border-grid")}
-          </tr>
-        </thead>
-        <tbody>
-          {perProject.map((row) => {
+              {p.renderMonthHeaderCells("border-grid")}
+              <th
+                rowSpan={2}
+                className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+              >
+                Total
+              </th>
+            </tr>
+            <tr className="border-b border-grid-subtle">
+              {p.renderWeekHeaderCells("project", "border-grid")}
+            </tr>
+          </thead>
+        </table>
+      </div>
+      <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1 px-2 pb-2">
+        <table className="w-full min-w-0 table-fixed border border-form border-t-0 text-[10px]">
+          {renderProjectColgroup("b")}
+          <tbody>
+            {perProject.map((row) => {
             const expanded = p.expandedProjects.has(row.project.id);
             const hasConsultants = row.consultantRows.length > 0;
             return (
@@ -813,7 +838,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                   className={`border-b border-grid-light-subtle last:border-form ${expanded && hasConsultants ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`proj-head-${row.project.id}`)}`}
                   {...allocationRowHoverHandlers(`proj-head-${row.project.id}`)}
                 >
-                  <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
+                  <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1.5 align-top">
                     <div className="flex items-center justify-between gap-1 w-full">
                       <button
                         type="button"
@@ -885,7 +910,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`proj-row-${row.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}`}
                       {...allocationRowHoverHandlers(`proj-row-${row.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}
                     >
-                      <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
+                      <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
                         <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
                           <Link
                             href={consultantHref(cr.consultantId)}
@@ -1049,8 +1074,9 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
               </Fragment>
             );
           })}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

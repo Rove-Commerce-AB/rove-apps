@@ -8,10 +8,9 @@ import {
   useState,
   useTransition,
   type DragEvent,
-  type ReactNode,
 } from "react";
-import { GripVertical } from "lucide-react";
-import { Button } from "@/components/ui";
+import { ArrowRight, GripVertical } from "lucide-react";
+import { Button, IconButton } from "@/components/ui";
 import {
   addWorkIssueAssigneeAction,
   closeWorkSprintAction,
@@ -24,7 +23,6 @@ import {
   updateWorkIssueTypeAction,
   updateWorkSprintAction,
 } from "../../actions";
-import { WorkAddIssueInline } from "./WorkAddIssueInline";
 import {
   collectBoardComponents,
   collectOwnerFilterPeople,
@@ -47,6 +45,7 @@ import {
   workSprintLabel,
 } from "@/lib/workSprintLabel";
 import { formatWorkHours } from "@/lib/workTime";
+import { WorkAddIssueInline } from "./WorkAddIssueInline";
 import {
   WorkBoardViewControls,
   WorkCardPreDeployHint,
@@ -55,7 +54,7 @@ import {
 } from "./WorkBoardViewControls";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkCardPeople } from "./WorkIssueDrawer";
-import { WorkSprintPicker } from "./WorkSprintPicker";
+import { WorkViewToolbar } from "./WorkViewToolbar";
 
 const DRAG_TYPE = "application/x-work-sprint-issue";
 
@@ -118,7 +117,13 @@ export function WorkSprintView({
   const [editingCapacity, setEditingCapacity] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
-  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(() => {
+    const currentSprint =
+      sprints.find((sprint) => sprint.status === "current") ?? null;
+    if (currentSprint) return currentSprint.id;
+    const ordered = sortSprints(sprints);
+    return ordered[ordered.length - 1]?.id ?? null;
+  });
   const [dragOverTarget, setDragOverTarget] = useState<"backlog" | "sprint" | null>(
     null
   );
@@ -153,7 +158,25 @@ export function WorkSprintView({
 
   const orderedSprints = useMemo(() => sortSprints(sprints), [sprints]);
   const current = sprints.find((sprint) => sprint.status === "current") ?? null;
-  const next = sprints.find((sprint) => sprint.status === "next") ?? null;
+  const upcomingSprints = useMemo(
+    () =>
+      sprints
+        .filter((sprint) => sprint.status === "next")
+        .slice()
+        .sort(
+          (a, b) =>
+            a.startsOn.localeCompare(b.startsOn) || a.number - b.number
+        ),
+    [sprints]
+  );
+  const next = upcomingSprints[0] ?? null;
+  const planAfterSprint = useMemo(() => {
+    const open = sprints.filter(
+      (sprint) => sprint.status === "current" || sprint.status === "next"
+    );
+    if (open.length === 0) return null;
+    return open.slice().sort((a, b) => b.endsOn.localeCompare(a.endsOn))[0]!;
+  }, [sprints]);
 
   useEffect(() => {
     if (orderedSprints.length === 0) {
@@ -168,9 +191,13 @@ export function WorkSprintView({
     });
   }, [orderedSprints, current?.id]);
 
+  // Fall back synchronously so the sprint chip is selected on first paint
+  // (avoids a flash when remounting after switching from Timeline).
   const viewing =
-    orderedSprints.find((sprint) => sprint.id === viewingId) ?? null;
-  const isViewingCurrent = viewing?.status === "current";
+    orderedSprints.find((sprint) => sprint.id === viewingId) ??
+    current ??
+    orderedSprints[orderedSprints.length - 1] ??
+    null;
   const canPlanScope =
     viewing?.status === "current" || viewing?.status === "next";
 
@@ -238,7 +265,7 @@ export function WorkSprintView({
     () => columnIssueGroups(viewingIssues, sprintGroupBy),
     [viewingIssues, sprintGroupBy]
   );
-  const backlogOwnerPeople = useMemo(
+  const backlogFilterPeople = useMemo(
     () => collectOwnerFilterPeople(board.people, backlogAll),
     [board.people, backlogAll]
   );
@@ -246,7 +273,7 @@ export function WorkSprintView({
     () => collectBoardComponents(board.components, backlogAll),
     [board.components, backlogAll]
   );
-  const sprintOwnerPeople = useMemo(
+  const sprintFilterPeople = useMemo(
     () => collectOwnerFilterPeople(board.people, viewingIssuesAll),
     [board.people, viewingIssuesAll]
   );
@@ -451,15 +478,33 @@ export function WorkSprintView({
   }
 
   function moveIssue(issueId: string, sprintId: string | null) {
-    const issue = issues.find((row) => row.id === issueId);
-    if (!issue) return;
-    if ((issue.sprintId ?? null) === sprintId) return;
+    moveIssues([issueId], sprintId);
+  }
+
+  function moveIssues(issueIds: string[], sprintId: string | null) {
+    const idSet = new Set(
+      issueIds.filter((issueId) => {
+        const issue = issues.find((row) => row.id === issueId);
+        return issue != null && (issue.sprintId ?? null) !== sprintId;
+      })
+    );
+    if (idSet.size === 0) return;
     onIssuesChange(
       issues.map((row) =>
-        row.id === issueId ? { ...row, sprintId } : row
+        idSet.has(row.id) ? { ...row, sprintId } : row
       )
     );
-    run(() => setWorkIssueSprintAction(board.id, issueId, sprintId));
+    run(async () => {
+      const results = await Promise.all(
+        [...idSet].map((issueId) =>
+          setWorkIssueSprintAction(board.id, issueId, sprintId)
+        )
+      );
+      const failed = results.find(
+        (result): result is { ok: false; error: string } => !result.ok
+      );
+      return failed ?? { ok: true };
+    });
   }
 
   function onDragStart(event: DragEvent, issueId: string) {
@@ -508,316 +553,302 @@ export function WorkSprintView({
     moveIssue(issueId, null);
   }
 
+  const canCreateInSprint = canPlanScope && viewing != null;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {orderedSprints.length > 0 ? (
-            <WorkSprintPicker
-              sprints={orderedSprints}
-              selectedIds={viewing?.id ? [viewing.id] : []}
-              onChange={(ids) => {
-                const id = ids[ids.length - 1];
-                if (id) setViewingId(id);
-              }}
-            />
-          ) : (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mb-2 shrink-0">
+        <WorkViewToolbar
+          sprints={orderedSprints}
+          selectedSprintIds={viewing?.id ? [viewing.id] : []}
+          onSelectedSprintIdsChange={(ids) => {
+            const id = ids[ids.length - 1];
+            if (id) setViewingId(id);
+          }}
+          emptySprints={
             <>
               <h2 className="text-heading-s text-text-primary">No sprints yet</h2>
               <p className="text-sm text-text-secondary">
                 Create a current sprint to plan scope.
               </p>
             </>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {viewing ? (
-            <>
-              {board.showTime ? (
-              <div
-                className="flex items-center gap-2"
-                title={
-                  capacityHours == null
-                    ? `${formatWorkHours(estimateSum)} planned`
-                    : `${formatWorkHours(estimateSum)} / ${formatWorkHours(capacityHours)}`
+          }
+          onPlanNext={
+            current
+              ? () => {
+                  const anchor = planAfterSprint ?? current;
+                  setPlanStartsOn(addDays(anchor.endsOn, 1));
+                  setPlanLengthWeeks(sprintLengthWeeks(anchor));
+                  setPlanTitleDraft("");
+                  setPlanCapacityDraft("");
+                  setLengthDialog("next");
                 }
-              >
+              : undefined
+          }
+          planNextDisabled={pending}
+          onCloseCurrent={
+            current ? () => setCloseOpen(true) : undefined
+          }
+          closeCurrentDisabled={pending}
+          actions={
+            <>
+              {viewing && board.showTime ? (
                 <div
-                  className="h-1.5 w-24 overflow-hidden rounded-full bg-bg-muted"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={
+                  className="flex items-center gap-2"
+                  title={
                     capacityHours == null
-                      ? undefined
-                      : Math.round(capacityFillPct)
+                      ? `${formatWorkHours(estimateSum)} planned`
+                      : `${formatWorkHours(estimateSum)} / ${formatWorkHours(capacityHours)}`
                   }
-                  aria-label="Planned hours versus capacity"
                 >
                   <div
-                    className={`h-full rounded-full transition-[width] duration-200 ${
-                      overCapacity ? "bg-danger" : "bg-brand-signal"
-                    }`}
-                    style={{
-                      width:
-                        capacityHours == null ? "0%" : `${capacityFillPct}%`,
-                    }}
-                  />
-                </div>
-                <span
-                  className={`text-[13px] tabular-nums ${
-                    overCapacity ? "text-danger" : "text-text-primary"
-                  }`}
-                >
-                  {formatWorkHours(estimateSum)}
-                </span>
-                <span className="text-[13px] text-text-tertiary">/</span>
-                {canPlanScope && editingCapacity ? (
-                  <label className="inline-flex items-center gap-0.5 rounded-md bg-bg-muted px-1.5 py-0.5">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      autoFocus
-                      disabled={pending}
-                      aria-label="Sprint capacity in hours"
-                      value={capacityDraft}
-                      onChange={(event) => setCapacityDraft(event.target.value)}
-                      onBlur={() => commitCapacity(capacityDraft)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          commitCapacity(capacityDraft);
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          setCapacityDraft(
-                            capacityHours == null
-                              ? ""
-                              : String(capacityHours)
-                          );
-                          setEditingCapacity(false);
-                        }
+                    className="h-1.5 w-24 overflow-hidden rounded-full bg-bg-muted"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={
+                      capacityHours == null
+                        ? undefined
+                        : Math.round(capacityFillPct)
+                    }
+                    aria-label="Planned hours versus capacity"
+                  >
+                    <div
+                      className={`h-full rounded-full transition-[width] duration-200 ${
+                        overCapacity ? "bg-danger" : "bg-brand-signal"
+                      }`}
+                      style={{
+                        width:
+                          capacityHours == null ? "0%" : `${capacityFillPct}%`,
                       }}
-                      className="w-10 border-0 bg-transparent p-0 text-right text-caption tabular-nums text-text-primary focus:outline-none disabled:opacity-50"
                     />
-                    <span className="text-caption text-text-tertiary">h</span>
-                  </label>
-                ) : canPlanScope ? (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    aria-label={
-                      capacityHours == null
-                        ? "Set capacity"
-                        : `Capacity ${formatWorkHours(capacityHours)}`
-                    }
-                    title={
-                      capacityHours == null
-                        ? "Set capacity"
-                        : `Capacity ${formatWorkHours(capacityHours)} · click to edit`
-                    }
-                    onClick={() => setEditingCapacity(true)}
-                    className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-caption tabular-nums transition-colors disabled:opacity-50 ${
-                      capacityHours == null
-                        ? "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
-                        : "bg-bg-muted text-text-secondary hover:bg-border-subtle hover:text-text-primary"
+                  </div>
+                  <span
+                    className={`text-[13px] tabular-nums ${
+                      overCapacity ? "text-danger" : "text-text-primary"
                     }`}
                   >
-                    {capacityHours == null
-                      ? "Capacity"
-                      : formatWorkHours(capacityHours)}
-                  </button>
-                ) : (
-                  <span className="inline-flex items-center rounded-md bg-bg-muted px-1.5 py-0.5 text-caption tabular-nums text-text-secondary">
-                    {capacityHours == null
-                      ? "—"
-                      : formatWorkHours(capacityHours)}
+                    {formatWorkHours(estimateSum)}
                   </span>
-                )}
-              </div>
+                  <span className="text-[13px] text-text-tertiary">/</span>
+                  {canPlanScope && editingCapacity ? (
+                    <label className="inline-flex items-center gap-0.5 rounded-md bg-bg-muted px-1.5 py-0.5">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoFocus
+                        disabled={pending}
+                        aria-label="Sprint capacity in hours"
+                        value={capacityDraft}
+                        onChange={(event) => setCapacityDraft(event.target.value)}
+                        onBlur={() => commitCapacity(capacityDraft)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            commitCapacity(capacityDraft);
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setCapacityDraft(
+                              capacityHours == null ? "" : String(capacityHours)
+                            );
+                            setEditingCapacity(false);
+                          }
+                        }}
+                        className="w-10 border-0 bg-transparent p-0 text-right text-caption tabular-nums text-text-primary focus:outline-none disabled:opacity-50"
+                      />
+                      <span className="text-caption text-text-tertiary">h</span>
+                    </label>
+                  ) : canPlanScope ? (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      aria-label={
+                        capacityHours == null
+                          ? "Set capacity"
+                          : `Capacity ${formatWorkHours(capacityHours)}`
+                      }
+                      title={
+                        capacityHours == null
+                          ? "Set capacity"
+                          : `Capacity ${formatWorkHours(capacityHours)} · click to edit`
+                      }
+                      onClick={() => setEditingCapacity(true)}
+                      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-caption tabular-nums transition-colors disabled:opacity-50 ${
+                        capacityHours == null
+                          ? "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
+                          : "bg-bg-muted text-text-secondary hover:bg-border-subtle hover:text-text-primary"
+                      }`}
+                    >
+                      {capacityHours == null
+                        ? "Capacity"
+                        : formatWorkHours(capacityHours)}
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center rounded-md bg-bg-muted px-1.5 py-0.5 text-caption tabular-nums text-text-secondary">
+                      {capacityHours == null
+                        ? "—"
+                        : formatWorkHours(capacityHours)}
+                    </span>
+                  )}
+                </div>
               ) : null}
-              {isViewingCurrent ? (
+              {!current ? (
                 <Button
                   type="button"
-                  variant="secondary"
                   size="sm"
                   disabled={pending}
-                  onClick={() => setCloseOpen(true)}
+                  onClick={() => {
+                    setPlanStartsOn(new Date().toISOString().slice(0, 10));
+                    setPlanLengthWeeks(2);
+                    setPlanTitleDraft("");
+                    setPlanCapacityDraft("");
+                    setLengthDialog("start");
+                  }}
                 >
-                  Close sprint
+                  Start sprint
                 </Button>
               ) : null}
             </>
-          ) : null}
-          {!current ? (
-            <Button
-              type="button"
-              size="sm"
-              disabled={pending}
-              onClick={() => {
-                setPlanStartsOn(new Date().toISOString().slice(0, 10));
-                setPlanLengthWeeks(2);
-                setPlanTitleDraft("");
-                setPlanCapacityDraft("");
-                setLengthDialog("start");
-              }}
-            >
-              Start sprint
-            </Button>
-          ) : !next ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={pending}
-              onClick={() => {
-                setPlanStartsOn(addDays(current.endsOn, 1));
-                setPlanLengthWeeks(sprintLengthWeeks(current));
-                setPlanTitleDraft("");
-                setPlanCapacityDraft("");
-                setLengthDialog("next");
-              }}
-            >
-              Plan next
-            </Button>
-          ) : null}
-          {current && viewing && !isViewingCurrent ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setViewingId(current.id)}
-            >
-              Go to current
-            </Button>
-          ) : null}
-        </div>
+          }
+        />
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
-        <SprintColumn
-          title="Backlog"
-          count={backlog.length}
-          empty="No backlog issues."
-          issues={backlog}
-          groups={backlogGroups}
-          groupBy={backlogGroupBy}
-          headerActions={
-            <WorkBoardViewControls
-              people={backlogOwnerPeople}
-              components={backlogFilterComponents}
-              ownerFilterIds={backlogOwnerFilterIds}
-              onOwnerFilterChange={setBacklogOwnerFilterIds}
-              typeFilterIds={backlogTypeFilterIds}
-              onTypeFilterChange={setBacklogTypeFilterIds}
-              componentFilterIds={backlogComponentFilterIds}
-              onComponentFilterChange={setBacklogComponentFilterIds}
-              priorityFilterIds={backlogPriorityFilterIds}
-              onPriorityFilterChange={setBacklogPriorityFilterIds}
-              groupBy={backlogGroupBy}
-              onGroupByChange={setBacklogGroupBy}
-            />
-          }
-          pending={pending}
-          estimateDisabled={pending}
-          dropActive={dragOverTarget === "backlog"}
-          canDrop={canPlanScope}
-          draggableCards={canPlanScope}
-          canCreate
-          onCreateIssue={(title, issueType) =>
-            createIssue({ title, issueType, sprintId: null })
-          }
-          onOpenIssue={onOpenIssue}
-          onEstimateChange={commitEstimate}
-          onTypeChange={commitType}
-          onSetOwner={commitOwner}
-          onAddAssignee={commitAddAssignee}
-          onRemoveAssignee={commitRemoveAssignee}
-          onError={onError}
-          board={board}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          onDragOver={(event) => acceptDrop(event, "backlog")}
-          onDragLeave={() => setDragOverTarget(null)}
-          onDrop={(event) => handleDrop(event, "backlog")}
-        />
-        <SprintColumn
-          title={viewing ? workSprintLabel(viewing) : "Sprint"}
-          titleEditable={
-            viewing && canPlanScope
-              ? {
-                  number: viewing.number,
-                  draft: titleDraft,
-                  savedTitle: viewing.title,
-                  editing: editingTitle,
-                  disabled: pending,
-                  onEditingChange: setEditingTitle,
-                  onDraftChange: setTitleDraft,
-                  onCommit: commitSprintTitle,
-                }
-              : undefined
-          }
-          count={viewingIssues.length}
-          empty={
-            viewing
-              ? canPlanScope
-                ? "Drop issues here from the backlog."
-                : "No issues in this sprint."
-              : "Start a sprint first."
-          }
-          issues={viewingIssues}
-          groups={viewingGroups}
-          groupBy={sprintGroupBy}
-          headerActions={
-            <WorkBoardViewControls
-              people={sprintOwnerPeople}
-              components={sprintFilterComponents}
-              ownerFilterIds={sprintOwnerFilterIds}
-              onOwnerFilterChange={setSprintOwnerFilterIds}
-              typeFilterIds={sprintTypeFilterIds}
-              onTypeFilterChange={setSprintTypeFilterIds}
-              componentFilterIds={sprintComponentFilterIds}
-              onComponentFilterChange={setSprintComponentFilterIds}
-              priorityFilterIds={sprintPriorityFilterIds}
-              onPriorityFilterChange={setSprintPriorityFilterIds}
-              groupBy={sprintGroupBy}
-              onGroupByChange={setSprintGroupBy}
-            />
-          }
-          pending={pending || !canPlanScope}
-          estimateDisabled={pending}
-          dropActive={dragOverTarget === "sprint"}
-          canDrop={canPlanScope}
-          draggableCards={canPlanScope}
-          canCreate={canPlanScope && viewing != null}
-          onCreateIssue={
-            viewing && canPlanScope
-              ? (title, issueType) =>
-                  createIssue({ title, issueType, sprintId: viewing.id })
-              : undefined
-          }
-          onOpenIssue={onOpenIssue}
-          onEstimateChange={commitEstimate}
-          onTypeChange={commitType}
-          onSetOwner={commitOwner}
-          onAddAssignee={commitAddAssignee}
-          onRemoveAssignee={commitRemoveAssignee}
-          onError={onError}
-          warnBlocked={canPlanScope ? unfinished : undefined}
-          board={board}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          onDragOver={(event) => acceptDrop(event, "sprint")}
-          onDragLeave={() => setDragOverTarget(null)}
-          onDrop={(event) => handleDrop(event, "sprint")}
-        />
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border-subtle bg-bg-default">
+        <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-border-subtle">
+          <SprintColumn
+            embedded
+            title="Backlog"
+            count={backlog.length}
+            empty="No backlog issues."
+            issues={backlog}
+            groups={backlogGroups}
+            groupBy={backlogGroupBy}
+            pending={pending}
+            estimateDisabled={pending}
+            dropActive={dragOverTarget === "backlog"}
+            canDrop={canPlanScope}
+            draggableCards={canPlanScope}
+            onOpenIssue={onOpenIssue}
+            onEstimateChange={commitEstimate}
+            onTypeChange={commitType}
+            onSetOwner={commitOwner}
+            onAddAssignee={commitAddAssignee}
+            onRemoveAssignee={commitRemoveAssignee}
+            onError={onError}
+            board={board}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onDragOver={(event) => acceptDrop(event, "backlog")}
+            onDragLeave={() => setDragOverTarget(null)}
+            onDrop={(event) => handleDrop(event, "backlog")}
+            onMoveGroupToSprint={
+              canPlanScope && viewing
+                ? (issueIds) => moveIssues(issueIds, viewing.id)
+                : undefined
+            }
+            viewControls={{
+              people: backlogFilterPeople,
+              components: backlogFilterComponents,
+              ownerFilterIds: backlogOwnerFilterIds,
+              onOwnerFilterChange: setBacklogOwnerFilterIds,
+              typeFilterIds: backlogTypeFilterIds,
+              onTypeFilterChange: setBacklogTypeFilterIds,
+              componentFilterIds: backlogComponentFilterIds,
+              onComponentFilterChange: setBacklogComponentFilterIds,
+              priorityFilterIds: backlogPriorityFilterIds,
+              onPriorityFilterChange: setBacklogPriorityFilterIds,
+              groupBy: backlogGroupBy,
+              onGroupByChange: setBacklogGroupBy,
+            }}
+            onCreateIssue={({ title, issueType }) =>
+              createIssue({ title, issueType, sprintId: null })
+            }
+          />
+          <SprintColumn
+            embedded
+            title={viewing ? workSprintLabel(viewing) : "Sprint"}
+            titleEditable={
+              viewing && canPlanScope
+                ? {
+                    number: viewing.number,
+                    draft: titleDraft,
+                    savedTitle: viewing.title,
+                    editing: editingTitle,
+                    disabled: pending,
+                    onEditingChange: setEditingTitle,
+                    onDraftChange: setTitleDraft,
+                    onCommit: commitSprintTitle,
+                  }
+                : undefined
+            }
+            count={viewingIssues.length}
+            empty={
+              viewing
+                ? canPlanScope
+                  ? "Drop issues here from the backlog."
+                  : "No issues in this sprint."
+                : "Start a sprint first."
+            }
+            issues={viewingIssues}
+            groups={viewingGroups}
+            groupBy={sprintGroupBy}
+            pending={pending || !canPlanScope}
+            estimateDisabled={pending}
+            dropActive={dragOverTarget === "sprint"}
+            canDrop={canPlanScope}
+            draggableCards={canPlanScope}
+            onOpenIssue={onOpenIssue}
+            onEstimateChange={commitEstimate}
+            onTypeChange={commitType}
+            onSetOwner={commitOwner}
+            onAddAssignee={commitAddAssignee}
+            onRemoveAssignee={commitRemoveAssignee}
+            onError={onError}
+            warnBlocked={canPlanScope ? unfinished : undefined}
+            board={board}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onDragOver={(event) => acceptDrop(event, "sprint")}
+            onDragLeave={() => setDragOverTarget(null)}
+            onDrop={(event) => handleDrop(event, "sprint")}
+            viewControls={{
+              people: sprintFilterPeople,
+              components: sprintFilterComponents,
+              ownerFilterIds: sprintOwnerFilterIds,
+              onOwnerFilterChange: setSprintOwnerFilterIds,
+              typeFilterIds: sprintTypeFilterIds,
+              onTypeFilterChange: setSprintTypeFilterIds,
+              componentFilterIds: sprintComponentFilterIds,
+              onComponentFilterChange: setSprintComponentFilterIds,
+              priorityFilterIds: sprintPriorityFilterIds,
+              onPriorityFilterChange: setSprintPriorityFilterIds,
+              groupBy: sprintGroupBy,
+              onGroupByChange: setSprintGroupBy,
+            }}
+            onCreateIssue={
+              canCreateInSprint && viewing
+                ? ({ title, issueType }) =>
+                    createIssue({
+                      title,
+                      issueType,
+                      sprintId: viewing.id,
+                    })
+                : undefined
+            }
+          />
+        </div>
       </div>
 
       {lengthDialog && (lengthDialog === "start" || current) ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-sm rounded-xl bg-bg-default p-5 shadow-lg">
             <h3 className="text-heading-s text-text-primary">
-              {lengthDialog === "start" ? "Start sprint" : "Plan next sprint"}
+              {lengthDialog === "start"
+                ? "Start sprint"
+                : upcomingSprints.length > 0
+                  ? "Plan another sprint"
+                  : "Plan next sprint"}
             </h3>
             <label className="mt-4 block space-y-1.5">
               <span className="text-sm font-medium text-text-primary">
@@ -985,7 +1016,7 @@ export function WorkSprintView({
         </div>
       ) : null}
 
-      {closeOpen && current && isViewingCurrent ? (
+      {closeOpen && current ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-md rounded-xl bg-bg-default p-5 shadow-lg">
             <h3 className="text-heading-s text-text-primary">Close sprint</h3>
@@ -1063,7 +1094,7 @@ export function WorkSprintView({
             </div>
             {unfinished.length > 0 && !next ? (
               <p className="mt-3 text-caption text-text-tertiary">
-                Create a next sprint to enable “Move to next”.
+                Plan a next sprint to enable “Move to next”.
               </p>
             ) : null}
           </div>
@@ -1074,6 +1105,7 @@ export function WorkSprintView({
 }
 
 function SprintColumn({
+  embedded = false,
   title,
   titleEditable,
   count,
@@ -1081,14 +1113,11 @@ function SprintColumn({
   issues,
   groups,
   groupBy = "none",
-  headerActions,
   pending,
   estimateDisabled = false,
   dropActive,
   canDrop,
   draggableCards,
-  canCreate = false,
-  onCreateIssue,
   onOpenIssue,
   onEstimateChange,
   onTypeChange,
@@ -1103,7 +1132,11 @@ function SprintColumn({
   onDragOver,
   onDragLeave,
   onDrop,
+  onMoveGroupToSprint,
+  viewControls,
+  onCreateIssue,
 }: {
+  embedded?: boolean;
   title: string;
   titleEditable?: {
     number: number;
@@ -1120,17 +1153,11 @@ function SprintColumn({
   issues: WorkIssue[];
   groups?: WorkColumnGroup[];
   groupBy?: WorkBoardGroupBy;
-  headerActions?: ReactNode;
   pending: boolean;
   estimateDisabled?: boolean;
   dropActive: boolean;
   canDrop: boolean;
   draggableCards: boolean;
-  canCreate?: boolean;
-  onCreateIssue?: (
-    title: string,
-    issueType: WorkIssueType
-  ) => Promise<boolean>;
   onOpenIssue: (issueId: string) => void;
   onEstimateChange: (issueId: string, value: number | null) => void;
   onTypeChange: (issueId: string, issueType: WorkIssueType) => void;
@@ -1145,7 +1172,27 @@ function SprintColumn({
   onDragOver: (event: DragEvent) => boolean;
   onDragLeave: () => void;
   onDrop: (event: DragEvent) => void;
+  onMoveGroupToSprint?: (issueIds: string[]) => void;
+  viewControls?: {
+    people: WorkPerson[];
+    components: ReturnType<typeof collectBoardComponents>;
+    ownerFilterIds: string[];
+    onOwnerFilterChange: (ids: string[]) => void;
+    typeFilterIds: WorkIssueType[];
+    onTypeFilterChange: (ids: WorkIssueType[]) => void;
+    componentFilterIds: string[];
+    onComponentFilterChange: (ids: string[]) => void;
+    priorityFilterIds: WorkBoardPriorityFilterId[];
+    onPriorityFilterChange: (ids: WorkBoardPriorityFilterId[]) => void;
+    groupBy: WorkBoardGroupBy;
+    onGroupByChange: (value: WorkBoardGroupBy) => void;
+  };
+  onCreateIssue?: (input: {
+    title: string;
+    issueType: WorkIssueType;
+  }) => Promise<boolean> | boolean;
 }) {
+  const [adding, setAdding] = useState(false);
   const blockedIds = useMemo(() => {
     if (!warnBlocked || !board) return new Set<string>();
     const ids = new Set<string>();
@@ -1260,10 +1307,16 @@ function SprintColumn({
 
   return (
     <section
-      className={`flex min-h-0 flex-col rounded-xl border bg-bg-muted/40 transition-colors ${
-        dropActive
-          ? "border-brand-signal bg-accent-primary-subtle/40"
-          : "border-border-subtle"
+      className={`flex min-h-0 flex-col transition-colors ${
+        embedded
+          ? `min-h-0 bg-bg-default ${
+              dropActive ? "bg-accent-primary-subtle/40" : ""
+            }`
+          : `rounded-xl border bg-bg-muted/40 ${
+              dropActive
+                ? "border-brand-signal bg-accent-primary-subtle/40"
+                : "border-border-subtle"
+            }`
       }`}
       onDragOver={(event) => {
         if (!canDrop) return;
@@ -1275,7 +1328,7 @@ function SprintColumn({
         onDrop(event);
       }}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-2">
         {titleEditable ? (
           <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
             <span className="shrink-0 text-sm font-medium text-text-primary">
@@ -1326,19 +1379,54 @@ function SprintColumn({
             )}
           </div>
         ) : (
-          <h3 className="min-w-0 truncate text-sm font-medium text-text-primary">
+          <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
             {title}
           </h3>
         )}
-        <div className="flex shrink-0 items-center gap-1">
-          {headerActions}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {viewControls ? (
+            <WorkBoardViewControls
+              people={viewControls.people}
+              components={viewControls.components}
+              ownerFilterIds={viewControls.ownerFilterIds}
+              onOwnerFilterChange={viewControls.onOwnerFilterChange}
+              typeFilterIds={viewControls.typeFilterIds}
+              onTypeFilterChange={viewControls.onTypeFilterChange}
+              componentFilterIds={viewControls.componentFilterIds}
+              onComponentFilterChange={viewControls.onComponentFilterChange}
+              priorityFilterIds={viewControls.priorityFilterIds}
+              onPriorityFilterChange={viewControls.onPriorityFilterChange}
+              groupBy={viewControls.groupBy}
+              onGroupByChange={viewControls.onGroupByChange}
+            />
+          ) : null}
           <span className="tabular-nums text-caption text-text-tertiary">
             {count}
           </span>
+          {onCreateIssue && !adding ? (
+            <WorkAddIssueInline
+              iconOnly
+              disabled={pending}
+              onOpenChange={(open) => {
+                if (open) setAdding(true);
+              }}
+              onCreate={onCreateIssue}
+            />
+          ) : null}
         </div>
       </header>
+      {adding && onCreateIssue ? (
+        <div className="border-b border-border-subtle px-2 py-2">
+          <WorkAddIssueInline
+            open
+            disabled={pending}
+            onOpenChange={setAdding}
+            onCreate={onCreateIssue}
+          />
+        </div>
+      ) : null}
       <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-        {issues.length === 0 ? (
+        {issues.length === 0 && !adding ? (
           <li className="px-2 py-6 text-center text-sm text-text-tertiary">
             {empty}
           </li>
@@ -1352,6 +1440,23 @@ function SprintColumn({
                     group={group}
                     showTime={board?.showTime}
                     className={groupIndex === 0 ? "" : "mt-1"}
+                    actions={
+                      onMoveGroupToSprint && group.issues.length > 0 ? (
+                        <IconButton
+                          aria-label={`Move ${group.title} to sprint`}
+                          title="Move group to sprint"
+                          disabled={pending}
+                          className="!p-1"
+                          onClick={() =>
+                            onMoveGroupToSprint(
+                              group.issues.map((issue) => issue.id)
+                            )
+                          }
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                        </IconButton>
+                      ) : undefined
+                    }
                   />
                 </li>
               ) : null}
@@ -1362,17 +1467,6 @@ function SprintColumn({
           ))
         )}
       </ul>
-      {canCreate && onCreateIssue ? (
-        <div className="shrink-0 border-t border-border-subtle px-2 py-1.5">
-          <WorkAddIssueInline
-            disabled={pending}
-            buttonClassName="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-body-m text-text-secondary hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
-            onCreate={({ title, issueType }) =>
-              onCreateIssue(title, issueType)
-            }
-          />
-        </div>
-      ) : null}
     </section>
   );
 }

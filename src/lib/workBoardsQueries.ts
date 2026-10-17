@@ -86,6 +86,26 @@ export async function fetchWorkBoardsForCustomerIds(
   }));
 }
 
+/** Active Work project linked to a planner project, if any. */
+export async function fetchWorkProjectByPlannerProjectId(
+  plannerProjectId: string
+): Promise<{ id: string; customerId: string } | null> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    customer_id: string;
+  }>(
+    `SELECT id, customer_id
+     FROM work_projects
+     WHERE planner_project_id = $1
+       AND archived_at IS NULL
+     LIMIT 1`,
+    [plannerProjectId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return { id: row.id, customerId: row.customer_id };
+}
+
 export async function fetchWorkBoardById(
   boardId: string
 ): Promise<

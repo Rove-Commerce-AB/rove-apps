@@ -13,15 +13,15 @@ import {
   type FocusEvent,
 } from "react";
 import Link from "next/link";
-import type { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
-  Trash2,
+  FoldVertical,
   Percent,
   ExternalLink,
+  Trash2,
+  UnfoldVertical,
 } from "lucide-react";
-import { AllocationWeekNav } from "@/components/allocation/AllocationWeekNav";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 import { allocationCellKey } from "@/lib/allocationCellKey";
@@ -36,8 +36,6 @@ import { consultantHref, customerHref } from "@/lib/routes";
 
 type PerConsultantRow = ReturnType<typeof buildPerConsultantView>[number];
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
-
-type RouterCompat = Pick<ReturnType<typeof useRouter>, "push" | "prefetch">;
 
 type DeleteBookingItem = { allocationId: string; year: number; week: number };
 
@@ -80,20 +78,10 @@ type EmbedMode = {
 };
 
 export type AllocationConsultantTablesProps = {
-  expandableConsultantIds: Set<string>;
-  setExpandedConsultants: Dispatch<SetStateAction<Set<string>>>;
-  shiftWeeks: (weeks: number) => void;
-  embedWeekNavLoading: boolean;
-  onWeekRangeChange?: (
-    year: number,
-    weekFrom: number,
-    weekTo: number
-  ) => void | Promise<void>;
-  router: RouterCompat;
-  getShiftUrl: (weeks: number) => string;
   embedMode: EmbedMode | undefined;
   data: AllocationPageData;
   monthSpans: { label: string; colSpan: number }[];
+  renderMonthHeaderCells: (borderClass?: string) => ReactNode[];
   renderWeekHeaderCells: (
     tableKey: string,
     borderClass?: string
@@ -101,6 +89,9 @@ export type AllocationConsultantTablesProps = {
   perConsultantDisplay: PerConsultantRow[];
   perConsultantInternal: PerConsultantRow[];
   perConsultantExternal: PerConsultantRow[];
+  expandableConsultantIds: Set<string>;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
   expandedConsultants: Set<string>;
   toggleConsultant: (id: string) => void;
   cellDragConsultant: { id: string; name: string } | null;
@@ -140,20 +131,16 @@ export type AllocationConsultantTablesProps = {
 
 export function AllocationConsultantTables(props: AllocationConsultantTablesProps) {
   const {
-    expandableConsultantIds,
-    setExpandedConsultants,
-    shiftWeeks,
-    embedWeekNavLoading,
-    onWeekRangeChange,
-    router,
-    getShiftUrl,
     embedMode,
     data,
-    monthSpans,
+    renderMonthHeaderCells,
     renderWeekHeaderCells,
     perConsultantDisplay,
     perConsultantInternal,
     perConsultantExternal,
+    expandableConsultantIds,
+    onExpandAll,
+    onCollapseAll,
     expandedConsultants,
     toggleConsultant,
     cellDragConsultant,
@@ -209,7 +196,9 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
     hoverRowKey === rowKey ? "time-grid-row-hover" : "";
 
   const allocColHoverClass = (weekIndex: number) =>
-    highlightedColumnIndex === weekIndex ? "time-grid-column-hover" : "";
+    `allocation-pan-cell${
+      highlightedColumnIndex === weekIndex ? " time-grid-column-hover" : ""
+    }`;
 
   useEffect(() => {
     if (!ENABLE_PERF_DEBUG) return;
@@ -245,75 +234,72 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
     embedMode,
   ]);
 
+  const renderInternalColgroup = (keyPrefix: string) => (
+    <colgroup>
+      <col className="allocation-name-col" />
+      {data.weeks.map((w) => (
+        <col
+          key={`${keyPrefix}-${w.year}-${w.week}`}
+          className={embedMode ? "w-[10px]" : "w-[1.75rem]"}
+        />
+      ))}
+      {embedMode && <col className="w-5" />}
+      {embedMode && data.consultantTotalHours != null && <col className="w-5" />}
+      {!embedMode && <col className="w-6" />}
+    </colgroup>
+  );
+
   return (
-            <>
-              <div className="p-2">
-                <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                  <div className="flex items-center gap-2">
-                    {expandableConsultantIds.size > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedConsultants(new Set(expandableConsultantIds))}
-                          className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
-                        >
-                          Expand all
-                        </button>
-                        <span className="text-xs text-text-primary opacity-50">|</span>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedConsultants(new Set())}
-                          className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
-                        >
-                          Collapse all
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <AllocationWeekNav
-                    onShift={shiftWeeks}
-                    disabled={embedWeekNavLoading}
-                    getUrl={onWeekRangeChange ? undefined : getShiftUrl}
-                    prefetch={onWeekRangeChange ? undefined : router.prefetch}
-                  />
-                </div>
-                <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
-                  <colgroup>
-                    <col style={{ width: embedMode ? 72 : 300 }} />
-                    {data.weeks.map((w) => (
-                      <col
-                        key={`${w.year}-${w.week}`}
-                        className={embedMode ? "w-[10px]" : "w-[1.75rem]"}
-                      />
-                    ))}
-                    {embedMode && <col className="w-5" />}
-                    {embedMode && data.consultantTotalHours != null && <col className="w-5" />}
-                    {!embedMode && <col className="w-6" />}
-                  </colgroup>
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+              <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default px-2 pt-2">
+                <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
+                  {renderInternalColgroup("h")}
                   <thead>
                     <tr className="border-b border-grid-subtle">
                       <th
                         rowSpan={2}
-                        style={{ width: embedMode ? 72 : 300, maxWidth: embedMode ? 72 : 300, boxSizing: 'border-box' }}
-                        className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
+                        className="allocation-name-col border-r border-border-subtle px-3 py-1 text-left text-label-s text-text-secondary"
                       >
-                        <span className="block">Consultant / Project</span>
-                        {!embedMode && (
-                          <span className="mt-0.5 block text-[9px] font-normal uppercase tracking-wider text-text-primary opacity-55">
-                            Internal
-                          </span>
-                        )}
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="min-w-0">
+                            <span className="block">Consultant / Project</span>
+                            {!embedMode && (
+                              <span className="mt-0.5 block text-[9px] font-normal uppercase tracking-wider text-text-tertiary">
+                                Internal
+                              </span>
+                            )}
+                          </div>
+                          {expandableConsultantIds.size > 0 ? (
+                            <div className="flex shrink-0 items-center">
+                              <button
+                                type="button"
+                                onClick={onExpandAll}
+                                className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
+                                aria-label="Expand all"
+                                title="Expand all"
+                              >
+                                <UnfoldVertical
+                                  className="h-3.5 w-3.5"
+                                  aria-hidden
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={onCollapseAll}
+                                className="rounded-sm p-0.5 text-text-primary opacity-50 transition-opacity hover:bg-bg-muted hover:opacity-100"
+                                aria-label="Collapse all"
+                                title="Collapse all"
+                              >
+                                <FoldVertical
+                                  className="h-3.5 w-3.5"
+                                  aria-hidden
+                                />
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       </th>
-                      {monthSpans.map((span, i) => (
-                        <th
-                          key={i}
-                          colSpan={span.colSpan}
-                          title={span.label}
-                          className="overflow-hidden border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
-                        >
-                          <span className="block truncate">{span.label}</span>
-                        </th>
-                      ))}
+                      {renderMonthHeaderCells()}
                       {embedMode && (
                         <th
                           rowSpan={2}
@@ -344,6 +330,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       {renderWeekHeaderCells("internal")}
                     </tr>
                   </thead>
+                </table>
+              </div>
+              <div className="allocation-tables-scroll h-0 min-h-0 min-w-0 flex-1 px-2 pb-2">
+                <table className="w-full min-w-0 table-fixed border border-form border-t-0 text-[10px]">
+                  {renderInternalColgroup("b")}
                   <tbody>
                     {(embedMode ? perConsultantDisplay : perConsultantInternal).map((row) => {
                 const expanded = expandedConsultants.has(row.consultant.id);
@@ -355,7 +346,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       className={`border-b border-grid-light-subtle last:border-form ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`int-name-${row.consultant.id}`)}`}
                       {...allocationRowHoverHandlers(`int-name-${row.consultant.id}`)}
                     >
-                      <td className={`border-r border-grid-light-subtle px-2 py-1.5 align-top ${embedMode ? "max-w-0" : ""}`}>
+                      <td className={`allocation-name-col border-r border-grid-light-subtle px-2 py-1.5 align-top ${embedMode ? "max-w-0" : ""}`}>
                         <div className={`flex items-center justify-between gap-1 w-full ${embedMode ? "min-w-0" : ""}`}>
                           <button
                             type="button"
@@ -510,7 +501,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           }}
                           {...allocationRowHoverHandlers(`int-proj-${row.consultant.id}-${pr.projectId}-${projectRoleId ?? "none"}`)}
                         >
-                          <td className={`border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary ${embedMode ? "max-w-0" : ""}`}>
+                          <td className={`allocation-name-col border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary ${embedMode ? "max-w-0" : ""}`}>
                             <span className={`flex items-center gap-1 ${embedMode ? "min-w-0 overflow-hidden" : "whitespace-nowrap"}`}>
                               {!embedMode && pr.showProbabilitySymbol && (
                                 <Percent
@@ -778,7 +769,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       className={`border-t-2 border-grid-subtle bg-bg-muted/60 ${allocationRowHoverClass("int-foot-hours")}`}
                       {...allocationRowHoverHandlers("int-foot-hours")}
                     >
-                      <td className="border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
+                      <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
                         Week total (h)
                       </td>
                       {data.weeks.map((w, i) => (
@@ -815,7 +806,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       className={`border-t border-grid-subtle bg-bg-muted/40 ${allocationRowHoverClass("int-foot-revenue")}`}
                       {...allocationRowHoverHandlers("int-foot-revenue")}
                     >
-                      <td className="border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
+                      <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
                         Revenue total
                       </td>
                       {data.weeks.map((w, i) => (
@@ -855,49 +846,19 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                   </tfoot>
                   )}
                 </table>
-              </div>
               {!embedMode && (
-              <div className="p-2">
+              <div className="mt-8">
+                <p className="mb-1.5 px-0.5 text-[9px] font-normal uppercase tracking-wider text-text-tertiary">
+                  External
+                </p>
                 <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
                   <colgroup>
-                    <col style={{ width: 300 }} />
+                    <col className="allocation-name-col" />
                     {data.weeks.map((w) => (
                       <col key={`ext-${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
                     <col className="w-6" />
                   </colgroup>
-                  <thead>
-                    <tr className="border-b border-grid-subtle">
-                      <th
-                        rowSpan={2}
-                        style={{ width: 300, maxWidth: 300, boxSizing: 'border-box' }}
-                        className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
-                      >
-                        <span className="block">Consultant / Project</span>
-                        <span className="mt-0.5 block text-[9px] font-normal uppercase tracking-wider text-text-primary opacity-55">
-                          External
-                        </span>
-                      </th>
-                      {monthSpans.map((span, i) => (
-                        <th
-                          key={i}
-                          colSpan={span.colSpan}
-                          title={span.label}
-                          className="overflow-hidden border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
-                        >
-                          <span className="block truncate">{span.label}</span>
-                        </th>
-                      ))}
-                      <th
-                        rowSpan={2}
-                        className="w-6 border-r border-grid-subtle px-0 py-0.5 text-center"
-                        aria-label="Remove booking"
-                      />
-                    </tr>
-                    <tr className="border-b border-grid-subtle">
-                      {renderWeekHeaderCells("external")}
-                    </tr>
-                  </thead>
                   <tbody>
                     {perConsultantExternal.map((row) => {
                 const expanded = expandedConsultants.has(row.consultant.id);
@@ -908,7 +869,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`ext-name-${row.consultant.id}`)}`}
                       {...allocationRowHoverHandlers(`ext-name-${row.consultant.id}`)}
                     >
-                      <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
+                      <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <div className="flex items-center justify-between gap-1 w-full">
                           <button
                             type="button"
@@ -1055,7 +1016,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           }}
                           {...allocationRowHoverHandlers(`ext-proj-${row.consultant.id}-${pr.projectId}-${projectRoleId ?? "none"}`)}
                         >
-                          <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
+                          <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
                             <span className="flex items-center gap-1 whitespace-nowrap">
                               {pr.showProbabilitySymbol && (
                                 <Percent
@@ -1281,6 +1242,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                 </table>
               </div>
               )}
-            </>
+              </div>
+            </div>
   );
 }

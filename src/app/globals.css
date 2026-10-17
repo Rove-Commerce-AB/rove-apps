@@ -150,79 +150,126 @@ textarea.border-form {
   border: none !important;
 }
 
-/* Allocation tables: grid lines solid mid grey (between grey and black) */
+/* Allocation tables: Work-Timeline-like subtle grid inside the scroll panel. */
+.allocation-tables {
+  --allocation-pan-x: 0px;
+  --allocation-name-col-width: 300px;
+}
+
 .allocation-tables table,
 .allocation-tables table th,
 .allocation-tables table td,
 .allocation-tables table tr {
-  border-color: #9a9a9a;
+  border-color: var(--color-border-subtle);
 }
 
-/* Sticky table headers so month/week rows stay visible when scrolling (single scroll = main). */
-.allocation-tables thead {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--color-allocation-thead);
-  isolation: isolate;
+/*
+ * Always reserve vertical scrollbar space on both header and body so widths
+ * stay aligned when content grows. Frozen header hides its scrollbar visually.
+ */
+.allocation-tables-frozen,
+.allocation-tables-scroll {
+  overflow-x: hidden;
+  overflow-y: scroll;
 }
-.allocation-tables thead tr {
-  background: var(--color-allocation-thead);
+
+.allocation-tables-frozen {
+  scrollbar-width: none;
 }
-.allocation-tables thead th {
-  background: var(--color-allocation-thead);
+
+.allocation-tables-frozen::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Lock name column so row content changes never reflow week columns. */
+.allocation-tables col.allocation-name-col,
+.allocation-tables th.allocation-name-col,
+.allocation-tables td.allocation-name-col {
+  width: var(--allocation-name-col-width);
+  min-width: var(--allocation-name-col-width);
+  max-width: var(--allocation-name-col-width);
+  box-sizing: border-box;
+}
+
+.allocation-tables th.allocation-name-col,
+.allocation-tables td.allocation-name-col {
+  overflow: hidden;
+}
+
+/* Only body week cells pan; label + trailing columns stay put. */
+.allocation-tables .allocation-pan-cell {
+  transform: translateX(var(--allocation-pan-x));
+  transition: none;
+}
+
+.allocation-tables.allocation-tables-panning .allocation-pan-cell {
+  will-change: transform;
+}
+
+/* Keep non-grid columns above sliding week cells during pan. */
+.allocation-tables-frozen thead th:not(.allocation-pan-cell) {
+  z-index: 16;
+}
+
+.allocation-tables tbody td:not(.allocation-pan-cell) {
   position: relative;
-  z-index: 11;
-  /* Ensure the background fully covers behind borders when sticky overlays body cells. */
+  z-index: 2;
+  background-color: var(--color-bg-default);
+}
+
+/* Frozen header sits outside the body scroll; keep solid header chrome. */
+.allocation-tables-frozen thead {
+  background: var(--color-bg-default);
+}
+.allocation-tables-frozen thead tr {
+  background: var(--color-bg-default);
+}
+.allocation-tables-frozen thead th {
+  background: var(--color-bg-default);
+  position: relative;
   background-clip: border-box;
-  /* Border-collapse + sticky can leave "borders behind" depending on which element owns the border.
-     Use inset box-shadow instead of border/outline to ensure the line stays with the sticky cell. */
-  box-shadow: inset 0 -1px 0 #9a9a9a;
-  /* With border-collapse + sticky, borders can appear duplicated/transparent.
-     We draw vertical grid lines via pseudo-elements instead. */
+  box-shadow: inset 0 -1px 0 var(--color-border-subtle);
   border-left-width: 0 !important;
   border-right-width: 0 !important;
 }
 
 /* Month/year row: always one line; clip if a short span cannot fit the label. */
-.allocation-tables thead tr:first-child th[colspan] {
+.allocation-tables-frozen thead tr:first-child th[colspan] {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* Avoid double-thick header lines: let box-shadow be the only horizontal divider. */
-.allocation-tables thead tr,
-.allocation-tables thead th {
+.allocation-tables-frozen thead tr,
+.allocation-tables-frozen thead th {
   border-bottom: none !important;
 }
 
-/* Vertical borders are drawn via pseudo-elements on sticky header cells. */
-
-/* Vertical grid lines for sticky header cells. */
-.allocation-tables thead th.border-l::before,
-.allocation-tables thead th.border-r::after {
+/* Vertical grid lines for frozen header cells. */
+.allocation-tables-frozen thead th.border-l::before,
+.allocation-tables-frozen thead th.border-r::after {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #9a9a9a;
+  background: var(--color-border-subtle);
   z-index: 5;
   pointer-events: none;
 }
 
-.allocation-tables thead th.border-l::before {
+.allocation-tables-frozen thead th.border-l::before {
   left: 0;
 }
 
-.allocation-tables thead th.border-r::after {
+.allocation-tables-frozen thead th.border-r::after {
   right: 0;
 }
 
-/* Current-week highlighted separators should stay signal colored. */
-.allocation-tables thead th.current-week-header.border-l::before,
-.allocation-tables thead th.current-week-header.border-r::after {
+.allocation-tables-frozen thead th.current-week-header.border-l::before,
+.allocation-tables-frozen thead th.current-week-header.border-r::after {
   width: 2px;
   background: var(--color-brand-signal);
 }
@@ -242,10 +289,10 @@ textarea.border-form {
   background: color-mix(
     in srgb,
     var(--color-interactive-primary) 28%,
-    var(--color-allocation-thead)
+    var(--color-bg-default)
   ) !important;
   box-shadow:
-    inset 0 -1px 0 #9a9a9a,
+    inset 0 -1px 0 var(--color-border-subtle),
     inset 0 -5px 0 0 var(--color-interactive-primary) !important;
 }
 .time-report-tables thead th.time-grid-header-column-active {
@@ -1021,4 +1068,160 @@ body.time-report-portals-font-12 .time-report-icons-tight {
 
 .side-drawer-content[data-state="closed"] {
   animation: sideDrawerOut 180ms ease-in;
+}
+
+/* Work issue Markdown (description read view) */
+.work-markdown {
+  font-size: 0.875rem;
+  line-height: 1.625;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.work-markdown > :first-child {
+  margin-top: 0;
+}
+
+.work-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.work-markdown p,
+.work-markdown ul,
+.work-markdown ol,
+.work-markdown blockquote,
+.work-markdown pre {
+  margin: 0.5em 0;
+}
+
+.work-markdown h1,
+.work-markdown h2,
+.work-markdown h3,
+.work-markdown h4 {
+  margin: 0.75em 0 0.35em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text-primary);
+}
+
+.work-markdown h1 {
+  font-size: 1.15em;
+}
+
+.work-markdown h2 {
+  font-size: 1.05em;
+}
+
+.work-markdown h3,
+.work-markdown h4 {
+  font-size: 1em;
+}
+
+.work-markdown ul,
+.work-markdown ol {
+  padding-left: 1.35em;
+}
+
+.work-markdown ul {
+  list-style: disc;
+}
+
+.work-markdown ol {
+  list-style: decimal;
+}
+
+.work-markdown li {
+  margin: 0.15em 0;
+}
+
+.work-markdown li > input[type="checkbox"] {
+  margin-right: 0.4em;
+  vertical-align: middle;
+  accent-color: var(--color-brand-signal);
+}
+
+.work-markdown blockquote {
+  border-left: 3px solid var(--color-border-default);
+  padding-left: 0.75em;
+  color: var(--color-text-secondary);
+}
+
+.work-markdown a {
+  color: var(--color-text-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.work-markdown a:hover {
+  color: var(--color-accent-primary-hover);
+}
+
+.work-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  background: var(--color-bg-muted);
+}
+
+.work-markdown pre {
+  overflow-x: auto;
+  padding: 0.65em 0.75em;
+  border-radius: 0.5rem;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.work-markdown pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 0.85em;
+}
+
+.work-markdown hr {
+  margin: 0.75em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.work-markdown strong {
+  font-weight: 600;
+}
+
+.work-description-editor {
+  min-height: 4.5rem;
+  padding: 0.15rem 0;
+}
+
+.work-description-editor.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-text-muted);
+}
+
+.work-description-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.15em;
+}
+
+.work-description-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45em;
+}
+
+.work-description-editor ul[data-type="taskList"] li > label {
+  margin-top: 0.2em;
+  flex-shrink: 0;
+}
+
+.work-description-editor ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.work-description-editor ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: var(--color-brand-signal);
 }

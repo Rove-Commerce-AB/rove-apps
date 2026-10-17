@@ -205,6 +205,8 @@ export type WorkIssue = {
   sprintId: string | null;
   startDate: string | null;
   dueDate: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type WorkBoardView = {

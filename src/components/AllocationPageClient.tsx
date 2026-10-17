@@ -3,10 +3,13 @@
 import { useState, Fragment, useEffect, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getMonthSpansForWeeks } from "@/lib/dateUtils";
+import { addWeeksToYearWeek, getMonthSpansForWeeks } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
-import { Select, PageHeader, Dialog, Button } from "@/components/ui";
+import { PageHeader, Dialog, Button } from "@/components/ui";
+import { AllocationViewControls } from "@/components/AllocationViewControls";
+import { AllocationWeekNav } from "@/components/allocation/AllocationWeekNav";
+import { useAllocationHeaderPan } from "@/components/allocation/useAllocationHeaderPan";
 import {
   createAllocation,
   updateAllocation,
@@ -153,6 +156,18 @@ function AllocationPageClientImpl({
       embedMode,
       onWeekRangeChange
     );
+  const {
+    panning,
+    panWeeks,
+    gridPanStyle,
+    headerPanClassName,
+    headerPanHandlers,
+  } = useAllocationHeaderPan({
+    embedMode: Boolean(embedMode),
+    onShiftWeeks: shiftWeeks,
+    rangeKey: `${year}-${weekFrom}-${weekTo}`,
+    disabled: Boolean(embedMode && embedWeekNavLoading),
+  });
   const [mounted, setMounted] = useState(false);
   const activeTab: PlannerView = embedMode ? "consultant" : view;
   const [historyEntries, setHistoryEntries] = useState<AllocationHistoryEntry[]>([]);
@@ -723,19 +738,56 @@ function AllocationPageClientImpl({
   const isCurrentWeekHeader = (w: { year: number; week: number }) =>
     mounted && w.year === currentYearNum && w.week === currentWeekNum;
 
+  // Header labels follow the pan immediately; body columns CSS-translate to match.
+  const headerWeeks = useMemo(() => {
+    const weeks = data?.weeks ?? [];
+    if (panWeeks === 0) return weeks;
+    return weeks.map((w) => addWeeksToYearWeek(w.year, w.week, panWeeks));
+  }, [data?.weeks, panWeeks]);
+
+  const headerMonthSpans = useMemo(
+    () => getMonthSpansForWeeks(headerWeeks),
+    [headerWeeks]
+  );
+
   const renderWeekHeaderCells = useCallback(
-    (tableKey: string, borderClass = "border-grid-subtle") =>
-      (data?.weeks ?? []).map((w, idx) => (
+    (tableKey: string, borderClass = "border-border-subtle") =>
+      headerWeeks.map((w, idx) => (
         <th
-          key={`${tableKey}-${w.year}-${w.week}`}
-          className={`border-r ${borderClass} px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
-            isCurrentWeekHeader(w) ? "current-week-header bg-brand-signal/20 border-l border-r" : ""
+          key={`${tableKey}-${idx}-${w.year}-${w.week}`}
+          {...headerPanHandlers}
+          className={`border-r ${borderClass} px-0.5 py-1 text-center text-[10px] font-medium tabular-nums text-text-secondary ${headerPanClassName} ${
+            isCurrentWeekHeader(w)
+              ? "current-week-header bg-accent-primary-subtle text-accent-primary-text border-l border-r"
+              : ""
           } ${highlightedColumnIndex === idx ? "time-grid-header-column-active" : ""}`}
         >
           v{w.week}
         </th>
       )),
-    [data?.weeks, isCurrentWeekHeader, highlightedColumnIndex]
+    [
+      headerWeeks,
+      isCurrentWeekHeader,
+      highlightedColumnIndex,
+      headerPanHandlers,
+      headerPanClassName,
+    ]
+  );
+
+  const renderMonthHeaderCells = useCallback(
+    (borderClass = "border-border-subtle") =>
+      headerMonthSpans.map((span, i) => (
+        <th
+          key={i}
+          colSpan={span.colSpan}
+          title={span.label}
+          {...headerPanHandlers}
+          className={`overflow-hidden border-r ${borderClass} px-1.5 py-1 text-left text-[11px] font-medium uppercase tracking-wide text-text-secondary ${headerPanClassName}`}
+        >
+          <span className="block truncate">{span.label}</span>
+        </th>
+      )),
+    [headerMonthSpans, headerPanHandlers, headerPanClassName]
   );
 
   if (error) {
@@ -872,6 +924,15 @@ function AllocationPageClientImpl({
       ),
     [perConsultant]
   );
+  const expandableProjectIds = useMemo(
+    () =>
+      new Set(
+        perProjectFiltered
+          .filter((r) => r.consultantRows.length > 0)
+          .map((r) => r.project.id)
+      ),
+    [perProjectFiltered]
+  );
   const currentWeek = currentWeekProp;
   const currentYear = currentYearProp;
   const monthSpans = useMemo(() => getMonthSpansForWeeks(data.weeks), [data.weeks]);
@@ -988,7 +1049,13 @@ function AllocationPageClientImpl({
   ]);
 
   return (
-    <>
+    <div
+      className={
+        embedMode
+          ? "flex min-h-0 flex-col"
+          : "flex min-h-0 flex-1 flex-col"
+      }
+    >
       {!embedMode && (
         <PageHeader
           title={
@@ -1005,125 +1072,82 @@ function AllocationPageClientImpl({
               ? undefined
               : "Manage allocations per week"
           }
-          className="mb-6"
+          className="mb-3 shrink-0"
         />
       )}
 
-      {data && !embedMode && activeTab !== "history" && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 px-2">
-          {/* View – how the table is displayed (probability, which project rows) */}
-          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            View
-          </span>
-          <Select
-            variant="filter"
-            value={probabilityDisplay}
-            onValueChange={(v) => setProbabilityDisplay(v as ProbabilityDisplay)}
-            options={[
-              { value: "weighted", label: "With probability" },
-              { value: "none", label: "Without probability" },
-            ]}
-            className="w-auto min-w-0"
-            triggerClassName={`min-w-[180px] ${probabilityDisplay === "weighted" ? "bg-brand-blue/25 text-text-primary" : ""}`}
-          />
-          <Select
-            variant="filter"
-            value={projectVisibility}
-            onValueChange={(v) => setProjectVisibility(v as ProjectVisibility)}
-            options={[
-              { value: "all", label: "All projects" },
-              { value: "hideNon100", label: "Only show 100%" },
-              { value: "hide100", label: "Only show planned" },
-            ]}
-            className="w-auto min-w-0"
-            triggerClassName="min-w-[180px]"
-          />
-          <span
-            className="mx-1 h-4 w-px shrink-0 bg-[var(--color-border-subtle)]"
-            aria-hidden
-          />
-          {/* Filter – which consultants are shown (team, role) */}
-          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Filter
-          </span>
-          {data.teams.length > 0 && (
-            <Select
-              variant="filter"
-              value={teamFilterId ?? ""}
-              onValueChange={(v) => setTeamFilterId(v ? v : null)}
-              options={[
-                { value: "", label: "All teams" },
-                ...data.teams.map((t) => ({ value: t.id, label: t.name })),
-              ]}
-              className="w-auto min-w-0"
-              triggerClassName="min-w-[160px]"
-            />
-          )}
-          {data.roles.length > 0 && (
-            <Select
-              variant="filter"
-              value={defaultRoleFilterId ?? ""}
-              onValueChange={(v) => setDefaultRoleFilterId(v ? v : null)}
-              options={[
-                { value: "", label: "All roles" },
-                ...data.roles.map((r) => ({ value: r.id, label: r.name })),
-              ]}
-              className="w-auto min-w-0"
-              triggerClassName="min-w-[160px]"
-            />
-          )}
-          {activeTab === "project" && (
-            <label className="flex cursor-pointer select-none items-center gap-2">
-              <input
-                type="checkbox"
-                checked={showProjectsWithoutBooking}
-                onChange={(e) => setShowProjectsWithoutBooking(e.target.checked)}
-                className="rounded border-form"
+      {data && activeTab !== "history" ? (
+        <div
+          className={`flex shrink-0 items-center justify-end gap-1 ${
+            embedMode ? "mb-1.5 px-1" : "mb-1.5 px-2"
+          }`}
+        >
+          <div className="flex items-center gap-1">
+            {(!embedMode || embedShowTeamFilter) &&
+            (data.teams.length > 0 ||
+              data.roles.length > 0 ||
+              (!embedMode && activeTab === "project")) ? (
+              <AllocationViewControls
+                teams={data.teams}
+                roles={data.roles}
+                teamFilterId={teamFilterId}
+                onTeamFilterChange={setTeamFilterId}
+                roleFilterId={defaultRoleFilterId}
+                onRoleFilterChange={setDefaultRoleFilterId}
+                showUnbookedToggle={!embedMode && activeTab === "project"}
+                showProjectsWithoutBooking={showProjectsWithoutBooking}
+                onShowProjectsWithoutBookingChange={
+                  setShowProjectsWithoutBooking
+                }
+                showView={!embedMode}
+                probabilityDisplay={probabilityDisplay}
+                onProbabilityDisplayChange={setProbabilityDisplay}
+                projectVisibility={projectVisibility}
+                onProjectVisibilityChange={setProjectVisibility}
               />
-              <span className="text-sm text-text-primary">
-                Show projects without booking
-              </span>
-            </label>
-          )}
+            ) : null}
+            <AllocationWeekNav
+              onShift={shiftWeeks}
+              disabled={Boolean(embedMode && embedWeekNavLoading)}
+              getUrl={
+                embedMode && onWeekRangeChange ? undefined : getShiftUrl
+              }
+              prefetch={
+                embedMode && onWeekRangeChange
+                  ? undefined
+                  : router.prefetch.bind(router)
+              }
+            />
+          </div>
         </div>
-      )}
+      ) : null}
 
-      {embedMode && embedShowTeamFilter && data.teams.length > 0 && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Filter
-          </span>
-          <Select
-            variant="filter"
-            value={teamFilterId ?? ""}
-            onValueChange={(v) => setTeamFilterId(v ? v : null)}
-            options={[
-              { value: "", label: "All teams" },
-              ...data.teams.map((t) => ({ value: t.id, label: t.name })),
-            ]}
-            className="w-auto min-w-0"
-            triggerClassName="min-w-[160px]"
-          />
-        </div>
-      )}
-
-      <div className="allocation-tables space-y-8">
+      <div
+        className={`allocation-tables flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-default ${
+          panning ? "allocation-tables-panning" : ""
+        }`}
+        style={{
+          ...gridPanStyle,
+          ["--allocation-name-col-width" as string]: embedMode
+            ? "72px"
+            : "300px",
+        }}
+      >
           {showConsultantView && (
             <AllocationConsultantTables
-              expandableConsultantIds={expandableConsultantIds}
-              setExpandedConsultants={setExpandedConsultants}
-              shiftWeeks={shiftWeeks}
-              embedWeekNavLoading={embedWeekNavLoading}
-              onWeekRangeChange={onWeekRangeChange}
-              router={router}
-              getShiftUrl={getShiftUrl}
               embedMode={embedMode}
               data={data}
               monthSpans={monthSpans}
+              renderMonthHeaderCells={renderMonthHeaderCells}
               renderWeekHeaderCells={renderWeekHeaderCells}
               perConsultantDisplay={perConsultantDisplay}
               perConsultantInternal={perConsultantInternal}
               perConsultantExternal={perConsultantExternal}
+              expandableConsultantIds={expandableConsultantIds}
+              onExpandAll={() =>
+                setExpandedConsultants(new Set(expandableConsultantIds))
+              }
+              onCollapseAll={() => setExpandedConsultants(new Set())}
               expandedConsultants={expandedConsultants}
               toggleConsultant={toggleConsultant}
               cellDragConsultant={cellDragConsultant}
@@ -1156,10 +1180,12 @@ function AllocationPageClientImpl({
             />
           )}
           {activeTab === "history" && (
-            <AllocationHistoryTable
-              entries={historyEntries}
-              loading={historyLoading}
-            />
+            <div className="min-h-0 flex-1 overflow-auto p-2">
+              <AllocationHistoryTable
+                entries={historyEntries}
+                loading={historyLoading}
+              />
+            </div>
           )}
           {(activeTab === "customer" || activeTab === "project") && (
             <AllocationCustomerProjectTabs
@@ -1167,15 +1193,18 @@ function AllocationPageClientImpl({
               data={data}
               monthSpans={monthSpans}
               isCurrentWeek={isCurrentWeek}
+              renderMonthHeaderCells={renderMonthHeaderCells}
               renderWeekHeaderCells={renderWeekHeaderCells}
-              shiftWeeks={shiftWeeks}
-              getShiftUrl={getShiftUrl}
-              router={router}
               expandedCustomers={expandedCustomers}
               toggleCustomer={toggleCustomer}
               perCustomer={perCustomer}
               expandedProjects={expandedProjects}
               toggleProject={toggleProject}
+              expandableProjectIds={expandableProjectIds}
+              onExpandAllProjects={() =>
+                setExpandedProjects(new Set(expandableProjectIds))
+              }
+              onCollapseAllProjects={() => setExpandedProjects(new Set())}
               perProject={perProjectFiltered}
               editingCell={editingCell}
               setEditingCell={setEditingCell}
@@ -1360,6 +1389,6 @@ function AllocationPageClientImpl({
           availableHoursByWeek={editRangeModalParams.availableHoursByWeek}
         />
       )}
-    </>
+    </div>
   );
 }
