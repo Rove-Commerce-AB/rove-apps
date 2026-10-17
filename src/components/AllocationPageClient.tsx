@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, Fragment, useEffect, useCallback, useRef, useMemo } from "react";
+import {
+  useState,
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { addWeeksToYearWeek, getMonthSpansForWeeks } from "@/lib/dateUtils";
@@ -169,6 +177,7 @@ function AllocationPageClientImpl({
     disabled: Boolean(embedMode && embedWeekNavLoading),
   });
   const [mounted, setMounted] = useState(false);
+  const allocationTablesRef = useRef<HTMLDivElement>(null);
   const activeTab: PlannerView = embedMode ? "consultant" : view;
   const [historyEntries, setHistoryEntries] = useState<AllocationHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -390,6 +399,31 @@ function AllocationPageClientImpl({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Keep frozen header column widths equal to the body scrollport. Without this,
+  // a classic scrollbar appears a frame after paint and the header jumps right
+  // relative to the grid (current-week lines no longer line up).
+  useLayoutEffect(() => {
+    const root = allocationTablesRef.current;
+    if (!root) return;
+    const scroll = root.querySelector(".allocation-tables-scroll");
+    if (!(scroll instanceof HTMLElement)) return;
+
+    const syncGutter = () => {
+      const gutter = Math.max(0, scroll.offsetWidth - scroll.clientWidth);
+      root.style.setProperty("--allocation-scrollbar-gutter", `${gutter}px`);
+    };
+
+    syncGutter();
+    const observer = new ResizeObserver(syncGutter);
+    observer.observe(scroll);
+    if (scroll.firstElementChild) observer.observe(scroll.firstElementChild);
+    window.addEventListener("resize", syncGutter);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncGutter);
+    };
+  }, [data, activeTab, embedMode]);
 
   useEffect(() => {
     if (!data?.allocations) return;
@@ -1123,6 +1157,7 @@ function AllocationPageClientImpl({
       ) : null}
 
       <div
+        ref={allocationTablesRef}
         className={`allocation-tables flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-default ${
           panning ? "allocation-tables-panning" : ""
         }`}

@@ -251,7 +251,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
 
   return (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-              <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default px-2 pt-2">
+              <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pl-2 pt-2">
                 <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
                   {renderInternalColgroup("h")}
                   <thead>

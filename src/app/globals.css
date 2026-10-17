@@ -154,6 +154,8 @@ textarea.border-form {
 .allocation-tables {
   --allocation-pan-x: 0px;
   --allocation-name-col-width: 300px;
+  /* Synced from the body scrollport so frozen header matches column widths. */
+  --allocation-scrollbar-gutter: 0px;
 }
 
 .allocation-tables table,
@@ -164,23 +166,20 @@ textarea.border-form {
 }
 
 /*
- * Always reserve vertical scrollbar space on both header and body so widths
- * stay aligned when content grows. Frozen header hides its scrollbar visually.
+ * Body reserves scrollbar space (stable gutter) so columns don't jump when
+ * content overflows. Frozen header has no scrollbar; it gets the same width
+ * via padding-right = Tailwind px-2 (0.5rem) + --allocation-scrollbar-gutter.
  */
-.allocation-tables-frozen,
 .allocation-tables-scroll {
   overflow-x: hidden;
-  overflow-y: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .allocation-tables-frozen {
-  scrollbar-width: none;
-}
-
-.allocation-tables-frozen::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  padding-right: calc(0.5rem + var(--allocation-scrollbar-gutter, 0px)) !important;
 }
 
 /* Lock name column so row content changes never reflow week columns. */

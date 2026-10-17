@@ -337,7 +337,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
 
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-        <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default px-2 pt-2">
+        <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pl-2 pt-2">
           <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
             {renderCustomerColgroup("h")}
             <thead>
@@ -773,7 +773,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default px-2 pt-2">
+      <div className="allocation-tables-frozen shrink-0 border-b border-border-subtle bg-bg-default pl-2 pt-2">
         <table className="w-full min-w-0 table-fixed border border-form border-b-0 text-[10px]">
           {renderProjectColgroup("h")}
           <thead>
