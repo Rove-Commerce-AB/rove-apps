@@ -780,8 +780,8 @@ function AllocationPageClientImpl({
         <th
           key={i}
           colSpan={span.colSpan}
-          title={span.label}
           {...headerPanHandlers}
+          title={span.label}
           className={`overflow-hidden border-r ${borderClass} px-1.5 py-1 text-left text-[11px] font-medium uppercase tracking-wide text-text-secondary ${headerPanClassName}`}
         >
           <span className="block truncate">{span.label}</span>

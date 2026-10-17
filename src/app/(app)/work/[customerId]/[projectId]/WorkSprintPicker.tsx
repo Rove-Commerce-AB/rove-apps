@@ -74,6 +74,12 @@ export function WorkSprintPicker({
   const selectedSet = new Set(selectedIds);
   const focusId = selectedIds[selectedIds.length - 1] ?? null;
 
+  function bindSelectedRef(sprintId: string) {
+    return (el: HTMLElement | null) => {
+      if (sprintId === focusId) selectedRef.current = el;
+    };
+  }
+
   // Only auto-scroll for single-select (Planning) after the user changes
   // selection — not on mount, or switching Timeline↔Planning re-scrolls the
   // chip strip and looks like a selection blink.
@@ -166,7 +172,7 @@ export function WorkSprintPicker({
           return (
             <div
               key={sprint.id}
-              ref={sprint.id === focusId ? selectedRef : undefined}
+              ref={bindSelectedRef(sprint.id)}
               className={`${chipClass} flex items-stretch`}
             >
               <button
@@ -201,7 +207,7 @@ export function WorkSprintPicker({
         return (
           <button
             key={sprint.id}
-            ref={sprint.id === focusId ? selectedRef : undefined}
+            ref={bindSelectedRef(sprint.id)}
             type="button"
             role={multi ? "checkbox" : "tab"}
             aria-checked={multi ? selected : undefined}
