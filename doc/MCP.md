@@ -222,9 +222,35 @@ Use `getProjectContext`, `listIssues`, `getIssue` and `listIssueComments` to rea
 
 After approval, use `moveIssue` to start work. After verification, update completed requirements, post an outcome with `addIssueComment`, attach a PR with `addIssueReference`, and move the issue to the agreed review column. Column choices and approval rules come from the project instructions and the user's directions. MCP provides these operations but does not enforce an approval workflow or start work automatically.
 
+## Logging time on Work issues
+
+`getIssueTimeLog` and `logIssueTime` use **Work MCP access** in Settings / People. Neither requires Time report App access or Time report MCP access. Both require access to the Work customer and project, including project membership for admins. Customer users cannot log time, and their time-log reads follow the existing customer time-visibility setting.
+
+`getIssueTimeLog` takes `projectId` and `issueId`. It returns `canLog`, `cannotLogReason`, the current consultant ID, available `roleOptions`, the default role ID, existing entries and total logged hours. Role IDs can be UUIDs or custom `cr:`/`pr:` billing keys. Read this tool before logging and use an exact `roleOptions[].id`.
+
+`logIssueTime` takes the Work `projectId`, `issueId`, `date`, `hours`, `roleId` and an optional `note`. It resolves the customer and linked Planner project from the Work issue. No customer ID, Planner project ID, external issue reference or consultant ID is accepted from the client. The token owner needs a linked consultant profile. Existing consultant customer assignments and external-consultant project restrictions still apply. The Work project must have a linked Planner project and configured billing roles.
+
+```json
+{
+  "name": "logIssueTime",
+  "arguments": {
+    "projectId": "<work-project-uuid>",
+    "issueId": "<work-issue-uuid>",
+    "date": "2026-10-18",
+    "hours": 1.5,
+    "roleId": "<role-id-from-getIssueTimeLog>",
+    "note": "Fixed the task's checkout validation."
+  }
+}
+```
+
+Each call adds a separate entry, including repeated calls for the same date. Hours must be greater than zero and at most 24, rounded to two decimals. The tool uses the website's Work logging service and existing transaction, billing and audit logic. It returns the saved date, hours, role and note, plus the updated time entries and total. Work and Time report pages are invalidated after saving. If the result is uncertain, inspect `getIssueTimeLog` before retrying to avoid duplicate entries.
+
+Read `getProjectContext` before writing. Reuse details the user already supplied, ask only for missing information, and never invent duration or work performed. Use the only available billing role or ask when ambiguous. Once logging is authorized and the details are established, save without another confirmation.
+
 ## Ping
 
-The SDK provides the standard MCP `ping` method and initialization handshake. `tools/list` includes the thirteen Work tools documented above when Work MCP access is enabled, otherwise it returns an empty list. Ping is a protocol method and does not appear as an agent tool.
+The SDK provides the standard MCP `ping` method and initialization handshake. `tools/list` includes the fifteen Work tools documented above when Work MCP access is enabled, otherwise it returns an empty list. Ping is a protocol method and does not appear as an agent tool.
 
 The client first sends `initialize` and `notifications/initialized`. It then uses the negotiated protocol version in subsequent requests. For example, after negotiating `2025-11-25`:
 

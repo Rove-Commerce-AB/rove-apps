@@ -3,6 +3,8 @@ import "server-only";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
+import { fetchConsultantByAppUserId } from "@/lib/consultantsQueries";
+import type { McpUser } from "@/lib/mcpAuth";
 import { pgDateToDateOnly } from "@/lib/pgDateOnly";
 import { getBillingItemsForCustomerAndProject } from "@/lib/projectRates";
 import {
@@ -33,6 +35,14 @@ const emptyTimeLogState = (
   ...overrides,
 });
 
+async function requireTimeLogBoard(boardId: string, mcpUser?: McpUser) {
+  if (mcpUser && !mcpUser.appKeys.includes("work")) {
+    return null;
+  }
+
+  return requireVisibleWorkBoard(boardId, mcpUser);
+}
+
 async function loadIssueOnBoard(boardId: string, issueId: string) {
   const { rows } = await cloudSqlPool.query<{
     id: string;
@@ -54,10 +64,13 @@ async function loadIssueOnBoard(boardId: string, issueId: string) {
 
 export async function listTimeEntriesForWorkIssue(
   boardId: string,
-  issueId: string
+  issueId: string,
+  mcpUser?: McpUser
 ): Promise<WorkIssueTimeLogEntry[]> {
-  const visible = await requireVisibleWorkBoard(boardId);
-  if (!visible) return [];
+  const visible = await requireTimeLogBoard(boardId, mcpUser);
+
+  if (!visible || !canSeeWorkTime(visible.actor, visible.board.work_show_time_to_customer_users)) return [];
+
   const issue = await loadIssueOnBoard(boardId, issueId);
   if (!issue) return [];
 
@@ -97,9 +110,11 @@ export async function listTimeEntriesForWorkIssue(
 
 export async function getWorkIssueTimeLogState(
   boardId: string,
-  issueId: string
+  issueId: string,
+  mcpUser?: McpUser
 ): Promise<WorkIssueTimeLogState> {
-  const visible = await requireVisibleWorkBoard(boardId);
+  const visible = await requireTimeLogBoard(boardId, mcpUser);
+
   if (!visible) {
     return emptyTimeLogState({ cannotLogReason: "Unauthorized" });
   }
@@ -111,11 +126,11 @@ export async function getWorkIssueTimeLogState(
   const allowLog = canLogWorkTime(visible.actor);
 
   const [appUser, consultant, issue, entries] = await Promise.all([
-    getCurrentAppUser(),
-    getConsultantForCurrentUser(),
+    mcpUser ?? getCurrentAppUser(),
+    mcpUser ? fetchConsultantByAppUserId(mcpUser.id) : getConsultantForCurrentUser(),
     loadIssueOnBoard(boardId, issueId),
     showTime
-      ? listTimeEntriesForWorkIssue(boardId, issueId)
+      ? listTimeEntriesForWorkIssue(boardId, issueId, mcpUser)
       : Promise.resolve([] as WorkIssueTimeLogEntry[]),
   ]);
 
@@ -166,7 +181,7 @@ export async function getWorkIssueTimeLogState(
   let cannotLogReason: string | null = null;
   if (!allowLog) {
     cannotLogReason = "Customer users cannot log time.";
-  } else if (!appUser?.appKeys.includes("time_report")) {
+  } else if (!mcpUser && !appUser?.appKeys.includes("time_report")) {
     cannotLogReason = "Time report access is required to log hours.";
   } else if (!consultant?.id) {
     cannotLogReason = "Link a consultant profile to log time.";
@@ -192,19 +207,23 @@ export async function getWorkIssueTimeLogState(
 export async function logTimeOnWorkIssue(
   boardId: string,
   issueId: string,
-  input: { hours: number; date: string; note?: string; roleId: string }
+  input: { hours: number; date: string; note?: string; roleId: string },
+  mcpUser?: McpUser
 ): Promise<
   | { ok: true; loggedHours: number; entries: WorkIssueTimeLogEntry[] }
   | { ok: false; error: string }
 > {
-  const visible = await requireVisibleWorkBoard(boardId);
+  const visible = await requireTimeLogBoard(boardId, mcpUser);
+
   if (!visible) return { ok: false, error: "Unauthorized" };
+
   if (!canLogWorkTime(visible.actor)) {
     return { ok: false, error: "Customer users cannot log time." };
   }
 
-  const appUser = await getCurrentAppUser();
-  if (!appUser?.appKeys.includes("time_report")) {
+  const appUser = mcpUser ?? await getCurrentAppUser();
+
+  if (!mcpUser && !appUser?.appKeys.includes("time_report")) {
     return { ok: false, error: "Time report access is required to log hours." };
   }
 
@@ -236,13 +255,13 @@ export async function logTimeOnWorkIssue(
     note: input.note,
     lineDescription,
     roleId,
-  });
+  }, mcpUser);
 
   if (!result.success) {
     return { ok: false, error: result.error };
   }
 
-  const entries = await listTimeEntriesForWorkIssue(boardId, issueId);
+  const entries = await listTimeEntriesForWorkIssue(boardId, issueId, mcpUser);
   return { ok: true, loggedHours: result.loggedHours, entries };
 }
 

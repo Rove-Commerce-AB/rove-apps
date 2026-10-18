@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
+import { fetchConsultantByAppUserId } from "@/lib/consultantsQueries";
+import type { McpUser } from "@/lib/mcpAuth";
 import {
   getProjectBillingTypesByIds,
   getProjectsByCustomerIds,
@@ -57,10 +59,10 @@ import {
   workIssueLinkKey,
 } from "@/lib/workIssueTimeLink";
 
-async function getTimeReportAccessContext() {
+async function getTimeReportAccessContext(workMcpUser?: McpUser) {
   const [appUser, consultant] = await Promise.all([
-    getCurrentAppUser(),
-    getConsultantForCurrentUser(),
+    workMcpUser ?? getCurrentAppUser(),
+    workMcpUser ? fetchConsultantByAppUserId(workMcpUser.id) : getConsultantForCurrentUser(),
   ]);
   if (!consultant?.id) {
     return {
@@ -1923,6 +1925,7 @@ export type LogHoursAgainstWorkIssueResult =
 /**
  * Log time on a Work issue as a new Time Report row (never merges same-day cells).
  * Uses optimistic concurrency via week revision lock.
+ * The optional MCP identity must come from verified authentication after Work project access checks.
  */
 export async function logHoursAgainstWorkIssue(input: {
   customerId: string;
@@ -1934,8 +1937,12 @@ export async function logHoursAgainstWorkIssue(input: {
   roleId: string;
   note?: string | null;
   lineDescription?: string | null;
-}): Promise<LogHoursAgainstWorkIssueResult> {
-  const ctx = await getTimeReportAccessContext();
+}, workMcpUser?: McpUser): Promise<LogHoursAgainstWorkIssueResult> {
+  if (workMcpUser && (workMcpUser.role === "customer" || !workMcpUser.appKeys.includes("work"))) {
+    return { success: false, error: "Work access is required to log hours.", code: "unauthorized" };
+  }
+
+  const ctx = await getTimeReportAccessContext(workMcpUser);
   const consultant = ctx.consultant;
   if (!consultant?.id) {
     return { success: false, error: "No consultant profile linked.", code: "unauthorized" };
@@ -1983,7 +1990,7 @@ export async function logHoursAgainstWorkIssue(input: {
   const linkKey = workIssueLinkKey(input.workIssueId);
   const note = (input.note ?? "").trim() || null;
   const lineDescription = (input.lineDescription ?? "").trim() || null;
-  const appUserId = await getAppUserIdForAudit();
+  const appUserId = ctx.appUser?.id ?? null;
 
   try {
     return await withCloudSqlTransaction<LogHoursAgainstWorkIssueResult>(

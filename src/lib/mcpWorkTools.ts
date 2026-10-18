@@ -7,6 +7,7 @@ import { getWorkProjectContext, listAccessibleWorkProjects, listAssignedWorkCust
 import { WorkInputError } from "@/lib/workErrors";
 import { getWorkIssue, listWorkIssueComments } from "@/lib/workIssueDetails";
 import { listWorkIssues } from "@/lib/workIssueSearch";
+import { getWorkIssueTimeLogState, logTimeOnWorkIssue, type WorkIssueTimeLogState } from "@/lib/workIssueTimeLog";
 import { addIssueComment, addIssueReference, createWorkIssue, editWorkIssue, setIssueRequirementDone, setWorkIssueStatus } from "@/lib/workIssues";
 import type {
   WorkIssueCommentsInput, WorkIssueCommentsPage, WorkIssueDetails, WorkIssueDetailsInput,
@@ -250,6 +251,87 @@ const issueDetailsOutput = fromJsonSchema<{ issue: WorkIssueDetails }>({
     issue: { type: "object", properties: issueDetailsProperties, required: Object.keys(issueDetailsProperties), additionalProperties: false },
   },
   required: ["issue"],
+  additionalProperties: false,
+});
+
+const issueTimeLogInput = fromJsonSchema<{ projectId: string; issueId: string }>({
+  type: "object",
+  properties: { projectId: projectIdProperty, issueId: issueIdProperty },
+  required: ["projectId", "issueId"],
+  additionalProperties: false,
+});
+
+const timeLogEntriesSchema = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      id: uuid,
+      date: { type: "string", format: "date" },
+      hours: { type: "number" },
+      note: { type: ["string", "null"] },
+      consultantId: uuid,
+      consultantName: { type: "string" },
+    },
+    required: ["id", "date", "hours", "note", "consultantId", "consultantName"],
+    additionalProperties: false,
+  },
+};
+
+const issueTimeLogOutput = fromJsonSchema<WorkIssueTimeLogState & { projectId: string; issueId: string }>({
+  type: "object",
+  properties: {
+    projectId: uuid,
+    issueId: uuid,
+    canLog: { type: "boolean" },
+    cannotLogReason: { type: ["string", "null"] },
+    currentConsultantId: { type: ["string", "null"], format: "uuid" },
+    roleOptions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { id: { type: "string" }, name: { type: "string" } },
+        required: ["id", "name"],
+        additionalProperties: false,
+      },
+    },
+    defaultRoleId: { type: ["string", "null"] },
+    entries: timeLogEntriesSchema,
+    loggedHours: { type: "number" },
+  },
+  required: ["projectId", "issueId", "canLog", "cannotLogReason", "currentConsultantId", "roleOptions", "defaultRoleId", "entries", "loggedHours"],
+  additionalProperties: false,
+});
+
+const logIssueTimeInput = fromJsonSchema<{
+  projectId: string; issueId: string; date: string; hours: number; roleId: string; note?: string;
+}>({
+  type: "object",
+  properties: {
+    projectId: projectIdProperty,
+    issueId: issueIdProperty,
+    date: { type: "string", format: "date", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Date worked, in the user's timezone." },
+    hours: { type: "number", exclusiveMinimum: 0, maximum: 24, description: "Hours to add as a new entry. 90 minutes is 1.5 hours." },
+    roleId: { type: "string", minLength: 1, maxLength: 80, description: "Exact roleOptions[].id from getIssueTimeLog, including cr:/pr: prefixes." },
+    note: { type: "string", maxLength: 10000, description: "Optional note about the work performed." },
+  },
+  required: ["projectId", "issueId", "date", "hours", "roleId"],
+  additionalProperties: false,
+});
+
+const logIssueTimeOutput = fromJsonSchema({
+  type: "object",
+  properties: {
+    projectId: uuid,
+    issueId: uuid,
+    date: { type: "string", format: "date" },
+    hours: { type: "number" },
+    roleId: { type: "string" },
+    note: { type: ["string", "null"] },
+    loggedHours: { type: "number" },
+    entries: timeLogEntriesSchema,
+  },
+  required: ["projectId", "issueId", "date", "hours", "roleId", "note", "loggedHours", "entries"],
   additionalProperties: false,
 });
 
@@ -525,6 +607,42 @@ export function registerWorkMcpTools(server: McpServer, user: McpUser): void {
   );
 
   server.registerTool(
+    "getIssueTimeLog",
+    {
+      title: "Get a Work issue's time log",
+      description: "Read time entries, available billing roles and whether you can log time on a Rove Work issue. Uses Work MCP access and project membership. Time report access is not required. Existing customer time-visibility rules apply. Use roleOptions[].id when calling logIssueTime.",
+      inputSchema: issueTimeLogInput,
+      outputSchema: issueTimeLogOutput,
+      annotations: readAnnotations,
+    },
+    async ({ projectId, issueId }) => workToolResult("get issue time log", async () => ({
+      projectId, issueId, ...await getWorkIssueTimeLogState(projectId, issueId, user),
+    }))
+  );
+
+  server.registerTool(
+    "logIssueTime",
+    {
+      title: "Log time on a Work issue",
+      description: "Add one time entry to a Rove Work issue as the token owner's linked consultant. Uses Work MCP access, not Time report access. Customer users cannot log time. Read getProjectContext and getIssueTimeLog first. The Work project's linked Planner project is resolved automatically. Establish the issue, date, duration and billing role from the user or existing context. Never guess duration or work performed. Use the only available role or ask when ambiguous. After the user authorizes logging and the details are established, save without another confirmation. Each call creates a new entry, even for the same date. If the outcome is uncertain, check getIssueTimeLog before retrying. Summarize the returned saved hours, date, role and note.",
+      inputSchema: logIssueTimeInput,
+      outputSchema: logIssueTimeOutput,
+      annotations: writeAnnotations,
+    },
+    async ({ projectId, issueId, ...input }) => workToolResult("log issue time", async () => {
+      const result = await logTimeOnWorkIssue(projectId, issueId, input, user);
+
+      if (!result.ok) throw new WorkInputError(result.error);
+
+      return {
+        projectId, issueId, date: input.date, hours: Math.round(input.hours * 100) / 100,
+        roleId: input.roleId.trim(), note: input.note?.trim() || null,
+        loggedHours: result.loggedHours, entries: result.entries,
+      };
+    }, true, ["/time-report"])
+  );
+
+  server.registerTool(
     "listIssueComments",
     {
       title: "List Work issue comments",
@@ -661,16 +779,23 @@ export function registerWorkMcpTools(server: McpServer, user: McpUser): void {
   );
 }
 
-async function workToolResult(action: string, operation: () => Promise<Record<string, unknown>>, mutates = false) {
+async function workToolResult(
+  action: string,
+  operation: () => Promise<Record<string, unknown>>,
+  mutates = false,
+  additionalRevalidationPaths: string[] = []
+) {
   try {
     const result = await operation();
 
     if (mutates) {
       try {
-        revalidatePath("/work", "layout");
+        for (const path of ["/work", ...additionalRevalidationPaths]) {
+          revalidatePath(path, "layout");
+        }
       } catch {
         // A cache failure must not report a committed mutation as failed.
-        console.error("[mcp] Failed to revalidate Work pages.");
+        console.error("[mcp] Failed to revalidate pages.");
       }
     }
 
