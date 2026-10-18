@@ -164,16 +164,55 @@ Column order is Name, Team, Role, Capacity, Overhead. There is no Calendar colum
 ### Drawer
 - Header: 40px avatar, name (Heading/L bold) and `status/success-subtle` pill on the **same line** (`{role} · {team}` with a success dot), then “Consultant since {Mon D, YYYY}”. Close is a bordered icon button.
 - Tabs: Overview + Projects (Projects is an empty state until that data exists). Active tab is semibold `text/primary` with a 2px underline under the label (`px-1`, `gap-6`).
-- Identity rows (Name, Team, Role, Email, Start date, End date, Date of birth): `DrawerFieldRow` — gray label left, value in a **right column** (`14.5rem`) inside a always-visible bordered box. Team/Role show a chevron. Email uses `text/link`. No phone field. No per-row dividers.
+- Identity rows (Name, Team, Role, Email, Start date, End date, Date of birth): `DrawerFieldRow` — gray label left (`w-36`), value `flex-1` with **quiet fields** (no permanent border; wash on hover; border/focus only while editing). Team/Role show a chevron. Email uses `text/link`. No phone field. No per-row dividers.
 - Section dividers are **full-width** `border/subtle` lines (edge to edge), not inset with the field padding. Groups: identity → metrics → calendar/type → delete.
-- Metrics: **Calendar time** (`{n}h`), **Capacity** and **Overhead** (`CapacityBar` size `drawer`) with semibold `text/primary` labels and unboxed values on the right.
+- Metrics: **Calendar time** (`{n}h`), **Capacity** and **Overhead** (`CapacityBar` size `drawer`) with semibold `text/primary` labels and unboxed values on the right. Follow quiet-field density (`py-1.5` / `py-2`).
 - Calendar and Type stay in the last group. Type is a ghost pill (`interactive/secondary`).
 - **Delete consultant** sits at the bottom of the drawer (`mt-auto`).
 - Animation: slide in from the right; list stays mounted.
 
 ---
 
-## 8) Density defaults (mandatory)
+## 8) Quiet fields & drawer forms (mandatory)
+
+Follow **Quiet fields** in DESIGN_SYSTEM.md. Summary for implementers:
+
+- Settings / customer / consultant / project drawers: `DrawerFieldRow` (label `w-36`, value `flex-1`, tight vertical padding). Display values use quiet triggers (`drawerEditTriggerClass` / `drawerSelectTriggerClass`) — no always-on bordered value box.
+- Work / settings drawer **collection CRUD** uses shared `DrawerItemList`: flat `divide-y` rows, click-to-edit labels, hover remove (X), quiet compose — not bordered list boxes. Checklists add a checkbox via `renderLeading`; Components / similar masterdata use the same shell without a checkbox.
+- Do not wrap drawer item lists in `rounded-lg border border-border-subtle`. Action rows (e.g. Import providers) also use flat `divide-y` only.
+- `OptionSegments` in drawers: muted track, no outer border, selected option as raised surface without a heavy ring.
+- `--color-border-form` maps to `border/subtle`. Do not reintroduce `border/default` as resting form chrome.
+
+### Grouped lists in drawers (Customer Projects, People, Rates, etc.)
+
+Group headers are **meta chrome**, not list rows. Use shared `DrawerListGroup` / `DrawerListGroupHeader` (+ `drawerListRowClass`):
+
+- Header: Label/S, semibold, uppercase, `text/tertiary`, on a soft `surface/subtle` band (`bg-bg-muted/60`). Count as normal-case tertiary. Optional quiet `+ Add` in the header — not a primary `Heading/S` page title above the list.
+- Rows: `divide-y`, primary title (`text-sm font-medium text/primary`), hover wash; destructive actions appear on row hover. Project rows may add a status dot / probability chip / Work icon via `CustomerProjectGroup`.
+- Apply the same pattern for People (Consultants, Customer users), Rates/Tasks, and other drawer collection tabs — not only Projects.
+
+### Danger zone panels (mandatory)
+
+Destructive sections in drawers/settings (Delete, Archive, Revoke, Remove login/profile, etc.) use one shared shell:
+
+```
+rounded-lg border border-danger/30 bg-danger/5 p-4
+```
+
+- Title: `text-label-l text-danger` (“Danger zone”)
+- Body: Body/S or `text-sm` on `text/secondary`
+- Destructive CTA: `Button` `variant="dangerSecondary"` `size="sm"` (`mt-3`) — outline with red text, not filled `danger`
+- Non-destructive helpers inside the panel (e.g. generate temp password) may stay `secondary`
+- Confirm modals keep `variant="danger"` on the confirm action
+
+**Hard vs soft delete (customers & people):**
+- Soft: Active / Inactive (`OptionSegments`) — hides from default lists; keeps history
+- Hard: Delete — permanent; **blocked** when time report (or planning) history exists; tell the user to Inactive instead
+- People may also keep granular Remove login / Remove profile; Delete person removes linked login and/or consultant in one confirm that lists what disappears
+
+Do not invent a different Danger chrome per surface. Prefer wrapping all danger actions for a tab in one panel.
+
+## 9) Density defaults (mandatory)
 
 - **Comfortable is the default** for overview list tables (Consultants and Customers).
 - **Compact** is for operational grids (allocation) and dense tool chrome.
@@ -182,7 +221,7 @@ Column order is Name, Team, Role, Capacity, Overhead. There is no Calendar colum
 
 ---
 
-## 9) App chrome
+## 10) App chrome
 
 - Shared sidebar and footer (Home, Log out) use `interactive/*` and zinc surfaces. Active nav uses `nav/active` + `nav/active-accent` in every app.
 - A top bar spans the content column: breadcrumbs (`Rove Apps / … / current page`) on the left, Notifications bell on the right. Unread state is a `status/danger` dot. The bell links to `/notifications`.

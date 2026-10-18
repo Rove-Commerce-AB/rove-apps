@@ -253,7 +253,8 @@
   --color-bg-content: var(--color-surface-page);
   --color-bg-page: var(--color-surface-page);
   --color-bg-muted: var(--color-surface-subtle);
-  --color-border-form: var(--color-border-default);
+  /* Quiet form chrome: subtle resting border (was border-default). */
+  --color-border-form: var(--color-border-subtle);
   --color-tabs-border: var(--color-border-subtle);
   --color-grid-border: var(--color-border-default);
   --color-grid-border-light: var(--color-border-subtle);

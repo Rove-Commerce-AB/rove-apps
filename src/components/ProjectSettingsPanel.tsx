@@ -743,37 +743,27 @@ export function ProjectSettingsPanel({
               value="danger"
               className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
             >
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-sm font-medium text-text-primary">
-                    Danger zone
-                  </h2>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Permanently delete this project. This cannot be undone.
-                  </p>
-                </div>
+              <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+                <h2 className="text-label-l text-danger">Danger zone</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Permanently deletes this project. Blocked when time report
+                  history exists.
+                </p>
                 {error && activeTab === "danger" ? (
-                  <p className="text-sm text-danger" role="alert">
+                  <p className="mt-3 text-sm text-danger" role="alert">
                     {error}
                   </p>
                 ) : null}
-                <div>
-                  <h3 className="text-sm font-medium text-text-primary">
-                    Delete project
-                  </h3>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Permanently deletes this project. This cannot be undone.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    className="mt-4"
-                    disabled={submitting || deleting}
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    Delete project
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  variant="dangerSecondary"
+                  size="sm"
+                  className="mt-3"
+                  disabled={submitting || deleting}
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  Delete project
+                </Button>
               </div>
             </TabsContent>
           ) : null}

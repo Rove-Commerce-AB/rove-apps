@@ -910,10 +910,10 @@ export async function linkWorkProjectToPlannerProject(
   if (!visible) throw new Error("Unauthorized");
   const { board } = visible;
   if (board.planner_project_id) {
-    throw new Error("This Work project is already linked to a customer project");
+    throw new Error("This Work project is already linked to a project");
   }
   const trimmed = plannerProjectId.trim();
-  if (!trimmed) throw new Error("Select a customer project");
+  if (!trimmed) throw new Error("Select a project");
 
   try {
     return await q.linkWorkBoardToPlannerProject(board.id, trimmed);
@@ -923,14 +923,14 @@ export async function linkWorkProjectToPlannerProject(
       maybePg.code === "23505" &&
       maybePg.constraint === "work_projects_planner_project_uidx"
     ) {
-      throw new Error("That customer project already has a Work project");
+      throw new Error("That project already has a Work project");
     }
     if (
       error instanceof Error &&
       error.message === "Could not link project"
     ) {
       throw new Error(
-        "Customer project not found, inactive, or already linked elsewhere"
+        "Project not found, inactive, or already linked elsewhere"
       );
     }
     throw error;

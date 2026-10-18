@@ -141,7 +141,7 @@ export function WorkCommentComposer({
   }
 
   return (
-    <div className="relative w-full min-w-0">
+    <div className="relative flex h-full w-full min-w-0 flex-col">
       {mention ? (
         <div
           role="listbox"
@@ -182,7 +182,7 @@ export function WorkCommentComposer({
       ) : null}
       <textarea
         ref={textareaRef}
-        className={`${className}${showShortcutHint ? " pb-6" : ""}`}
+        className={`block w-full ${className}${showShortcutHint ? " pb-6" : ""}`}
         rows={rows}
         placeholder="Write a comment… Use @ to mention"
         value={value}

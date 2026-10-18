@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { assertAdmin } from "@/lib/accessGuards";
 import {
+  consultantHasDeleteBlockers,
   getConsultantsList,
   linkNewInternalConsultantToInternalCustomer,
 } from "@/lib/consultants";
@@ -375,4 +376,41 @@ export async function createConsultantProfileForUser(input: {
     revalidatePath(customerHref(internalCustomerId));
   }
   return { consultantId };
+}
+
+/**
+ * Hard-delete a person: removes consultant profile and/or login when present.
+ * Blocked when the consultant has time report or planning history (same rule as customers).
+ */
+export async function deletePerson(input: {
+  appUserId: string | null;
+  consultantId: string | null;
+}): Promise<void> {
+  await assertAdmin();
+  const appUserId = input.appUserId?.trim() || null;
+  const consultantId = input.consultantId?.trim() || null;
+  if (!appUserId && !consultantId) {
+    throw new Error("Nothing to delete");
+  }
+
+  if (consultantId && (await consultantHasDeleteBlockers(consultantId))) {
+    throw new Error(
+      "This person has time report or planning history and cannot be deleted. Set status to Inactive instead."
+    );
+  }
+
+  await withCloudSqlTransaction("people-delete-person", async (client) => {
+    if (consultantId) {
+      await client.query(`DELETE FROM consultants WHERE id = $1`, [consultantId]);
+    }
+    if (appUserId) {
+      await client.query(`DELETE FROM app_users WHERE id = $1`, [appUserId]);
+    }
+  });
+
+  revalidateTag("allocation-consultants", "max");
+  revalidatePath(ROUTES.people);
+  revalidatePath(ROUTES.consultants);
+  revalidatePath(ROUTES.settings);
+  revalidatePath(ROUTES.planner, "layout");
 }

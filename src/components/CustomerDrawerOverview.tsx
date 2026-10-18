@@ -493,7 +493,7 @@ export function CustomerDrawerOverview({
                       cancelEdit();
                     }
                   }}
-                  className="h-9 w-full cursor-pointer rounded-md border border-form bg-bg-default p-1"
+                  className="h-9 w-full cursor-pointer rounded-md border border-transparent bg-transparent p-1 hover:bg-text-primary/[0.06] focus:border-form focus:bg-bg-default focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25"
                   autoFocus
                   aria-label="Customer color"
                 />

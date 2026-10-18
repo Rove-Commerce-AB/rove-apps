@@ -76,7 +76,11 @@ export function workProjectHref(customerId: string, projectId: string): string {
 export function workIssueHref(
   customerId: string,
   projectId: string,
-  issueId: string
+  issueId: string,
+  options?: { tab?: string }
 ): string {
-  return `${ROUTES.work}/${customerId}/${projectId}/${issueId}`;
+  const base = `${ROUTES.work}/${customerId}/${projectId}/${issueId}`;
+  const tab = options?.tab?.trim();
+  if (!tab || tab === "details") return base;
+  return `${base}?tab=${encodeURIComponent(tab)}`;
 }

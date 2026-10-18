@@ -9,15 +9,17 @@ import {
   useTransition,
   type DragEvent,
 } from "react";
-import { ArrowRight, GripVertical } from "lucide-react";
-import { Button, IconButton } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Button, ConfirmModal, IconButton } from "@/components/ui";
 import {
   addWorkIssueAssigneeAction,
   closeWorkSprintAction,
   createWorkIssueAction,
   createWorkSprintAction,
+  deleteWorkSprintAction,
   removeWorkIssueAssigneeAction,
   setWorkIssueSprintAction,
+  startWorkSprintAction,
   updateWorkIssueEstimateAction,
   updateWorkIssueOwnerAction,
   updateWorkIssueTypeAction,
@@ -57,6 +59,37 @@ import { WorkCardPeople } from "./WorkIssueDrawer";
 import { WorkViewToolbar } from "./WorkViewToolbar";
 
 const DRAG_TYPE = "application/x-work-sprint-issue";
+
+function createTiltedDragImage(event: DragEvent<HTMLElement>): HTMLElement {
+  const source = event.currentTarget;
+  const rect = source.getBoundingClientRect();
+  const pad = 28;
+  const offsetX = event.clientX - rect.left;
+  const offsetY = event.clientY - rect.top;
+
+  const wrap = document.createElement("div");
+  wrap.style.position = "fixed";
+  wrap.style.top = "0";
+  wrap.style.left = "-4000px";
+  wrap.style.padding = `${pad}px`;
+  wrap.style.pointerEvents = "none";
+
+  const ghost = source.cloneNode(true) as HTMLElement;
+  ghost.removeAttribute("draggable");
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.margin = "0";
+  ghost.style.boxSizing = "border-box";
+  ghost.style.opacity = "1";
+  ghost.style.background = "var(--color-bg-default, #fff)";
+  ghost.style.transformOrigin = `${offsetX}px ${offsetY}px`;
+  ghost.style.transform = "rotate(2deg) scale(1.02)";
+  ghost.style.boxShadow = "0 12px 28px rgba(0,0,0,0.18)";
+  ghost.style.borderRadius = "0.5rem";
+  wrap.appendChild(ghost);
+  document.body.appendChild(wrap);
+  event.dataTransfer.setDragImage(wrap, offsetX + pad, offsetY + pad);
+  return wrap;
+}
 
 function sortSprints(sprints: WorkSprint[]) {
   return sprints.slice().sort((a, b) => a.number - b.number);
@@ -98,25 +131,25 @@ export function WorkSprintView({
   doneStatusIds: Set<string>;
   onIssuesChange: (issues: WorkIssue[]) => void;
   onSprintsChange: (sprints: WorkSprint[]) => void;
-  onOpenIssue: (issueId: string) => void;
+  onOpenIssue: (issueId: string, options?: { tab?: string }) => void;
   onError: (message: string) => void;
   onChanged: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [closeOpen, setCloseOpen] = useState(false);
-  const [lengthDialog, setLengthDialog] = useState<"start" | "next" | null>(
-    null
-  );
+  const [deleteSprintId, setDeleteSprintId] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editSprintId, setEditSprintId] = useState<string | null>(null);
+  const [editTitleDraft, setEditTitleDraft] = useState("");
+  const [editStartsOn, setEditStartsOn] = useState("");
+  const [editEndsOn, setEditEndsOn] = useState("");
+  const [editCapacityDraft, setEditCapacityDraft] = useState("");
   const [planStartsOn, setPlanStartsOn] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
   const [planLengthWeeks, setPlanLengthWeeks] = useState(2);
   const [planTitleDraft, setPlanTitleDraft] = useState("");
   const [planCapacityDraft, setPlanCapacityDraft] = useState("");
-  const [capacityDraft, setCapacityDraft] = useState("");
-  const [editingCapacity, setEditingCapacity] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
-  const [editingTitle, setEditingTitle] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(() => {
     const currentSprint =
       sprints.find((sprint) => sprint.status === "current") ?? null;
@@ -154,7 +187,14 @@ export function WorkSprintView({
     WorkBoardPriorityFilterId[]
   >([]);
   const [sprintGroupBy, setSprintGroupBy] = useState<WorkBoardGroupBy>("none");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const draggingIdRef = useRef<string | null>(null);
+  const dragGhostRef = useRef<HTMLElement | null>(null);
+
+  function clearDragGhost() {
+    dragGhostRef.current?.remove();
+    dragGhostRef.current = null;
+  }
 
   const orderedSprints = useMemo(() => sortSprints(sprints), [sprints]);
   const current = sprints.find((sprint) => sprint.status === "current") ?? null;
@@ -170,6 +210,10 @@ export function WorkSprintView({
     [sprints]
   );
   const next = upcomingSprints[0] ?? null;
+  const editSprint =
+    editSprintId == null
+      ? null
+      : (sprints.find((sprint) => sprint.id === editSprintId) ?? null);
   const planAfterSprint = useMemo(() => {
     const open = sprints.filter(
       (sprint) => sprint.status === "current" || sprint.status === "next"
@@ -295,69 +339,12 @@ export function WorkSprintView({
   const capacityFillPct =
     capacityRatio == null ? 0 : Math.min(100, capacityRatio * 100);
 
-  useEffect(() => {
-    setCapacityDraft(
-      viewing?.capacityHours == null ? "" : String(viewing.capacityHours)
-    );
-    setEditingCapacity(false);
-  }, [viewing?.id, viewing?.capacityHours]);
-
-  useEffect(() => {
-    setTitleDraft(viewing?.title ?? "");
-    setEditingTitle(false);
-  }, [viewing?.id, viewing?.title]);
-
-  function commitSprintTitle(rawValue: string) {
-    if (!viewing || !canPlanScope) {
-      setEditingTitle(false);
-      return;
-    }
-    const nextTitle = clampWorkSprintTitle(rawValue);
-    setTitleDraft(nextTitle);
-    setEditingTitle(false);
-    if (nextTitle === viewing.title.trim()) return;
-    onSprintsChange(
-      sprints.map((sprint) =>
-        sprint.id === viewing.id ? { ...sprint, title: nextTitle } : sprint
-      )
-    );
-    run(() =>
-      updateWorkSprintAction(board.id, viewing.id, { title: nextTitle })
-    );
-  }
-
   function parseCapacityInput(rawValue: string): number | null | false {
     const raw = rawValue.trim().replace(",", ".");
     if (!raw) return null;
     const value = Number(raw);
     if (!Number.isFinite(value) || value < 0) return false;
     return value;
-  }
-
-  function commitCapacity(rawValue: string) {
-    if (!viewing || !canPlanScope) return;
-    const value = parseCapacityInput(rawValue);
-    if (value === false) {
-      setCapacityDraft(
-        viewing.capacityHours == null ? "" : String(viewing.capacityHours)
-      );
-      setEditingCapacity(false);
-      onError("Capacity must be a number of hours");
-      return;
-    }
-    setCapacityDraft(value == null ? "" : String(value));
-    setEditingCapacity(false);
-    if (value === (viewing.capacityHours ?? null)) return;
-    onSprintsChange(
-      sprints.map((sprint) =>
-        sprint.id === viewing.id ? { ...sprint, capacityHours: value } : sprint
-      )
-    );
-    run(() =>
-      updateWorkSprintAction(board.id, viewing.id, {
-        capacityHours: value,
-      })
-    );
   }
 
   function commitEstimate(issueId: string, value: number | null) {
@@ -507,12 +494,15 @@ export function WorkSprintView({
     });
   }
 
-  function onDragStart(event: DragEvent, issueId: string) {
+  function onDragStart(event: DragEvent<HTMLElement>, issueId: string) {
     if (!canPlanScope) {
       event.preventDefault();
       return;
     }
     draggingIdRef.current = issueId;
+    setDraggingId(issueId);
+    clearDragGhost();
+    dragGhostRef.current = createTiltedDragImage(event);
     event.dataTransfer.setData(DRAG_TYPE, issueId);
     event.dataTransfer.setData("text/plain", issueId);
     event.dataTransfer.effectAllowed = "move";
@@ -520,7 +510,9 @@ export function WorkSprintView({
 
   function onDragEnd() {
     draggingIdRef.current = null;
+    setDraggingId(null);
     setDragOverTarget(null);
+    clearDragGhost();
   }
 
   function acceptDrop(event: DragEvent, target: "backlog" | "sprint") {
@@ -544,6 +536,8 @@ export function WorkSprintView({
       draggingIdRef.current;
     setDragOverTarget(null);
     draggingIdRef.current = null;
+    setDraggingId(null);
+    clearDragGhost();
     if (!issueId) return;
     if (target === "sprint") {
       if (!viewing) return;
@@ -565,44 +559,82 @@ export function WorkSprintView({
             const id = ids[ids.length - 1];
             if (id) setViewingId(id);
           }}
-          emptySprints={
-            <>
-              <h2 className="text-heading-s text-text-primary">No sprints yet</h2>
-              <p className="text-sm text-text-secondary">
-                Create a current sprint to plan scope.
-              </p>
-            </>
-          }
-          onPlanNext={
-            current
-              ? () => {
-                  const anchor = planAfterSprint ?? current;
-                  setPlanStartsOn(addDays(anchor.endsOn, 1));
-                  setPlanLengthWeeks(sprintLengthWeeks(anchor));
-                  setPlanTitleDraft("");
-                  setPlanCapacityDraft("");
-                  setLengthDialog("next");
-                }
-              : undefined
-          }
+          onPlanNext={() => {
+            const anchor = planAfterSprint;
+            setPlanStartsOn(
+              anchor
+                ? addDays(anchor.endsOn, 1)
+                : new Date().toISOString().slice(0, 10)
+            );
+            setPlanLengthWeeks(anchor ? sprintLengthWeeks(anchor) : 2);
+            setPlanTitleDraft("");
+            setPlanCapacityDraft("");
+            setCreateDialogOpen(true);
+          }}
           planNextDisabled={pending}
+          onEditSprint={(sprintId) => {
+            const sprint = sprints.find((row) => row.id === sprintId);
+            if (!sprint) return;
+            setEditTitleDraft(sprint.title);
+            setEditStartsOn(sprint.startsOn);
+            setEditEndsOn(sprint.endsOn);
+            setEditCapacityDraft(
+              sprint.capacityHours == null ? "" : String(sprint.capacityHours)
+            );
+            setEditSprintId(sprint.id);
+          }}
+          editSprintDisabled={pending}
+          onStartSprint={(sprintId) => {
+            run(async () => {
+              const result = await startWorkSprintAction(board.id, sprintId);
+              if (!result.ok) return result;
+              onSprintsChange(
+                sprints.map((sprint) =>
+                  sprint.id === result.sprint.id ? result.sprint : sprint
+                )
+              );
+              setViewingId(result.sprint.id);
+              return { ok: true };
+            });
+          }}
+          startSprintDisabled={pending || Boolean(current)}
           onCloseCurrent={
             current ? () => setCloseOpen(true) : undefined
           }
           closeCurrentDisabled={pending}
+          onDeleteSprint={(sprintId) => setDeleteSprintId(sprintId)}
+          deleteSprintDisabled={pending}
           actions={
             <>
               {viewing && board.showTime ? (
                 <div
-                  className="flex items-center gap-2"
+                  className="flex w-[11rem] flex-col gap-1"
                   title={
                     capacityHours == null
-                      ? `${formatWorkHours(estimateSum)} planned`
-                      : `${formatWorkHours(estimateSum)} / ${formatWorkHours(capacityHours)}`
+                      ? `${formatWorkHours(estimateSum)} planned · set capacity in Edit`
+                      : overCapacity
+                        ? `${formatWorkHours(estimateSum)} of ${formatWorkHours(capacityHours)} · over capacity`
+                        : `${formatWorkHours(estimateSum)} of ${formatWorkHours(capacityHours)}`
                   }
                 >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[11px] font-medium text-text-tertiary">
+                      Capacity
+                    </span>
+                    <span
+                      className={`text-[12px] tabular-nums ${
+                        overCapacity
+                          ? "font-medium text-danger"
+                          : "text-text-primary"
+                      }`}
+                    >
+                      {capacityHours == null
+                        ? `${formatWorkHours(estimateSum)} / —`
+                        : `${formatWorkHours(estimateSum)} / ${formatWorkHours(capacityHours)}`}
+                    </span>
+                  </div>
                   <div
-                    className="h-1.5 w-24 overflow-hidden rounded-full bg-bg-muted"
+                    className="h-2 w-full overflow-hidden rounded-full bg-bg-muted"
                     role="progressbar"
                     aria-valuemin={0}
                     aria-valuemax={100}
@@ -623,91 +655,7 @@ export function WorkSprintView({
                       }}
                     />
                   </div>
-                  <span
-                    className={`text-[13px] tabular-nums ${
-                      overCapacity ? "text-danger" : "text-text-primary"
-                    }`}
-                  >
-                    {formatWorkHours(estimateSum)}
-                  </span>
-                  <span className="text-[13px] text-text-tertiary">/</span>
-                  {canPlanScope && editingCapacity ? (
-                    <label className="inline-flex items-center gap-0.5 rounded-md bg-bg-muted px-1.5 py-0.5">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        autoFocus
-                        disabled={pending}
-                        aria-label="Sprint capacity in hours"
-                        value={capacityDraft}
-                        onChange={(event) => setCapacityDraft(event.target.value)}
-                        onBlur={() => commitCapacity(capacityDraft)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            commitCapacity(capacityDraft);
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setCapacityDraft(
-                              capacityHours == null ? "" : String(capacityHours)
-                            );
-                            setEditingCapacity(false);
-                          }
-                        }}
-                        className="w-10 border-0 bg-transparent p-0 text-right text-caption tabular-nums text-text-primary focus:outline-none disabled:opacity-50"
-                      />
-                      <span className="text-caption text-text-tertiary">h</span>
-                    </label>
-                  ) : canPlanScope ? (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      aria-label={
-                        capacityHours == null
-                          ? "Set capacity"
-                          : `Capacity ${formatWorkHours(capacityHours)}`
-                      }
-                      title={
-                        capacityHours == null
-                          ? "Set capacity"
-                          : `Capacity ${formatWorkHours(capacityHours)} · click to edit`
-                      }
-                      onClick={() => setEditingCapacity(true)}
-                      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-caption tabular-nums transition-colors disabled:opacity-50 ${
-                        capacityHours == null
-                          ? "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
-                          : "bg-bg-muted text-text-secondary hover:bg-border-subtle hover:text-text-primary"
-                      }`}
-                    >
-                      {capacityHours == null
-                        ? "Capacity"
-                        : formatWorkHours(capacityHours)}
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center rounded-md bg-bg-muted px-1.5 py-0.5 text-caption tabular-nums text-text-secondary">
-                      {capacityHours == null
-                        ? "—"
-                        : formatWorkHours(capacityHours)}
-                    </span>
-                  )}
                 </div>
-              ) : null}
-              {!current ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() => {
-                    setPlanStartsOn(new Date().toISOString().slice(0, 10));
-                    setPlanLengthWeeks(2);
-                    setPlanTitleDraft("");
-                    setPlanCapacityDraft("");
-                    setLengthDialog("start");
-                  }}
-                >
-                  Start sprint
-                </Button>
               ) : null}
             </>
           }
@@ -729,6 +677,7 @@ export function WorkSprintView({
             dropActive={dragOverTarget === "backlog"}
             canDrop={canPlanScope}
             draggableCards={canPlanScope}
+            draggingIssueId={draggingId}
             onOpenIssue={onOpenIssue}
             onEstimateChange={commitEstimate}
             onTypeChange={commitType}
@@ -768,20 +717,6 @@ export function WorkSprintView({
           <SprintColumn
             embedded
             title={viewing ? workSprintLabel(viewing) : "Sprint"}
-            titleEditable={
-              viewing && canPlanScope
-                ? {
-                    number: viewing.number,
-                    draft: titleDraft,
-                    savedTitle: viewing.title,
-                    editing: editingTitle,
-                    disabled: pending,
-                    onEditingChange: setEditingTitle,
-                    onDraftChange: setTitleDraft,
-                    onCommit: commitSprintTitle,
-                  }
-                : undefined
-            }
             count={viewingIssues.length}
             empty={
               viewing
@@ -798,6 +733,7 @@ export function WorkSprintView({
             dropActive={dragOverTarget === "sprint"}
             canDrop={canPlanScope}
             draggableCards={canPlanScope}
+            draggingIssueId={draggingId}
             onOpenIssue={onOpenIssue}
             onEstimateChange={commitEstimate}
             onTypeChange={commitType}
@@ -840,16 +776,19 @@ export function WorkSprintView({
         </div>
       </div>
 
-      {lengthDialog && (lengthDialog === "start" || current) ? (
+      {createDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-sm rounded-xl bg-bg-default p-5 shadow-lg">
             <h3 className="text-heading-s text-text-primary">
-              {lengthDialog === "start"
-                ? "Start sprint"
+              {sprints.length === 0
+                ? "Create sprint"
                 : upcomingSprints.length > 0
                   ? "Plan another sprint"
                   : "Plan next sprint"}
             </h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              Creates a planned sprint. Start it later from the chip.
+            </p>
             <label className="mt-4 block space-y-1.5">
               <span className="text-sm font-medium text-text-primary">
                 Starts on
@@ -956,7 +895,7 @@ export function WorkSprintView({
                 variant="secondary"
                 size="sm"
                 disabled={pending}
-                onClick={() => setLengthDialog(null)}
+                onClick={() => setCreateDialogOpen(false)}
               >
                 Cancel
               </Button>
@@ -965,7 +904,6 @@ export function WorkSprintView({
                 size="sm"
                 disabled={pending || planLengthWeeks < 1 || !planStartsOn}
                 onClick={() => {
-                  const mode = lengthDialog;
                   const capacity = parseCapacityInput(planCapacityDraft);
                   if (capacity === false) {
                     onError("Capacity must be a number of hours");
@@ -977,24 +915,8 @@ export function WorkSprintView({
                   }
                   const startsOn = planStartsOn;
                   const title = clampWorkSprintTitle(planTitleDraft);
-                  setLengthDialog(null);
+                  setCreateDialogOpen(false);
                   run(async () => {
-                    if (mode === "start") {
-                      const result = await createWorkSprintAction(board.id, {
-                        as: "current",
-                        startsOn,
-                        lengthDays: planLengthWeeks * 7,
-                        capacityHours: capacity,
-                        title,
-                      });
-                      if (!result.ok) return result;
-                      onSprintsChange([result.sprint, ...sprints]);
-                      setViewingId(result.sprint.id);
-                      return { ok: true };
-                    }
-                    if (!current) {
-                      return { ok: false, error: "No current sprint" };
-                    }
                     const result = await createWorkSprintAction(board.id, {
                       as: "next",
                       startsOn,
@@ -1009,12 +931,163 @@ export function WorkSprintView({
                   });
                 }}
               >
-                {lengthDialog === "start" ? "Start sprint" : "Create sprint"}
+                Create sprint
               </Button>
             </div>
           </div>
         </div>
       ) : null}
+
+      {editSprint ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-bg-default p-5 shadow-lg">
+            <h3 className="text-heading-s text-text-primary">Edit sprint</h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              Sprint {editSprint.number}
+            </p>
+            <label className="mt-4 block space-y-1.5">
+              <span className="text-sm font-medium text-text-primary">
+                Name
+              </span>
+              <input
+                type="text"
+                value={editTitleDraft}
+                maxLength={WORK_SPRINT_TITLE_MAX_LENGTH}
+                onChange={(event) => setEditTitleDraft(event.target.value)}
+                placeholder="Optional subtitle"
+                aria-label="Sprint name"
+                className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              />
+            </label>
+            <label className="mt-3 block space-y-1.5">
+              <span className="text-sm font-medium text-text-primary">
+                Starts on
+              </span>
+              <input
+                type="date"
+                value={editStartsOn}
+                onChange={(event) => setEditStartsOn(event.target.value)}
+                aria-label="Sprint start date"
+                className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm tabular-nums text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              />
+            </label>
+            <label className="mt-3 block space-y-1.5">
+              <span className="text-sm font-medium text-text-primary">
+                Ends on
+              </span>
+              <input
+                type="date"
+                value={editEndsOn}
+                onChange={(event) => setEditEndsOn(event.target.value)}
+                aria-label="Sprint end date"
+                className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm tabular-nums text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              />
+            </label>
+            <label className="mt-3 block space-y-1.5">
+              <span className="text-sm font-medium text-text-primary">
+                Capacity (h)
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={editCapacityDraft}
+                onChange={(event) => setEditCapacityDraft(event.target.value)}
+                placeholder="Optional"
+                aria-label="Sprint capacity in hours"
+                className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm tabular-nums text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pending}
+                onClick={() => setEditSprintId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={
+                  pending ||
+                  !/^\d{4}-\d{2}-\d{2}$/.test(editStartsOn) ||
+                  !/^\d{4}-\d{2}-\d{2}$/.test(editEndsOn)
+                }
+                onClick={() => {
+                  const sprintId = editSprint.id;
+                  const title = clampWorkSprintTitle(editTitleDraft);
+                  const startsOn = editStartsOn;
+                  const endsOn = editEndsOn;
+                  const capacity = parseCapacityInput(editCapacityDraft);
+                  if (capacity === false) {
+                    onError("Capacity must be a number of hours");
+                    return;
+                  }
+                  if (endsOn < startsOn) {
+                    onError("End date must be on or after start");
+                    return;
+                  }
+                  setEditSprintId(null);
+                  run(async () => {
+                    const result = await updateWorkSprintAction(
+                      board.id,
+                      sprintId,
+                      { title, startsOn, endsOn, capacityHours: capacity }
+                    );
+                    if (!result.ok) return result;
+                    onSprintsChange(
+                      sprints.map((sprint) =>
+                        sprint.id === result.sprint.id ? result.sprint : sprint
+                      )
+                    );
+                    return { ok: true };
+                  });
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmModal
+        isOpen={deleteSprintId != null}
+        title={(() => {
+          const sprint = deleteSprintId
+            ? sprints.find((row) => row.id === deleteSprintId)
+            : null;
+          return sprint
+            ? `Delete ${workSprintLabel(sprint)}?`
+            : "Delete sprint?";
+        })()}
+        message="Issues in this sprint move back to the backlog. This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onClose={() => setDeleteSprintId(null)}
+        onConfirm={() => {
+          const sprintId = deleteSprintId;
+          if (!sprintId) return;
+          const remaining = sprints.filter((sprint) => sprint.id !== sprintId);
+          onSprintsChange(remaining);
+          onIssuesChange(
+            issues.map((issue) =>
+              issue.sprintId === sprintId ? { ...issue, sprintId: null } : issue
+            )
+          );
+          if (viewingId === sprintId) {
+            const nextView =
+              remaining.find((sprint) => sprint.status === "current") ??
+              remaining[remaining.length - 1] ??
+              null;
+            setViewingId(nextView?.id ?? null);
+          }
+          setDeleteSprintId(null);
+          run(() => deleteWorkSprintAction(board.id, sprintId));
+        }}
+      />
 
       {closeOpen && current ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -1107,7 +1180,6 @@ export function WorkSprintView({
 function SprintColumn({
   embedded = false,
   title,
-  titleEditable,
   count,
   empty,
   issues,
@@ -1118,6 +1190,7 @@ function SprintColumn({
   dropActive,
   canDrop,
   draggableCards,
+  draggingIssueId = null,
   onOpenIssue,
   onEstimateChange,
   onTypeChange,
@@ -1138,16 +1211,6 @@ function SprintColumn({
 }: {
   embedded?: boolean;
   title: string;
-  titleEditable?: {
-    number: number;
-    draft: string;
-    savedTitle: string;
-    editing: boolean;
-    disabled?: boolean;
-    onEditingChange: (editing: boolean) => void;
-    onDraftChange: (value: string) => void;
-    onCommit: (value: string) => void;
-  };
   count: number;
   empty: string;
   issues: WorkIssue[];
@@ -1158,7 +1221,8 @@ function SprintColumn({
   dropActive: boolean;
   canDrop: boolean;
   draggableCards: boolean;
-  onOpenIssue: (issueId: string) => void;
+  draggingIssueId?: string | null;
+  onOpenIssue: (issueId: string, options?: { tab?: string }) => void;
   onEstimateChange: (issueId: string, value: number | null) => void;
   onTypeChange: (issueId: string, issueType: WorkIssueType) => void;
   onSetOwner: (issueId: string, person: WorkPerson | null) => void;
@@ -1167,7 +1231,7 @@ function SprintColumn({
   onError: (message: string) => void;
   warnBlocked?: WorkIssue[];
   board?: WorkBoardView;
-  onDragStart: (event: DragEvent, issueId: string) => void;
+  onDragStart: (event: DragEvent<HTMLElement>, issueId: string) => void;
   onDragEnd: () => void;
   onDragOver: (event: DragEvent) => boolean;
   onDragLeave: () => void;
@@ -1193,6 +1257,7 @@ function SprintColumn({
   }) => Promise<boolean> | boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  const skipRowClickRef = useRef(false);
   const blockedIds = useMemo(() => {
     if (!warnBlocked || !board) return new Set<string>();
     const ids = new Set<string>();
@@ -1213,73 +1278,94 @@ function SprintColumn({
   const issueGroups =
     groups ?? ([{ key: "all", title: "", owner: null, issues }] as WorkColumnGroup[]);
 
+  function isRowControlTarget(target: EventTarget | null) {
+    return (
+      target instanceof Element &&
+      target.closest("[data-no-row-drag]") != null
+    );
+  }
+
   function renderIssue(issue: WorkIssue, key: string) {
-    // Keep grip mounted whenever the column supports drag so pending transitions
-    // don't remove it and make rows jump.
-    const showGrip = draggableCards;
     const canDrag = draggableCards && !pending;
+    const isDragging = draggingIssueId === issue.id;
     return (
       <li
         key={key}
-        className="flex items-stretch gap-0.5 rounded-lg border border-border-subtle bg-bg-default"
+        draggable={canDrag}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${issue.key}`}
+        className={`flex cursor-pointer items-stretch gap-0.5 rounded-lg border border-border-subtle bg-bg-default transition-opacity ${
+          canDrag ? "select-none" : ""
+        } ${isDragging ? "opacity-35" : ""}`}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpenIssue(issue.id);
+          }
+        }}
+        onClick={(event) => {
+          if (skipRowClickRef.current) return;
+          if (isRowControlTarget(event.target)) return;
+          onOpenIssue(issue.id);
+        }}
+        onDragStart={
+          canDrag
+            ? (event) => {
+                if (isRowControlTarget(event.target)) {
+                  event.preventDefault();
+                  return;
+                }
+                skipRowClickRef.current = true;
+                onDragStart(event, issue.id);
+              }
+            : undefined
+        }
+        onDragEnd={
+          canDrag
+            ? () => {
+                onDragEnd();
+                window.setTimeout(() => {
+                  skipRowClickRef.current = false;
+                }, 0);
+              }
+            : undefined
+        }
       >
-        {showGrip ? (
-          <span
-            draggable={canDrag}
-            title={canDrag ? "Drag to move" : undefined}
-            aria-label={canDrag ? `Drag ${issue.key}` : undefined}
-            aria-hidden={!canDrag}
-            onDragStart={
-              canDrag
-                ? (event) => {
-                    const row = event.currentTarget.closest("li");
-                    if (row instanceof HTMLElement) {
-                      event.dataTransfer.setDragImage(row, 16, 16);
-                    }
-                    onDragStart(event, issue.id);
-                  }
-                : undefined
-            }
-            onDragEnd={canDrag ? onDragEnd : undefined}
-            className={`inline-flex w-6 shrink-0 items-center justify-center px-1 text-text-tertiary ${
-              canDrag
-                ? "cursor-grab hover:text-text-secondary active:cursor-grabbing"
-                : "pointer-events-none opacity-40"
-            }`}
-          >
-            <GripVertical className="h-3.5 w-3.5" aria-hidden />
+        <div className="flex min-w-0 flex-1 items-center gap-1 py-2 pr-1 pl-2">
+          <span data-no-row-drag className="shrink-0">
+            <WorkCardTypeBadge
+              issueType={issue.issueType}
+              disabled={estimateDisabled}
+              onChange={(issueType) => onTypeChange(issue.id, issueType)}
+            />
           </span>
-        ) : null}
-        <div
-          className={`flex min-w-0 flex-1 items-center gap-1 py-2 ${
-            showGrip ? "pr-1 pl-0.5" : "pl-2 pr-1"
-          }`}
-        >
-          <WorkCardTypeBadge
-            issueType={issue.issueType}
-            disabled={estimateDisabled}
-            onChange={(issueType) => onTypeChange(issue.id, issueType)}
-          />
-          <button
-            type="button"
-            className="min-w-0 flex-1 text-left"
-            onClick={() => onOpenIssue(issue.id)}
-          >
-            <span className="flex min-w-0 items-center gap-2 text-sm leading-6 text-text-primary">
-              <span className="shrink-0 tabular-nums text-text-tertiary">
-                {issue.key}
+          <div className="flex min-w-0 flex-1 items-start gap-1">
+            <span className="min-w-0 flex-1 text-left">
+              <span className="flex min-w-0 items-center gap-2 text-sm leading-6 text-text-primary">
+                <span className="shrink-0 tabular-nums text-text-tertiary">
+                  {issue.key}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{issue.title}</span>
               </span>
-              <WorkCardPreDeployHint actions={issue.preDeployActions} />
-              <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+              {blockedIds.has(issue.id) ? (
+                <span className="mt-0.5 block text-caption leading-snug text-danger">
+                  Blocked by work outside this sprint or not done
+                </span>
+              ) : null}
             </span>
-            {blockedIds.has(issue.id) ? (
-              <span className="mt-0.5 block text-caption leading-snug text-danger">
-                Blocked by work outside this sprint or not done
-              </span>
-            ) : null}
-          </button>
+            <span data-no-row-drag className="shrink-0">
+              <WorkCardPreDeployHint
+                actions={issue.preDeployActions}
+                onOpen={() => onOpenIssue(issue.id, { tab: "pre-deploy" })}
+              />
+            </span>
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 py-2 pr-2">
+        <div
+          data-no-row-drag
+          className="flex shrink-0 items-center gap-1.5 py-2 pr-2"
+        >
           <WorkCardPeople
             owner={issue.owner}
             assignees={issue.assignees}
@@ -1307,82 +1393,38 @@ function SprintColumn({
 
   return (
     <section
-      className={`flex min-h-0 flex-col transition-colors ${
+      className={`flex min-h-0 flex-col transition-[background-color,box-shadow] duration-150 ${
         embedded
-          ? `min-h-0 bg-bg-default ${
-              dropActive ? "bg-accent-primary-subtle/40" : ""
-            }`
-          : `rounded-xl border bg-bg-muted/40 ${
-              dropActive
-                ? "border-brand-signal bg-accent-primary-subtle/40"
-                : "border-border-subtle"
-            }`
+          ? dropActive
+            ? "min-h-0 bg-accent-primary-subtle ring-1 ring-inset ring-brand-signal/35"
+            : "min-h-0 bg-bg-default"
+          : dropActive
+            ? "rounded-xl border border-brand-signal bg-accent-primary-subtle"
+            : "rounded-xl border border-border-subtle bg-bg-muted/40"
       }`}
       onDragOver={(event) => {
         if (!canDrop) return;
         onDragOver(event);
       }}
-      onDragLeave={onDragLeave}
+      onDragLeave={(event) => {
+        const related = event.relatedTarget;
+        if (
+          related instanceof Node &&
+          event.currentTarget.contains(related)
+        ) {
+          return;
+        }
+        onDragLeave();
+      }}
       onDrop={(event) => {
         if (!canDrop) return;
         onDrop(event);
       }}
     >
       <header className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-2">
-        {titleEditable ? (
-          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-            <span className="shrink-0 text-sm font-medium text-text-primary">
-              Sprint {titleEditable.number}
-            </span>
-            {titleEditable.editing ? (
-              <input
-                type="text"
-                autoFocus
-                disabled={titleEditable.disabled}
-                value={titleEditable.draft}
-                maxLength={WORK_SPRINT_TITLE_MAX_LENGTH}
-                aria-label="Sprint name"
-                placeholder="Name"
-                onChange={(event) =>
-                  titleEditable.onDraftChange(event.target.value)
-                }
-                onBlur={() => titleEditable.onCommit(titleEditable.draft)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    titleEditable.onCommit(titleEditable.draft);
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    titleEditable.onDraftChange(titleEditable.savedTitle);
-                    titleEditable.onEditingChange(false);
-                  }
-                }}
-                className="min-w-0 flex-1 rounded-md border border-border-subtle bg-bg-default px-1.5 py-0.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50"
-              />
-            ) : (
-              <button
-                type="button"
-                disabled={titleEditable.disabled}
-                title="Rename sprint"
-                onClick={() => titleEditable.onEditingChange(true)}
-                className={`min-w-0 truncate text-left text-sm font-medium disabled:opacity-50 ${
-                  titleEditable.draft.trim()
-                    ? "text-text-primary hover:text-text-secondary"
-                    : "text-text-tertiary hover:text-text-secondary"
-                }`}
-              >
-                {titleEditable.draft.trim()
-                  ? `· ${titleEditable.draft.trim()}`
-                  : "· Add name"}
-              </button>
-            )}
-          </div>
-        ) : (
-          <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-            {title}
-          </h3>
-        )}
+        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+          {title}
+        </h3>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {viewControls ? (
             <WorkBoardViewControls

@@ -46,6 +46,10 @@ export async function updateConsultant(id: string, input: q.UpdateConsultantInpu
   revalidatePath(ROUTES.planner, "layout");
 }
 
+export async function consultantHasDeleteBlockers(id: string) {
+  return q.consultantHasDeleteBlockers(id);
+}
+
 export async function deleteConsultant(id: string) {
   const result = await q.deleteConsultantQuery(id);
   revalidatePath(ROUTES.people);

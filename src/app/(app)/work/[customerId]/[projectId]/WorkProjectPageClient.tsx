@@ -9,10 +9,16 @@ import {
   useTransition,
   type DragEvent,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
-import Link from "next/link";
-import { GripVertical, MoreHorizontal, Plus, Search, Settings } from "lucide-react";
+import {
+  GripVertical,
+  Link2,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Settings,
+} from "lucide-react";
 import {
   Button,
   ConfirmModal,
@@ -248,7 +254,9 @@ export function WorkBoardPageClient({
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const selectedIssueId = pathname.split("/").filter(Boolean)[3] ?? null;
+  const selectedIssueTab = searchParams.get("tab") ?? "details";
   const [pending, startTransition] = useTransition();
   const [issues, setIssues] = useState(board.issues);
   const [sprints, setSprints] = useState<WorkSprint[]>(board.sprints);
@@ -360,6 +368,15 @@ export function WorkBoardPageClient({
   const statusInsertBeforeRef = useRef<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const dragAutoScrollRef = useRef<DragAutoScrollController | null>(null);
+  const spacePanRef = useRef({
+    spaceDown: false,
+    panning: false,
+    startX: 0,
+    startScrollLeft: 0,
+  });
+  const [spacePanCursor, setSpacePanCursor] = useState<
+    "grab" | "grabbing" | null
+  >(null);
 
   function stopDragAutoScroll() {
     dragAutoScrollRef.current?.stop();
@@ -393,6 +410,56 @@ export function WorkBoardPageClient({
   useEffect(() => {
     return () => stopDragAutoScroll();
   }, []);
+
+  useEffect(() => {
+    if (boardMode !== "board") {
+      spacePanRef.current.spaceDown = false;
+      spacePanRef.current.panning = false;
+      setSpacePanCursor(null);
+      return;
+    }
+
+    function isEditableTarget(target: EventTarget | null) {
+      if (!(target instanceof Element)) return false;
+      return (
+        target.closest(
+          "input, textarea, select, [contenteditable='true'], [role='textbox']"
+        ) != null
+      );
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.code !== "Space" && event.key !== " ") return;
+      if (event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+      spacePanRef.current.spaceDown = true;
+      setSpacePanCursor((current) =>
+        current === "grabbing" ? current : "grab"
+      );
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      if (event.code !== "Space" && event.key !== " ") return;
+      spacePanRef.current.spaceDown = false;
+      setSpacePanCursor(spacePanRef.current.panning ? "grabbing" : null);
+    }
+
+    function onWindowBlur() {
+      spacePanRef.current.spaceDown = false;
+      if (!spacePanRef.current.panning) setSpacePanCursor(null);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onWindowBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onWindowBlur);
+    };
+  }, [boardMode]);
 
   useEffect(() => {
     setIssues((current) => {
@@ -490,10 +557,11 @@ export function WorkBoardPageClient({
     ]
   );
 
-  function openIssue(issueId: string) {
-    router.push(workIssueHref(board.customerId, board.id, issueId), {
-      scroll: false,
-    });
+  function openIssue(issueId: string, options?: { tab?: string }) {
+    router.push(
+      workIssueHref(board.customerId, board.id, issueId, options),
+      { scroll: false }
+    );
   }
 
   function closeIssue() {
@@ -938,13 +1006,34 @@ export function WorkBoardPageClient({
           <h1 className="min-w-0 truncate text-heading-xl text-text-primary">
             {boardTitle}
           </h1>
-          <p className="mt-1.5 text-[13px] text-text-secondary">
-            <Link
-              href={workCustomerHref(board.customerId)}
-              className="hover:text-text-primary"
-            >
-              {board.customerName}
-            </Link>
+          <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[13px]">
+            {plannerProjectId ? (
+              <button
+                type="button"
+                onClick={() => openProjectSettings("details")}
+                className="inline-flex min-w-0 items-center gap-1.5 text-left text-text-secondary hover:text-text-primary"
+                title="Open project settings"
+              >
+                <Link2
+                  className="h-3.5 w-3.5 shrink-0 text-text-tertiary"
+                  aria-hidden
+                />
+                <span className="min-w-0 truncate">
+                  <span className="text-text-tertiary">Project · </span>
+                  {plannerProjectName?.trim() || "Linked"}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openProjectSettings("details")}
+                className="inline-flex items-center gap-1.5 text-text-tertiary hover:text-text-secondary"
+                title="Link this Work project to a project"
+              >
+                <Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Not linked to a project
+              </button>
+            )}
           </p>
         </div>
         <div className="mt-1 flex shrink-0 items-center gap-2">
@@ -1056,7 +1145,7 @@ export function WorkBoardPageClient({
             setIssues(next);
           }}
           onSprintsChange={setSprints}
-          onOpenIssue={(issueId) => openIssue(issueId)}
+          onOpenIssue={(issueId, options) => openIssue(issueId, options)}
           onError={setError}
           onChanged={() => router.refresh()}
         />
@@ -1069,9 +1158,7 @@ export function WorkBoardPageClient({
             issuesRef.current = next;
             setIssues(next);
           }}
-          onOpenIssue={(issueId) =>
-            router.push(workIssueHref(board.customerId, board.id, issueId))
-          }
+          onOpenIssue={(issueId, options) => openIssue(issueId, options)}
           onError={setError}
           onChanged={() => router.refresh()}
         />
@@ -1079,7 +1166,53 @@ export function WorkBoardPageClient({
       <div
         ref={boardScrollRef}
         data-work-board-scroll
-        className="flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden"
+        className={`flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden ${
+          spacePanCursor === "grabbing"
+            ? "cursor-grabbing select-none [&_*]:!cursor-grabbing"
+            : spacePanCursor === "grab"
+              ? "cursor-grab [&_*]:!cursor-grab"
+              : ""
+        }`}
+        onPointerDown={(event) => {
+          if (!spacePanRef.current.spaceDown) return;
+          if (event.button !== 0) return;
+          if (dragIssueIdRef.current || draggingStatusIdRef.current) return;
+          const el = boardScrollRef.current;
+          if (!el) return;
+          event.preventDefault();
+          event.stopPropagation();
+          spacePanRef.current.panning = true;
+          spacePanRef.current.startX = event.clientX;
+          spacePanRef.current.startScrollLeft = el.scrollLeft;
+          el.setPointerCapture(event.pointerId);
+          setSpacePanCursor("grabbing");
+        }}
+        onPointerMove={(event) => {
+          if (!spacePanRef.current.panning) return;
+          const el = boardScrollRef.current;
+          if (!el) return;
+          el.scrollLeft =
+            spacePanRef.current.startScrollLeft -
+            (event.clientX - spacePanRef.current.startX);
+        }}
+        onPointerUp={(event) => {
+          if (!spacePanRef.current.panning) return;
+          spacePanRef.current.panning = false;
+          const el = boardScrollRef.current;
+          if (el?.hasPointerCapture(event.pointerId)) {
+            el.releasePointerCapture(event.pointerId);
+          }
+          setSpacePanCursor(spacePanRef.current.spaceDown ? "grab" : null);
+        }}
+        onPointerCancel={(event) => {
+          if (!spacePanRef.current.panning) return;
+          spacePanRef.current.panning = false;
+          const el = boardScrollRef.current;
+          if (el?.hasPointerCapture(event.pointerId)) {
+            el.releasePointerCapture(event.pointerId);
+          }
+          setSpacePanCursor(spacePanRef.current.spaceDown ? "grab" : null);
+        }}
         onDragOver={(event) => {
           if (draggingStatusIdRef.current) {
             event.preventDefault();
@@ -1412,7 +1545,7 @@ export function WorkBoardPageClient({
                           skipCardClickRef.current = false;
                         }, 0);
                       }}
-                      className={`relative cursor-grab select-none overflow-hidden rounded-lg border bg-bg-default p-3 shadow-sm active:cursor-grabbing ${
+                      className={`relative cursor-pointer select-none overflow-hidden rounded-lg border bg-bg-default p-3 shadow-sm ${
                         selectedIssueId === issue.id
                           ? "border-accent-primary"
                           : "border-border-subtle hover:border-border-default"
@@ -1448,6 +1581,9 @@ export function WorkBoardPageClient({
                             <span className="min-w-0 truncate">{issue.key}</span>
                             <WorkCardPreDeployHint
                               actions={issue.preDeployActions}
+                              onOpen={() =>
+                                openIssue(issue.id, { tab: "pre-deploy" })
+                              }
                             />
                             {isIssueBlocked(issue.relations) ? (
                               <span className="text-caption">Blocked</span>
@@ -2020,6 +2156,7 @@ export function WorkBoardPageClient({
               plannerProjectName,
             }}
             issue={selected}
+            initialTab={selectedIssueTab}
             onStatus={(status) => {
               moveIssue(selected.id, status, null);
             }}

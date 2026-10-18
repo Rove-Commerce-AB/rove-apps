@@ -216,7 +216,7 @@ export function WorkCreateProjectDialog({
           event.preventDefault();
           if (!customer) return;
           if (mode === "link" && !plannerProjectId) {
-            setError("Choose a customer project to link");
+            setError("Choose a project to link");
             return;
           }
           const members = withRequiredMember(memberIds, currentUserId);
@@ -271,7 +271,7 @@ export function WorkCreateProjectDialog({
                     : "text-text-primary"
                 }`}
               >
-                Customer project
+                Project
               </span>
               <span className="mt-0.5 block text-caption text-text-tertiary">
                 Link to an existing one
@@ -310,7 +310,7 @@ export function WorkCreateProjectDialog({
           }`}
         >
           <span className="mb-1 block text-sm font-medium text-text-primary">
-            Customer project
+            Project
           </span>
           <select
             value={plannerProjectId}

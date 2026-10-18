@@ -169,7 +169,7 @@ export function PersonMcpAccessTab({ appUserId, isCustomer, appKeys, initialAcce
                 {copied ? "Copied" : "Copy"}
               </Button>
             </div>
-            <div className="mt-5 rounded-lg border border-danger/30 p-4">
+            <div className="mt-5 rounded-lg border border-danger/30 bg-danger/5 p-4">
               <h4 className="text-label-l text-danger">Danger zone</h4>
               <p className="mt-1 text-body-s text-text-secondary">Revoking this token removes MCP access for clients using it.</p>
               <Button

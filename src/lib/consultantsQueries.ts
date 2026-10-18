@@ -168,7 +168,27 @@ export async function updateConsultantQuery(
   return true;
 }
 
+/** True when hard-deleting would remove or orphan planning/time history. */
+export async function consultantHasDeleteBlockers(
+  id: string
+): Promise<boolean> {
+  const { rows } = await cloudSqlPool.query<{ blocked: boolean }>(
+    `SELECT (
+       EXISTS (SELECT 1 FROM time_report_entries WHERE consultant_id = $1)
+       OR EXISTS (SELECT 1 FROM time_report_entry_lines WHERE consultant_id = $1)
+       OR EXISTS (SELECT 1 FROM allocations WHERE consultant_id = $1)
+     ) AS blocked`,
+    [id]
+  );
+  return Boolean(rows[0]?.blocked);
+}
+
 export async function deleteConsultantQuery(id: string): Promise<void> {
+  if (await consultantHasDeleteBlockers(id)) {
+    throw new Error(
+      "This person has time report or planning history and cannot be deleted. Set status to Inactive instead."
+    );
+  }
   await cloudSqlPool.query(`DELETE FROM consultants WHERE id = $1`, [id]);
 }
 

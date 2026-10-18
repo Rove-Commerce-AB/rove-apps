@@ -64,7 +64,7 @@ function ToolbarButton({
       className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-text-secondary transition-colors disabled:opacity-40 ${
         active
           ? "bg-accent-primary-subtle text-accent-primary-text"
-          : "hover:bg-bg-muted hover:text-text-primary"
+          : "hover:bg-text-primary/[0.06] hover:text-text-primary"
       }`}
     >
       {children}
@@ -215,8 +215,8 @@ export function WorkDescriptionEditor({
   const iconClass = "h-3.5 w-3.5";
 
   return (
-    <div className="rounded-md border border-transparent focus-within:border-border-subtle">
-      <div className="mb-1 flex items-center gap-0.5">
+    <div className="overflow-hidden rounded-xl bg-bg-muted/40 ring-1 ring-border-subtle">
+      <div className="flex items-center gap-0.5 border-b border-border-subtle/70 px-1.5 py-1">
         {mode === "wysiwyg" ? (
           <>
             <ToolbarButton
@@ -312,7 +312,7 @@ export function WorkDescriptionEditor({
             </ToolbarButton>
           </>
         ) : (
-          <span className="px-1 text-caption text-text-tertiary">
+          <span className="px-1.5 text-caption text-text-tertiary">
             Markdown source
           </span>
         )}
@@ -336,23 +336,25 @@ export function WorkDescriptionEditor({
         </div>
       </div>
 
-      {mode === "wysiwyg" ? (
-        <EditorContent editor={editor} />
-      ) : (
-        <textarea
-          value={sourceDraft}
-          disabled={disabled}
-          placeholder={placeholder}
-          rows={6}
-          className="w-full resize-y rounded-md border-0 bg-transparent px-0 py-1 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
-          onChange={(event) => {
-            const next = event.target.value;
-            setSourceDraft(next);
-            emitMarkdown(next);
-          }}
-          onBlur={() => onBlur?.()}
-        />
-      )}
+      <div className="bg-bg-default px-3 py-2">
+        {mode === "wysiwyg" ? (
+          <EditorContent editor={editor} />
+        ) : (
+          <textarea
+            value={sourceDraft}
+            disabled={disabled}
+            placeholder={placeholder}
+            rows={6}
+            className="w-full resize-y rounded-md border-0 bg-transparent px-0 py-0 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
+            onChange={(event) => {
+              const next = event.target.value;
+              setSourceDraft(next);
+              emitMarkdown(next);
+            }}
+            onBlur={() => onBlur?.()}
+          />
+        )}
+      </div>
     </div>
   );
 }

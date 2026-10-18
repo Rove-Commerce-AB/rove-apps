@@ -370,7 +370,7 @@ Consultant allocation per project (and optional role) per ISO week.
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| consultant_id | uuid | nullable, FK → `consultants.id`, ON DELETE CASCADE |
+| consultant_id | uuid | nullable, FK → `consultants.id`, ON DELETE RESTRICT (was CASCADE; see `scripts/20261018_consultant_delete_restrict.sql`) |
 | project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
 | role_id | uuid | nullable, FK → `roles.id`, ON DELETE RESTRICT |
 | customer_rate_id | uuid | nullable, FK → `customer_rates.id`, ON DELETE RESTRICT |
@@ -504,7 +504,7 @@ Jira-DevOps key / description / optional Work issue). Day cells live in
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK part |
-| consultant_id | uuid | PK part, FK → `consultants.id`, ON DELETE CASCADE |
+| consultant_id | uuid | PK part, FK → `consultants.id`, ON DELETE RESTRICT (was CASCADE; see `scripts/20261018_consultant_delete_restrict.sql`) |
 | iso_year | integer | PK part |
 | iso_week | integer | PK part |
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE RESTRICT |
@@ -533,7 +533,7 @@ One row per **calendar day** on a week line. The UI groups by week.
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| consultant_id | uuid | NOT NULL, FK → `consultants.id`, ON DELETE CASCADE |
+| consultant_id | uuid | NOT NULL, FK → `consultants.id`, ON DELETE RESTRICT (was CASCADE; see `scripts/20261018_consultant_delete_restrict.sql`) |
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
 | project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
 | role_id | uuid | nullable, FK → `roles.id`, ON DELETE CASCADE |

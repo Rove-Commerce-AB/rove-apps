@@ -25,9 +25,9 @@ export function OptionSegments({
   className = "",
 }: Props) {
   return (
-    <div className="flex w-full justify-end">
+    <div className="flex w-full min-w-0">
       <div
-        className={`inline-flex rounded-lg border border-form bg-bg-muted/30 p-0.5 ${className}`.trim()}
+        className={`inline-flex rounded-md bg-bg-muted/40 p-0.5 ${className}`.trim()}
         role="group"
         aria-label={name}
       >
@@ -41,10 +41,10 @@ export function OptionSegments({
               aria-checked={isSelected}
               disabled={disabled}
               onClick={() => onChange(opt.value)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${
                 isSelected
-                  ? "bg-bg-default text-text-primary shadow-sm ring-1 ring-border"
-                  : "text-text-primary opacity-70 hover:opacity-100"
+                  ? "bg-bg-default text-text-primary shadow-sm"
+                  : "text-text-secondary hover:text-text-primary"
               }`}
             >
               {opt.label}

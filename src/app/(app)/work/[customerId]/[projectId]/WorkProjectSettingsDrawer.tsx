@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Plus } from "lucide-react";
+import Link from "next/link";
 import {
   Button,
   ConfirmModal,
+  DrawerItemList,
   Input,
   SideDrawer,
   Tabs,
@@ -12,6 +13,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui";
+import { customerHref } from "@/lib/routes";
 import type { WorkComponent, WorkPerson } from "@/lib/workTypes";
 import { listLinkablePlannerProjectsAction, saveWorkProjectInstructionsAction } from "../../actions";
 import { WorkBoardMembers } from "./WorkBoardMembers";
@@ -82,15 +84,9 @@ export function WorkProjectSettingsDrawer({
   const [deletingComponent, setDeletingComponent] =
     useState<WorkComponent | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [addingComponent, setAddingComponent] = useState(false);
   const [newComponentName, setNewComponentName] = useState("");
   const [creatingComponent, setCreatingComponent] = useState(false);
-  const [componentDrafts, setComponentDrafts] = useState<Record<string, string>>(
-    {}
-  );
-  const [savingComponentId, setSavingComponentId] = useState<string | null>(
-    null
-  );
+  const [renamingComponent, setRenamingComponent] = useState(false);
   const [linkableProjects, setLinkableProjects] = useState<
     { id: string; name: string }[]
   >([]);
@@ -102,7 +98,6 @@ export function WorkProjectSettingsDrawer({
     if (!open) return;
     setNameDraft(title);
     setTab(initialTab);
-    setAddingComponent(false);
     setNewComponentName("");
   }, [open, title, initialTab]);
 
@@ -132,12 +127,6 @@ export function WorkProjectSettingsDrawer({
     };
   }, [open, customerId, plannerProjectId]);
 
-  useEffect(() => {
-    setComponentDrafts(
-      Object.fromEntries(components.map((row) => [row.id, row.name]))
-    );
-  }, [components]);
-
   async function commitName() {
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === title) {
@@ -150,36 +139,22 @@ export function WorkProjectSettingsDrawer({
     if (!ok) setNameDraft(title);
   }
 
-  async function commitComponentName(component: WorkComponent) {
-    const draft = (componentDrafts[component.id] ?? component.name).trim();
-    if (!draft) {
-      setComponentDrafts((current) => ({
-        ...current,
-        [component.id]: component.name,
-      }));
-      return;
-    }
-    if (draft === component.name) return;
-    setSavingComponentId(component.id);
-    const next = await onRenameComponent(component, draft);
-    setSavingComponentId(null);
-    if (!next) {
-      setComponentDrafts((current) => ({
-        ...current,
-        [component.id]: component.name,
-      }));
-    }
-  }
-
-  async function submitNewComponent() {
-    const trimmed = newComponentName.trim();
+  async function submitNewComponent(name: string) {
+    const trimmed = name.trim();
     if (!trimmed || creatingComponent) return;
     setCreatingComponent(true);
     const created = await onCreateComponent(trimmed);
     setCreatingComponent(false);
     if (!created) return;
     setNewComponentName("");
-    setAddingComponent(false);
+  }
+
+  async function renameComponentItem(id: string, nextName: string) {
+    const component = components.find((row) => row.id === id);
+    if (!component || nextName === component.name) return;
+    setRenamingComponent(true);
+    await onRenameComponent(component, nextName);
+    setRenamingComponent(false);
   }
 
   return (
@@ -247,27 +222,33 @@ export function WorkProjectSettingsDrawer({
                 modalStyle
               />
 
-              <section className="space-y-2">
-                <h2 className="text-sm font-medium text-text-primary">
-                  Customer project
-                </h2>
-                <p className="text-sm text-text-secondary">
-                  Link this Work project to a planner project to log time on
-                  issues.
-                </p>
+              <section className="space-y-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-sm font-medium text-text-primary">
+                    Project link
+                  </h2>
+                  {!plannerProjectId ? (
+                    <Link
+                      href={customerHref(customerId)}
+                      className="shrink-0 text-sm text-text-secondary underline-offset-2 hover:text-text-primary hover:underline"
+                    >
+                      Create in Settings
+                    </Link>
+                  ) : null}
+                </div>
                 {plannerProjectId ? (
                   <p className="text-sm text-text-primary">
                     {plannerProjectName?.trim() || "Linked"}
                   </p>
                 ) : (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <label className="block min-w-0 flex-1">
-                      <span className="sr-only">Select customer project</span>
+                      <span className="sr-only">Select project</span>
                       <select
                         value={linkDraft}
                         onChange={(event) => setLinkDraft(event.target.value)}
                         disabled={linking || loadingLinkable}
-                        className="w-full rounded-md border border-form bg-bg-default px-2.5 py-2 text-sm text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        className="box-border h-9 w-full rounded-md border border-form bg-bg-default px-2.5 text-sm text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">
                           {loadingLinkable
@@ -286,7 +267,9 @@ export function WorkProjectSettingsDrawer({
                     <Button
                       type="button"
                       size="sm"
-                      disabled={linking || loadingLinkable || !linkDraft.trim()}
+                      disabled={
+                        linking || loadingLinkable || !linkDraft.trim()
+                      }
                       onClick={() => {
                         void (async () => {
                           if (!linkDraft.trim() || linking) return;
@@ -323,135 +306,51 @@ export function WorkProjectSettingsDrawer({
 
             <TabsContent
               value="components"
-              className="mt-0 min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5"
+              className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 py-5"
             >
-              <p className="text-sm text-text-secondary">
-                Group work by area. Deleting a component clears it from issues
-                that use it.
-              </p>
-              {components.length === 0 && !addingComponent ? (
-                <p className="text-sm text-text-tertiary">No components yet.</p>
-              ) : (
-                <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
-                  {components.map((component) => (
-                    <li
-                      key={component.id}
-                      className="flex items-center gap-2 px-3 py-2"
-                    >
-                      <input
-                        type="text"
-                        aria-label={`Rename ${component.name}`}
-                        value={componentDrafts[component.id] ?? component.name}
-                        disabled={savingComponentId === component.id}
-                        onChange={(event) =>
-                          setComponentDrafts((current) => ({
-                            ...current,
-                            [component.id]: event.target.value,
-                          }))
-                        }
-                        onBlur={() => {
-                          void commitComponentName(component);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            (event.target as HTMLInputElement).blur();
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setComponentDrafts((current) => ({
-                              ...current,
-                              [component.id]: component.name,
-                            }));
-                            (event.target as HTMLInputElement).blur();
-                          }
-                        }}
-                        className="min-w-0 flex-1 border-0 bg-transparent px-0 py-0.5 text-sm text-text-primary focus:outline-none focus:ring-0 disabled:opacity-50"
-                      />
-                      <button
-                        type="button"
-                        className="shrink-0 text-label-s text-text-secondary hover:text-danger"
-                        onClick={() => setDeletingComponent(component)}
-                      >
-                        Delete
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {addingComponent ? (
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void submitNewComponent();
-                  }}
-                >
-                  <Input
-                    value={newComponentName}
-                    onChange={(event) => setNewComponentName(event.target.value)}
-                    placeholder="Component name"
-                    aria-label="New component name"
-                    autoFocus
-                    disabled={creatingComponent}
-                    modalStyle
-                    className="min-w-0 flex-1"
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        setAddingComponent(false);
-                        setNewComponentName("");
-                      }
-                    }}
-                  />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={creatingComponent || !newComponentName.trim()}
-                  >
-                    Add
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={creatingComponent}
-                    onClick={() => {
-                      setAddingComponent(false);
-                      setNewComponentName("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 rounded-md px-1 py-1.5 text-sm text-text-secondary hover:bg-bg-muted hover:text-text-primary"
-                  onClick={() => setAddingComponent(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden />
-                  Add component
-                </button>
-              )}
+              <DrawerItemList
+                description="Group work by area. Deleting a component clears it from issues that use it."
+                emptyLabel="No components yet."
+                pending={creatingComponent || renamingComponent || deleting}
+                items={components.map((component) => ({
+                  id: component.id,
+                  label: component.name,
+                }))}
+                onRename={(item, nextLabel) => {
+                  void renameComponentItem(item.id, nextLabel);
+                }}
+                onRemove={(item) => {
+                  const component = components.find((row) => row.id === item.id);
+                  if (component) setDeletingComponent(component);
+                }}
+                compose={{
+                  value: newComponentName,
+                  onChange: setNewComponentName,
+                  onSubmit: (value) => {
+                    void submitNewComponent(value);
+                  },
+                  placeholder: "Component name",
+                  collapsedLabel: "+ Add component",
+                }}
+              />
             </TabsContent>
 
             <TabsContent
               value="import"
               className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5"
             >
-              <p className="text-sm text-text-secondary">
+              <p className="text-caption text-text-tertiary">
                 Bring issues into this project from another tool. Existing
                 imports are skipped when the same external key is already
                 linked.
               </p>
-              <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
-                <li className="flex items-center justify-between gap-3 px-3 py-3">
+              <ul className="divide-y divide-border-subtle">
+                <li className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-text-primary">
                       Jira
                     </p>
-                    <p className="text-xs text-text-tertiary">
+                    <p className="text-caption text-text-tertiary">
                       RSS/XML export from Jira Cloud or Server
                     </p>
                   </div>
@@ -479,20 +378,21 @@ export function WorkProjectSettingsDrawer({
               value="danger"
               className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 py-5"
             >
-              <h2 className="text-sm font-medium text-text-primary">
-                Danger zone
-              </h2>
-              <p className="mt-1 text-sm text-text-secondary">
-                Archive hides this project from Rove Work. Issues are kept.
-              </p>
-              <Button
-                type="button"
-                variant="danger"
-                className="mt-4"
-                onClick={onArchive}
-              >
-                Archive project
-              </Button>
+              <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+                <h2 className="text-label-l text-danger">Danger zone</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Archive hides this project from Rove Work. Issues are kept.
+                </p>
+                <Button
+                  type="button"
+                  variant="dangerSecondary"
+                  size="sm"
+                  className="mt-3"
+                  onClick={onArchive}
+                >
+                  Archive project
+                </Button>
+              </div>
             </TabsContent>
           </Tabs>
         </div>

@@ -6,12 +6,16 @@ import {
   Select,
   Input,
   Button,
+  DrawerListGroupHeader,
+  drawerListRowClass,
+  type DrawerListBleed,
   IconButton,
   InlineEditFieldContainer,
   InlineEditStatus,
   SAVED_DURATION_MS,
+  editInputClass,
+  inlineEditTriggerClass,
 } from "@/components/ui";
-import { editInputClass, inlineEditTriggerClass } from "@/components/ui";
 import { getRoles } from "@/lib/rolesClient";
 import {
   getCustomerRates,
@@ -24,6 +28,12 @@ import { hourlyRateLabel, hourlyRateSuffix } from "@/lib/currency";
 import type { Role } from "@/lib/rolesQueries";
 import type { CustomerRate } from "@/lib/customerRatesQueries";
 
+type ListHeader = {
+  title: string;
+  onAdd?: () => void;
+  bleed?: "drawer" | "panel" | "none";
+};
+
 type Props =
   | {
       mode: "edit";
@@ -32,6 +42,8 @@ type Props =
       onError: (msg: string) => void;
       showDescription?: boolean;
       refreshTrigger?: number;
+      /** Muted group header (customer drawer / detail Rates). */
+      listHeader?: ListHeader;
     }
   | {
       mode: "create";
@@ -41,6 +53,7 @@ type Props =
       onRemoveRate: (roleId: string) => void;
       onError: (msg: string) => void;
       showDescription?: boolean;
+      listHeader?: ListHeader;
     };
 
 export function CustomerRatesTab(props: Props) {
@@ -254,98 +267,131 @@ export function CustomerRatesTab(props: Props) {
           ? "error"
           : "idle";
 
+  const listHeader = props.listHeader;
+  const bleed: DrawerListBleed = listHeader?.bleed ?? (listHeader ? "drawer" : "none");
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
+      {listHeader ? (
+        <DrawerListGroupHeader
+          title={listHeader.title}
+          count={loading ? undefined : displayRates.length}
+          bleed={bleed}
+          action={
+            listHeader.onAdd ? (
+              <button
+                type="button"
+                onClick={listHeader.onAdd}
+                className="rounded-md px-1.5 py-0.5 text-label-s font-medium text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary"
+              >
+                + Add
+              </button>
+            ) : null
+          }
+        />
+      ) : null}
       {loading ? (
-        <p className="text-sm text-text-primary opacity-60">Loading rates…</p>
+        <p className="py-2 text-sm text-text-tertiary">Loading rates…</p>
       ) : (
         <>
-          <ul className="space-y-1">
-            {displayRates.map((r) => {
-              const rate = r as CustomerRate;
-              const isEdit = props.mode === "edit" && editingRateId === rate.id;
-              return (
-                <li
-                  key={props.mode === "edit" ? rate.id : r.role_id}
-                  className="flex min-w-0 flex-nowrap items-center gap-3 rounded-md bg-bg-muted/20 px-2 py-1"
-                >
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-                    {props.mode === "edit"
-                      ? getRateLabel(rate)
-                      : (r as { role_name: string }).role_name}
-                  </span>
-                  {props.mode === "edit" ? (
-                    <div className="min-w-[5.5rem] shrink-0">
-                      <InlineEditFieldContainer
-                        isEditing={isEdit}
-                        onRequestClose={() => commitEdit(rate)}
-                        showSavedIndicator={showSavedRate && lastSavedRateIdRef.current === rate.id}
-                        reserveStatusRow={false}
-                        displayContent={
-                          <button
-                            type="button"
-                            onClick={() => startEdit(rate)}
-                            className={`${inlineEditTriggerClass} w-full min-w-[5rem] whitespace-nowrap text-right`}
-                          >
-                            {rate.rate_per_hour} {currencyLabel}
-                          </button>
-                        }
-                        editContent={
-                          <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onFocus={(e) => e.target.select()}
-                              onBlur={() => commitEdit(rate)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  commitEdit(rate);
-                                }
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  cancelEdit();
-                                }
-                              }}
-                              disabled={updatingId === rate.id}
-                              className={`w-20 text-right ${editInputClass}`}
-                              autoFocus
-                            />
-                            <span className="shrink-0 text-sm text-text-primary opacity-70">{currencyLabel}</span>
-                          </div>
-                        }
-                        statusContent={
-                          <InlineEditStatus
-                            status={rateStatus(rate.id)}
-                            message={rateError}
-                          />
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <span className="shrink-0 whitespace-nowrap text-sm font-medium text-text-primary">
-                      {(r as { rate_per_hour: number }).rate_per_hour} {currencyLabel}
-                    </span>
-                  )}
-                  <IconButton
-                    variant="ghostDanger"
-                    onClick={() =>
-                      props.mode === "edit"
-                        ? handleRemoveEdit(rate)
-                        : props.onRemoveRate((r as { role_id: string }).role_id)
-                    }
-                    aria-label="Remove rate"
-                    className="shrink-0"
+          {displayRates.length === 0 ? (
+            <p className="py-2 text-sm text-text-tertiary">No rates yet.</p>
+          ) : (
+            <ul className="divide-y divide-border-subtle">
+              {displayRates.map((r) => {
+                const rate = r as CustomerRate;
+                const isEdit = props.mode === "edit" && editingRateId === rate.id;
+                return (
+                  <li
+                    key={props.mode === "edit" ? rate.id : r.role_id}
+                    className={`group ${drawerListRowClass(bleed)}`}
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </IconButton>
-                </li>
-              );
-            })}
-          </ul>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+                      {props.mode === "edit"
+                        ? getRateLabel(rate)
+                        : (r as { role_name: string }).role_name}
+                    </span>
+                    {props.mode === "edit" ? (
+                      <div className="min-w-[5.5rem] shrink-0">
+                        <InlineEditFieldContainer
+                          isEditing={isEdit}
+                          onRequestClose={() => commitEdit(rate)}
+                          showSavedIndicator={
+                            showSavedRate &&
+                            lastSavedRateIdRef.current === rate.id
+                          }
+                          reserveStatusRow={false}
+                          displayContent={
+                            <button
+                              type="button"
+                              onClick={() => startEdit(rate)}
+                              className={`${inlineEditTriggerClass} w-full min-w-[5rem] whitespace-nowrap text-right`}
+                            >
+                              {rate.rate_per_hour} {currencyLabel}
+                            </button>
+                          }
+                          editContent={
+                            <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                onBlur={() => commitEdit(rate)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    commitEdit(rate);
+                                  }
+                                  if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    cancelEdit();
+                                  }
+                                }}
+                                disabled={updatingId === rate.id}
+                                className={`w-20 text-right ${editInputClass}`}
+                                autoFocus
+                              />
+                              <span className="shrink-0 text-sm text-text-primary opacity-70">
+                                {currencyLabel}
+                              </span>
+                            </div>
+                          }
+                          statusContent={
+                            <InlineEditStatus
+                              status={rateStatus(rate.id)}
+                              message={rateError}
+                            />
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <span className="shrink-0 whitespace-nowrap text-sm font-medium text-text-primary">
+                        {(r as { rate_per_hour: number }).rate_per_hour}{" "}
+                        {currencyLabel}
+                      </span>
+                    )}
+                    <IconButton
+                      variant="ghostDanger"
+                      onClick={() =>
+                        props.mode === "edit"
+                          ? handleRemoveEdit(rate)
+                          : props.onRemoveRate(
+                              (r as { role_id: string }).role_id
+                            )
+                      }
+                      aria-label="Remove rate"
+                      className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </IconButton>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
 
           {availableRoles.length > 0 && props.mode === "create" && (
             <div className="flex flex-nowrap items-center gap-2 pt-3">

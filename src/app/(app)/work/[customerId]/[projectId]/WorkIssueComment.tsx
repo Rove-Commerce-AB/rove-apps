@@ -17,7 +17,7 @@ import {
 } from "./WorkCommentComposer";
 
 const editClass =
-  "w-full rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50";
+  "w-full rounded-md border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50";
 
 export function WorkIssueComment({
   comment,

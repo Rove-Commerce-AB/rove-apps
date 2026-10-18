@@ -231,7 +231,7 @@ export function DataAgentChat() {
         )}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={handleSubmit} className="mt-4 flex items-start gap-2">
+      <form onSubmit={handleSubmit} className="mt-4 flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <Input
             ref={inputRef}
@@ -244,7 +244,7 @@ export function DataAgentChat() {
             autoFocus
           />
         </div>
-        <Button type="submit" disabled={!canSubmit} className="mt-0 shrink-0">
+        <Button type="submit" disabled={!canSubmit} className="shrink-0">
           {loading ? "Sending…" : "Send"}
         </Button>
       </form>

@@ -5,9 +5,11 @@ import type { WorkActor } from "@/lib/workAccess";
 import {
   applyDefaultSprintDates,
   closeWorkSprint,
+  deleteWorkSprint as deleteWorkSprintQuery,
   fetchWorkSprintById,
   insertWorkSprint,
   mapWorkSprintRow,
+  startWorkSprint as startWorkSprintQuery,
   updateWorkIssueSchedule,
   updateWorkIssueSprint,
   updateWorkSprint,
@@ -126,6 +128,24 @@ export async function completeWorkSprint(
 ): Promise<void> {
   await requireBoardAccess(boardId);
   await closeWorkSprint(boardId, sprintId, unfinishedAction);
+}
+
+export async function startWorkSprint(
+  boardId: string,
+  sprintId: string
+): Promise<WorkSprint> {
+  await requireBoardAccess(boardId);
+  const row = await startWorkSprintQuery(boardId, sprintId);
+  return mapWorkSprintRow(row);
+}
+
+export async function deleteWorkSprint(
+  boardId: string,
+  sprintId: string
+): Promise<void> {
+  await requireBoardAccess(boardId);
+  const ok = await deleteWorkSprintQuery(boardId, sprintId);
+  if (!ok) throw new Error("Sprint not found");
 }
 
 export async function setWorkIssueSprint(

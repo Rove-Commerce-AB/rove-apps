@@ -88,18 +88,39 @@ export function WorkCardLabels({ labels }: { labels: WorkLabel[] }) {
 /** Discrete card hint when at least one pre-deploy action is still open. */
 export function WorkCardPreDeployHint({
   actions,
+  onOpen,
 }: {
   actions: WorkPreDeployAction[];
+  /** Opens the issue on the Pre-deploy tab. */
+  onOpen?: () => void;
 }) {
   if (!actions.some((action) => !action.isDone)) return null;
+  if (!onOpen) {
+    return (
+      <span
+        className="inline-flex shrink-0 text-text-tertiary"
+        title="Open pre-deploy actions remaining"
+        aria-label="Open pre-deploy actions remaining"
+      >
+        <Rocket className="h-3.5 w-3.5" aria-hidden />
+      </span>
+    );
+  }
   return (
-    <span
-      className="inline-flex shrink-0 text-text-tertiary"
+    <button
+      type="button"
+      className="inline-flex shrink-0 rounded-sm text-text-tertiary transition-colors hover:text-text-primary"
       title="Open pre-deploy actions"
       aria-label="Open pre-deploy actions"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen();
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
     >
       <Rocket className="h-3.5 w-3.5" aria-hidden />
-    </span>
+    </button>
   );
 }
 

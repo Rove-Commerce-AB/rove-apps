@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation";
 import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
 import { ROUTES } from "@/lib/routes";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import {
   ConfirmModal,
   DetailPageHeader,
   DetailBadgeFieldRow,
+  DrawerListGroup,
+  drawerListRowClass,
   FieldLabel,
   FieldValue,
   IconButton,
@@ -637,68 +639,54 @@ export function CustomerDetailClient({
           {/* CONSULTANTS + RATES/TASKS */}
           <div className="mt-0 flex flex-col gap-5">
             <Panel>
-              <PanelSectionTitle
-                action={
-                  <IconButton
-                    aria-label="Add consultant"
-                    onClick={() => setAddConsultantModalOpen(true)}
-                    className="text-text-muted hover:text-text-primary"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </IconButton>
-                }
-              >
-                CONSULTANTS
-              </PanelSectionTitle>
-              <div className="overflow-x-auto p-3 pt-0">
-                {initialConsultants.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-text-primary opacity-60">
-                    No consultants assigned. Add consultants to limit which projects are available when allocating.
-                  </p>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {initialConsultants.map((c) => (
-                      <li
-                        key={c.id}
-                        className="flex h-[2.25rem] items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50"
+              <div className="space-y-1 px-3 py-3">
+                <DrawerListGroup
+                  title="Consultants"
+                  count={initialConsultants.length}
+                  bleed="panel"
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => setAddConsultantModalOpen(true)}
+                      className="rounded-md px-1.5 py-0.5 text-label-s font-medium text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary"
+                    >
+                      + Add
+                    </button>
+                  }
+                  empty={
+                    initialConsultants.length === 0
+                      ? "No consultants assigned. Add consultants to limit which projects are available when allocating."
+                      : undefined
+                  }
+                >
+                  {initialConsultants.map((c) => (
+                    <li
+                      key={c.id}
+                      className={`group ${drawerListRowClass("panel")}`}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+                        {c.name}
+                      </span>
+                      <IconButton
+                        variant="ghostDanger"
+                        aria-label={`Remove ${c.name}`}
+                        onClick={() => handleRemoveConsultant(c)}
+                        disabled={removingConsultantId !== null}
+                        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                       >
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-                          {c.name}
-                        </span>
-                        <IconButton
-                          variant="ghostDanger"
-                          aria-label={`Remove ${c.name}`}
-                          onClick={() => handleRemoveConsultant(c)}
-                          disabled={removingConsultantId !== null}
-                          className="shrink-0 self-center"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </IconButton>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                        <Trash2 className="h-4 w-4" />
+                      </IconButton>
+                    </li>
+                  ))}
+                </DrawerListGroup>
               </div>
             </Panel>
 
             <Panel>
-              <PanelSectionTitle
-                action={
-                  <IconButton
-                    aria-label="Add rate"
-                    onClick={() => setAddRateModalOpen(true)}
-                    className="text-text-muted hover:text-text-primary"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </IconButton>
-                }
-              >
-                RATES/TASKS
-              </PanelSectionTitle>
-              <div className="p-3 pt-0">
-                {ratesError && (
-                  <p className="mb-4 text-sm text-danger">{ratesError}</p>
-                )}
+              <div className="space-y-1 px-3 py-3">
+                {ratesError ? (
+                  <p className="mb-2 text-sm text-danger">{ratesError}</p>
+                ) : null}
                 <CustomerRatesTab
                   mode="edit"
                   customerId={initialCustomer.id}
@@ -706,6 +694,11 @@ export function CustomerDetailClient({
                   onError={setRatesError}
                   showDescription={false}
                   refreshTrigger={ratesRefreshKey}
+                  listHeader={{
+                    title: "Rates/Tasks",
+                    bleed: "panel",
+                    onAdd: () => setAddRateModalOpen(true),
+                  }}
                 />
               </div>
             </Panel>

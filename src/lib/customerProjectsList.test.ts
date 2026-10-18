@@ -13,6 +13,7 @@ function project(
     isActive: true,
     type: "customer",
     probability: 100,
+    hasWorkProject: false,
     ...partial,
   };
 }

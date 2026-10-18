@@ -22,20 +22,24 @@ export function WorkViewToolbar({
   selectedSprintIds,
   onSelectedSprintIdsChange,
   sprintPickerMulti = false,
-  emptySprints = null,
   actions = null,
   filters = null,
   onPlanNext,
   planNextDisabled = false,
+  onEditSprint,
+  editSprintDisabled = false,
+  onStartSprint,
+  startSprintDisabled = false,
   onCloseCurrent,
   closeCurrentDisabled = false,
+  onDeleteSprint,
+  deleteSprintDisabled = false,
 }: {
   sprints: WorkSprint[];
   selectedSprintIds: readonly string[];
   onSelectedSprintIdsChange: (ids: string[]) => void;
   sprintPickerMulti?: boolean;
-  emptySprints?: ReactNode;
-  /** Capacity, start sprint, etc. (Planning). */
+  /** Capacity, etc. (Planning). */
   actions?: ReactNode;
   /** Shared filters (Timeline). Omit when filters live per list (Planning). */
   filters?: {
@@ -54,13 +58,19 @@ export function WorkViewToolbar({
   } | null;
   onPlanNext?: () => void;
   planNextDisabled?: boolean;
+  onEditSprint?: (sprintId: string) => void;
+  editSprintDisabled?: boolean;
+  onStartSprint?: (sprintId: string) => void;
+  startSprintDisabled?: boolean;
   onCloseCurrent?: () => void;
   closeCurrentDisabled?: boolean;
+  onDeleteSprint?: (sprintId: string) => void;
+  deleteSprintDisabled?: boolean;
 }) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-3">
       <div className="min-w-0 flex-1">
-        {sprints.length > 0 ? (
+        {sprints.length > 0 || onPlanNext ? (
           <WorkSprintPicker
             sprints={sprints}
             selectedIds={selectedSprintIds}
@@ -68,12 +78,16 @@ export function WorkViewToolbar({
             multi={sprintPickerMulti}
             onPlanNext={onPlanNext}
             planNextDisabled={planNextDisabled}
+            onEditSprint={onEditSprint}
+            editSprintDisabled={editSprintDisabled}
+            onStartSprint={onStartSprint}
+            startSprintDisabled={startSprintDisabled}
             onCloseCurrent={onCloseCurrent}
             closeCurrentDisabled={closeCurrentDisabled}
+            onDeleteSprint={onDeleteSprint}
+            deleteSprintDisabled={deleteSprintDisabled}
           />
-        ) : (
-          emptySprints
-        )}
+        ) : null}
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {actions}

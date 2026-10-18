@@ -69,6 +69,8 @@ export async function listTimeEntriesForWorkIssue(
     consultant_id: string;
     consultant_name: string;
   }>(
+    // Line ids are reused across weeks (PK includes iso_year/iso_week). Match the
+    // entry's ISO week so carried-forward copies do not fan out the join.
     `SELECT e.id,
             e.entry_date,
             e.hours,
@@ -79,6 +81,8 @@ export async function listTimeEntriesForWorkIssue(
      JOIN time_report_entries e
        ON e.entry_line_id = l.id
       AND e.consultant_id = l.consultant_id
+      AND l.iso_year = EXTRACT(ISOYEAR FROM e.entry_date)::int
+      AND l.iso_week = EXTRACT(WEEK FROM e.entry_date)::int
      JOIN consultants c ON c.id = e.consultant_id
      WHERE l.work_issue_id = $1
      ORDER BY e.entry_date DESC, c.name ASC, e.created_at DESC`,
@@ -172,7 +176,7 @@ export async function getWorkIssueTimeLogState(
     cannotLogReason = "Link a consultant profile to log time.";
   } else if (!issue.planner_project_id) {
     cannotLogReason =
-      "Link this Work project to a planner project in settings before logging time.";
+      "Link this Work project to a project in settings before logging time.";
   } else if (roleOptions.length === 0) {
     cannotLogReason =
       "No roles are configured for this project. Add a role or rate before logging time.";
@@ -219,7 +223,7 @@ export async function logTimeOnWorkIssue(
     return {
       ok: false,
       error:
-        "Link this Work project to a planner project in settings before logging time.",
+        "Link this Work project to a project in settings before logging time.",
     };
   }
 
@@ -272,7 +276,7 @@ export async function updateTimeOnWorkIssue(
     return {
       ok: false,
       error:
-        "Link this Work project to a planner project in settings before logging time.",
+        "Link this Work project to a project in settings before logging time.",
     };
   }
 

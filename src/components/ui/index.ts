@@ -40,6 +40,17 @@ export {
   type InlineEditStatusState,
 } from "./DetailField";
 export {
+  DrawerItemList,
+  type DrawerItemListItem,
+} from "./DrawerItemList";
+export {
+  DrawerListGroup,
+  DrawerListGroupHeader,
+  drawerListBleedClass,
+  drawerListRowClass,
+  type DrawerListBleed,
+} from "./DrawerListGroup";
+export {
   editInputClass,
   editInputListClass,
   editTriggerClass,
@@ -48,6 +59,8 @@ export {
   drawerEditTriggerClass,
   inlineEditTriggerListClass,
   inlineEditTriggerListClassRowHover,
+  quietFieldWashClass,
+  quietComposeInputClass,
   INLINE_EDIT_VALUE_ROW_MIN_H,
   INLINE_EDIT_STATUS_ROW_MIN_H,
   modalInputClass,

@@ -151,6 +151,69 @@ export async function updateWorkSprint(
   return rows[0] ?? null;
 }
 
+/** Delete a sprint. Linked issues get `sprint_id` cleared (ON DELETE SET NULL). */
+export async function deleteWorkSprint(
+  boardId: string,
+  sprintId: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `DELETE FROM work_sprints
+     WHERE id = $2 AND project_id = $1`,
+    [boardId, sprintId]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+/** Promote a planned (`next`) sprint to `current`. Fails if one is already current. */
+export async function startWorkSprint(
+  boardId: string,
+  sprintId: string
+): Promise<WorkSprintRow> {
+  return withCloudSqlTransaction("work-start-sprint", async (client) => {
+    const { rows: currentRows } = await client.query<{ id: string }>(
+      `SELECT id FROM work_sprints
+       WHERE project_id = $1 AND status = 'current'
+       FOR UPDATE`,
+      [boardId]
+    );
+    if (currentRows[0]) {
+      throw new Error("This board already has a current sprint");
+    }
+
+    const { rows: sprintRows } = await client.query<WorkSprintRow>(
+      `SELECT id, project_id, number, title, starts_on, ends_on, status, capacity_hours
+       FROM work_sprints
+       WHERE id = $1 AND project_id = $2
+       FOR UPDATE`,
+      [sprintId, boardId]
+    );
+    const sprint = sprintRows[0];
+    if (!sprint) throw new Error("Sprint not found");
+    if (sprint.status !== "next") {
+      throw new Error("Only a planned sprint can be started");
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const startsOn = String(sprint.starts_on).slice(0, 10);
+    const endsOn = String(sprint.ends_on).slice(0, 10);
+    if (today < startsOn || today > endsOn) {
+      throw new Error(
+        "Today must fall within the sprint dates to start it"
+      );
+    }
+
+    const { rows } = await client.query<WorkSprintRow>(
+      `UPDATE work_sprints
+       SET status = 'current', updated_at = now()
+       WHERE id = $1
+       RETURNING id, project_id, number, title, starts_on, ends_on, status, capacity_hours`,
+      [sprintId]
+    );
+    const row = rows[0];
+    if (!row) throw new Error("Failed to start sprint");
+    return row;
+  });
+}
+
 export async function closeWorkSprint(
   boardId: string,
   sprintId: string,

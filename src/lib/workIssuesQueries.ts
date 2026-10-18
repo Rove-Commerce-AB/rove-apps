@@ -959,11 +959,15 @@ export async function fetchLoggedHoursByIssueIds(
     work_issue_id: string;
     hours: string | number | null;
   }>(
+    // Line ids are reused across weeks (PK includes iso_year/iso_week). Match the
+    // entry's ISO week so carried-forward copies do not double-count hours.
     `SELECT l.work_issue_id, COALESCE(SUM(e.hours), 0) AS hours
      FROM time_report_entry_lines l
      JOIN time_report_entries e
        ON e.entry_line_id = l.id
       AND e.consultant_id = l.consultant_id
+      AND l.iso_year = EXTRACT(ISOYEAR FROM e.entry_date)::int
+      AND l.iso_week = EXTRACT(WEEK FROM e.entry_date)::int
      WHERE l.work_issue_id = ANY($1::uuid[])
      GROUP BY l.work_issue_id`,
     [issueIds]
@@ -983,6 +987,8 @@ export async function workIssueHasLoggedTime(
      JOIN time_report_entries e
        ON e.entry_line_id = l.id
       AND e.consultant_id = l.consultant_id
+      AND l.iso_year = EXTRACT(ISOYEAR FROM e.entry_date)::int
+      AND l.iso_week = EXTRACT(WEEK FROM e.entry_date)::int
      WHERE l.work_issue_id = $1
        AND e.hours > 0
      LIMIT 1`,

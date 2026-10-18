@@ -105,6 +105,8 @@ export type CustomerProjectSummary = {
   type: ProjectType;
   /** 1–100; null treated as 100. */
   probability: number | null;
+  /** True when an active Work board is linked to this project. */
+  hasWorkProject: boolean;
 };
 
 export type CustomerWithDetails = {

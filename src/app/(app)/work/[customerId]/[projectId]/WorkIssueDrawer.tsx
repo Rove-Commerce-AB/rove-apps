@@ -18,6 +18,8 @@ import {
   Button,
   ConfirmModal,
   Dialog,
+  DrawerItemList,
+  FieldInfoTip,
   InitialsAvatar,
   Input,
   Select,
@@ -26,7 +28,10 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui";
-import { drawerSelectTriggerClass } from "@/components/ui/inlineEditStyles";
+import {
+  drawerSelectTriggerClass,
+  quietComposeInputClass,
+} from "@/components/ui/inlineEditStyles";
 import { formatWorkTimestamp } from "@/lib/workTimeAgo";
 import {
   joinWorkInlineImages,
@@ -95,19 +100,20 @@ const textFieldClass =
   "w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-1 text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50";
 
 const commentClass =
-  "w-full rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50";
+  "w-full rounded-md border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50";
 
+/** Matches Button size="sm" (h-9): 36px total, ~7px pad + 20px line inside the border box. */
 const commentCollapsedClass =
-  "box-border !h-9 !min-h-9 !max-h-9 w-full rounded-lg border border-form bg-bg-default px-3 py-0 text-sm leading-[34px] text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50 resize-none";
+  "box-border !h-9 !min-h-9 !max-h-9 rounded-md border border-transparent bg-transparent px-3 py-[7px] text-sm leading-5 text-text-primary placeholder-text-muted transition-colors hover:bg-text-primary/[0.06] focus:border-form focus:bg-bg-default focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50 resize-none";
 
 const metaSelectTriggerClass =
   "h-7 !w-auto max-w-full border-0 bg-transparent px-0 py-0 text-[13px] font-medium text-text-primary hover:bg-transparent focus:border-transparent focus:ring-0";
 
 const propertyChipClass =
-  "inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-bg-muted";
+  "inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-text-primary/[0.06]";
 
 const addPropertyClass =
-  "inline-flex items-center rounded-md px-1.5 py-0.5 text-[13px] text-text-tertiary hover:bg-bg-muted hover:text-text-secondary disabled:opacity-50";
+  "inline-flex items-center rounded-md px-1.5 py-0.5 text-[13px] text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary disabled:opacity-50";
 
 const AutosizeTextarea = forwardRef<
   HTMLTextAreaElement,
@@ -264,34 +270,24 @@ function referenceHostname(url: string) {
 
 function RequirementsChecklistSection({
   title,
-  description,
-  emptyLabel,
+  info,
   placeholder,
   items,
   draft,
   onDraftChange,
-  editingId,
-  editingValue,
   pending,
-  onEditingIdChange,
-  onEditingValueChange,
   onToggle,
   onSaveBody,
   onRemove,
   onAdd,
 }: {
   title: string;
-  description: string;
-  emptyLabel: string;
+  info: string;
   placeholder: string;
   items: Array<{ id: string; body: string; isDone: boolean }>;
   draft: string;
   onDraftChange: (value: string) => void;
-  editingId: string | null;
-  editingValue: string;
   pending: boolean;
-  onEditingIdChange: (id: string | null) => void;
-  onEditingValueChange: (value: string) => void;
   onToggle: (
     item: { id: string; body: string; isDone: boolean },
     isDone: boolean
@@ -303,112 +299,48 @@ function RequirementsChecklistSection({
   onRemove: (item: { id: string; body: string; isDone: boolean }) => void;
   onAdd: (body: string) => void;
 }) {
+  const byId = new Map(items.map((item) => [item.id, item]));
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-sm font-medium text-text-primary">{title}</h3>
-        <p className="text-sm text-text-secondary">{description}</p>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-sm text-text-tertiary">{emptyLabel}</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((requirement) => {
-            const editing = editingId === requirement.id;
-            return (
-              <li
-                key={requirement.id}
-                className="flex items-start gap-2 rounded-lg border border-border-subtle px-2.5 py-2"
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-border-form"
-                  checked={requirement.isDone}
-                  disabled={pending}
-                  aria-label={`Mark ${requirement.isDone ? "incomplete" : "done"}`}
-                  onChange={() => onToggle(requirement, !requirement.isDone)}
-                />
-                {editing ? (
-                  <input
-                    value={editingValue}
-                    disabled={pending}
-                    autoFocus
-                    className="min-w-0 flex-1 border-0 bg-transparent py-0.5 text-sm text-text-primary focus:outline-none focus:ring-0"
-                    onChange={(event) =>
-                      onEditingValueChange(event.target.value)
-                    }
-                    onBlur={() => {
-                      const trimmed = editingValue.trim();
-                      onEditingIdChange(null);
-                      if (!trimmed || trimmed === requirement.body) {
-                        onEditingValueChange("");
-                        return;
-                      }
-                      onSaveBody(requirement, trimmed);
-                      onEditingValueChange("");
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        onEditingIdChange(null);
-                        onEditingValueChange("");
-                      }
-                      if (event.key === "Enter") {
-                        event.currentTarget.blur();
-                      }
-                    }}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    className={`min-w-0 flex-1 text-left text-sm ${
-                      requirement.isDone
-                        ? "text-text-tertiary line-through"
-                        : "text-text-primary"
-                    }`}
-                    onClick={() => {
-                      onEditingIdChange(requirement.id);
-                      onEditingValueChange(requirement.body);
-                    }}
-                  >
-                    {requirement.body}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={pending}
-                  className="shrink-0 text-label-s text-text-secondary hover:text-danger"
-                  aria-label="Remove item"
-                  onClick={() => onRemove(requirement)}
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const trimmed = draft.trim();
-          if (!trimmed) return;
-          onAdd(trimmed);
-        }}
-      >
-        <input
-          value={draft}
-          disabled={pending}
-          placeholder={placeholder}
-          className="min-w-0 flex-1 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-          onChange={(event) => onDraftChange(event.target.value)}
-        />
-        <Button type="submit" disabled={pending || !draft.trim()}>
-          Add
-        </Button>
-      </form>
-    </div>
+    <DrawerItemList
+      title={title}
+      info={info}
+      pending={pending}
+      items={items.map((item) => ({
+        id: item.id,
+        label: item.body,
+        muted: item.isDone,
+      }))}
+      renderLeading={(row) => {
+        const item = byId.get(row.id);
+        if (!item) return null;
+        return (
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border-form"
+            checked={item.isDone}
+            disabled={pending}
+            aria-label={`Mark ${item.isDone ? "incomplete" : "done"}`}
+            onChange={() => onToggle(item, !item.isDone)}
+          />
+        );
+      }}
+      onRename={(row, nextLabel) => {
+        const item = byId.get(row.id);
+        if (!item) return;
+        onSaveBody(item, nextLabel);
+      }}
+      onRemove={(row) => {
+        const item = byId.get(row.id);
+        if (!item) return;
+        onRemove(item);
+      }}
+      compose={{
+        value: draft,
+        onChange: onDraftChange,
+        onSubmit: onAdd,
+        placeholder,
+      }}
+    />
   );
 }
 
@@ -425,16 +357,21 @@ type Props = {
 export function WorkIssueDrawer({
   board,
   issue,
+  initialTab = "details",
   onStatus,
   onChanged,
   onError,
   onIssuePatch,
   onDeleted,
-}: Props) {
+}: Props & { initialTab?: string }) {
   const [pending, startTransition] = useTransition();
-  const [tab, setTab] = useState("details");
+  const [tab, setTab] = useState(initialTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [issue.id, initialTab]);
 
   useEffect(() => {
     if (!board.showTime && tab === "time") setTab("details");
@@ -461,14 +398,6 @@ export function WorkIssueDrawer({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentThumbs, setCommentThumbs] = useState<InlinePasteThumb[]>([]);
   const [addingLabel, setAddingLabel] = useState(false);
-  const [editingRequirementId, setEditingRequirementId] = useState<string | null>(
-    null
-  );
-  const [editingRequirementValue, setEditingRequirementValue] = useState("");
-  const [editingPreDeployId, setEditingPreDeployId] = useState<string | null>(
-    null
-  );
-  const [editingPreDeployValue, setEditingPreDeployValue] = useState("");
   const [estimateDraft, setEstimateDraft] = useState(
     issue.estimateHours == null ? "" : String(issue.estimateHours)
   );
@@ -999,8 +928,8 @@ export function WorkIssueDrawer({
       onPaste={handlePaste}
     >
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
-        <div className="relative z-10 flex items-start gap-2 overflow-visible">
-          <span className="mt-1.5 shrink-0">
+        <div className="relative z-10 flex items-center gap-2 overflow-visible">
+          <span className="shrink-0 self-center">
             <WorkCardTypeBadge
               issueType={issue.issueType}
               disabled={pending}
@@ -1055,8 +984,8 @@ export function WorkIssueDrawer({
               Danger
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="details" className="mt-5 space-y-6">
-            <div className="space-y-1.5">
+          <TabsContent value="details" className="mt-5 space-y-8">
+            <div className="space-y-1 rounded-xl bg-bg-muted/40 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1">
                 <WorkPropertySelect
                   title="Status"
@@ -1461,7 +1390,7 @@ export function WorkIssueDrawer({
               </div>
             </div>
 
-            <div>
+            <div className="border-t border-border-subtle pt-6">
               <div className="flex gap-4 border-b border-border-subtle">
                 <button
                   type="button"
@@ -1631,7 +1560,7 @@ export function WorkIssueDrawer({
                           resetLogForm();
                         }
                       }}
-                      className="h-8 w-full rounded-md border border-form bg-bg-default px-2 text-sm tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50"
+                      className="box-border h-9 w-full rounded-md border border-form bg-bg-default px-2 text-sm tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50"
                     />
                   </label>
                   <label className="block min-w-[9rem]">
@@ -1643,7 +1572,7 @@ export function WorkIssueDrawer({
                       value={logDateDraft}
                       disabled={pending}
                       onChange={(event) => setLogDateDraft(event.target.value)}
-                      className="h-8 w-full rounded-md border border-form bg-bg-default px-2 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50"
+                      className="box-border h-9 w-full rounded-md border border-form bg-bg-default px-2 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50"
                     />
                   </label>
                   {editingTimeId == null ? (
@@ -1686,7 +1615,7 @@ export function WorkIssueDrawer({
                         resetLogForm();
                       }
                     }}
-                    className="h-8 w-full rounded-md border border-form bg-bg-default px-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50"
+                    className="box-border h-9 w-full rounded-md border border-form bg-bg-default px-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50"
                   />
                 </label>
                 <div className="flex items-center gap-2">
@@ -1714,7 +1643,7 @@ export function WorkIssueDrawer({
             {timeEntries.length === 0 ? (
               <p className="text-sm text-text-tertiary">No time logged yet.</p>
             ) : (
-              <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
+              <ul className="divide-y divide-border-subtle">
                 {timeEntries.map((entry) => {
                   const isOwn =
                     currentConsultantId != null &&
@@ -1722,7 +1651,7 @@ export function WorkIssueDrawer({
                   return (
                     <li
                       key={entry.id}
-                      className="flex items-start gap-3 px-3 py-2.5"
+                      className="group flex items-start gap-3 py-2"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-text-primary">
@@ -1742,11 +1671,11 @@ export function WorkIssueDrawer({
                         ) : null}
                       </div>
                       {isOwn && timeCanLog ? (
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                           <button
                             type="button"
                             disabled={pending || editingTimeId === entry.id}
-                            className="text-[13px] text-text-secondary hover:text-text-primary disabled:opacity-50"
+                            className="text-label-s text-text-tertiary hover:text-text-primary disabled:opacity-50"
                             onClick={() => beginEditTime(entry)}
                           >
                             Edit
@@ -1754,7 +1683,7 @@ export function WorkIssueDrawer({
                           <button
                             type="button"
                             disabled={pending}
-                            className="text-[13px] text-text-secondary hover:text-danger disabled:opacity-50"
+                            className="text-label-s text-text-tertiary hover:text-danger disabled:opacity-50"
                             onClick={() => setDeletingTimeId(entry.id)}
                           >
                             Delete
@@ -1768,20 +1697,15 @@ export function WorkIssueDrawer({
             )}
           </TabsContent>
 
-          <TabsContent value="requirements" className="mt-5 space-y-8">
+          <TabsContent value="requirements" className="mt-5 space-y-5">
             <RequirementsChecklistSection
               title="Acceptance criteria"
-              description="What must be true for this issue to be done."
-              emptyLabel="No acceptance criteria yet."
+              info="What must be true for this issue to be done."
               placeholder="Add a criterion…"
               items={issue.requirements}
               draft={requirementDraft}
               onDraftChange={setRequirementDraft}
-              editingId={editingRequirementId}
-              editingValue={editingRequirementValue}
               pending={pending}
-              onEditingIdChange={setEditingRequirementId}
-              onEditingValueChange={setEditingRequirementValue}
               onToggle={(requirement, isDone) => {
                 onIssuePatch({
                   requirements: issue.requirements.map((row) =>
@@ -1845,17 +1769,12 @@ export function WorkIssueDrawer({
 
             <RequirementsChecklistSection
               title="Definition of done"
-              description="Shared quality bar for this issue (review, staging, docs…)."
-              emptyLabel="No definition-of-done items yet."
+              info="Shared quality bar for this issue (review, staging, docs…)."
               placeholder="Add a DoD item…"
               items={issue.definitionOfDone}
               draft={dodDraft}
               onDraftChange={setDodDraft}
-              editingId={editingRequirementId}
-              editingValue={editingRequirementValue}
               pending={pending}
-              onEditingIdChange={setEditingRequirementId}
-              onEditingValueChange={setEditingRequirementValue}
               onToggle={(requirement, isDone) => {
                 onIssuePatch({
                   definitionOfDone: issue.definitionOfDone.map((row) =>
@@ -1913,14 +1832,10 @@ export function WorkIssueDrawer({
             />
 
             <div className="space-y-2">
-              <div>
-                <h3 className="text-sm font-medium text-text-primary">
-                  Out of scope
-                </h3>
-                <p className="text-sm text-text-secondary">
-                  What this issue intentionally does not include.
-                </p>
-              </div>
+              <h3 className="inline-flex items-center gap-1 text-sm font-medium text-text-primary">
+                Out of scope
+                <FieldInfoTip text="What this issue intentionally does not include." />
+              </h3>
               <AutosizeTextarea
                 className={textFieldClass}
                 value={outOfScope}
@@ -1934,23 +1849,17 @@ export function WorkIssueDrawer({
               />
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-medium text-text-primary">
-                  References
-                </h3>
-                <p className="text-sm text-text-secondary">
-                  Links to Figma, Confluence, tickets, or other context.
-                </p>
-              </div>
-              {issue.references.length === 0 ? (
-                <p className="text-sm text-text-tertiary">No references yet.</p>
-              ) : (
-                <ul className="space-y-2">
+            <div className="space-y-2">
+              <h3 className="inline-flex items-center gap-1 text-sm font-medium text-text-primary">
+                References
+                <FieldInfoTip text="Links to Figma, Confluence, tickets, or other context." />
+              </h3>
+              {issue.references.length > 0 ? (
+                <ul className="divide-y divide-border-subtle">
                   {issue.references.map((reference) => (
                     <li
                       key={reference.id}
-                      className="flex items-center gap-2 rounded-lg border border-border-subtle px-2.5 py-2"
+                      className="group flex items-center gap-2 py-1.5"
                     >
                       <div className="min-w-0 flex-1">
                         <a
@@ -1968,7 +1877,7 @@ export function WorkIssueDrawer({
                       <button
                         type="button"
                         disabled={pending}
-                        className="shrink-0 text-label-s text-text-secondary hover:text-danger"
+                        className="shrink-0 rounded-md p-0.5 text-text-tertiary opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                         aria-label="Remove reference"
                         onClick={() => {
                           onIssuePatch({
@@ -1992,9 +1901,9 @@ export function WorkIssueDrawer({
                     </li>
                   ))}
                 </ul>
-              )}
+              ) : null}
               <form
-                className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                className="flex flex-col gap-1.5 pt-1 sm:flex-row sm:items-center"
                 onSubmit={(event) => {
                   event.preventDefault();
                   const url = referenceUrlDraft.trim();
@@ -2016,20 +1925,22 @@ export function WorkIssueDrawer({
                   value={referenceUrlDraft}
                   disabled={pending}
                   placeholder="https://…"
-                  className="min-w-0 flex-1 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                  className={quietComposeInputClass}
                   onChange={(event) => setReferenceUrlDraft(event.target.value)}
                 />
                 <input
                   value={referenceLabelDraft}
                   disabled={pending}
                   placeholder="Label (optional)"
-                  className="min-w-0 flex-1 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal sm:max-w-[10rem]"
+                  className={`${quietComposeInputClass} sm:max-w-[10rem]`}
                   onChange={(event) =>
                     setReferenceLabelDraft(event.target.value)
                   }
                 />
                 <Button
                   type="submit"
+                  size="sm"
+                  variant="secondary"
                   disabled={pending || !referenceUrlDraft.trim()}
                 >
                   Add
@@ -2038,20 +1949,15 @@ export function WorkIssueDrawer({
             </div>
           </TabsContent>
 
-          <TabsContent value="pre-deploy" className="mt-5 space-y-8">
+          <TabsContent value="pre-deploy" className="mt-5 space-y-5">
             <RequirementsChecklistSection
               title="Pre-deploy actions"
-              description="Database or Litium back-office steps to complete before deploy."
-              emptyLabel="No pre-deploy actions yet."
+              info="Database or Litium back-office steps to complete before deploy."
               placeholder="Add a pre-deploy action…"
               items={issue.preDeployActions}
               draft={preDeployDraft}
               onDraftChange={setPreDeployDraft}
-              editingId={editingPreDeployId}
-              editingValue={editingPreDeployValue}
               pending={pending}
-              onEditingIdChange={setEditingPreDeployId}
-              onEditingValueChange={setEditingPreDeployValue}
               onToggle={(item, isDone) => {
                 onIssuePatch({
                   preDeployActions: issue.preDeployActions.map((row) =>
@@ -2233,10 +2139,8 @@ export function WorkIssueDrawer({
           </TabsContent>
 
           <TabsContent value="danger" className="mt-5 space-y-4">
-            <div>
-              <h2 className="text-sm font-medium text-text-primary">
-                Danger zone
-              </h2>
+            <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+              <h2 className="text-label-l text-danger">Danger zone</h2>
               <p className="mt-1 text-sm text-text-secondary">
                 Delete permanently removes this issue and its comments, files,
                 and activity. This cannot be undone.
@@ -2248,8 +2152,9 @@ export function WorkIssueDrawer({
               ) : null}
               <Button
                 type="button"
-                variant="danger"
-                className="mt-4"
+                variant="dangerSecondary"
+                size="sm"
+                className="mt-3"
                 disabled={pending || issue.loggedHours > 0}
                 onClick={() => setDeleteOpen(true)}
               >
@@ -2304,7 +2209,7 @@ export function WorkIssueDrawer({
 
       {tab === "details" ? (
       <form
-        className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-t border-border-subtle px-6 py-3"
+        className="flex shrink-0 flex-col gap-2 border-t border-border-subtle px-6 py-3"
         onSubmit={(event) => {
           event.preventDefault();
           const text = encodeMentions(commentDraft.trim(), board.members);
@@ -2325,73 +2230,82 @@ export function WorkIssueDrawer({
           run(() => addWorkIssueCommentAction(board.id, issue.id, body));
         }}
       >
-        <InitialsAvatar
-          name={board.currentUser.name}
-          initials={board.currentUser.initials}
-          size="sm"
-          className="!h-9 !w-9"
-        />
-        <div className="min-h-0 min-w-0" data-paste-zone="comment">
-          <WorkCommentComposer
-            people={board.members}
-            value={commentDraft}
-            disabled={pending}
-            rows={
-              commentFocused || commentDraft.trim() || commentThumbs.length > 0
-                ? 3
-                : 1
-            }
-            showShortcutHint={
-              commentFocused ||
-              Boolean(commentDraft.trim()) ||
-              commentThumbs.length > 0
-            }
-            className={
-              commentFocused ||
-              commentDraft.trim() ||
-              commentThumbs.length > 0
-                ? `${commentClass} min-h-[5.5rem] resize-none`
-                : commentCollapsedClass
-            }
-            onChange={setCommentDraft}
-            onFocus={() => setCommentFocused(true)}
-            onBlur={() => {
-              if (!commentDraft.trim() && commentThumbs.length === 0) {
-                setCommentFocused(false);
-              }
-            }}
-          />
-          <WorkInlineImageThumbs
-            items={commentThumbs.map((thumb) => ({
-              key: thumb.localId,
-              src: thumb.previewUrl,
-              uploading: thumb.uploading,
-            }))}
-            onRemove={(key) => {
-              setCommentThumbs((prev) => {
-                const row = prev.find((thumb) => thumb.localId === key);
-                if (row?.revokeOnClear) {
-                  URL.revokeObjectURL(row.previewUrl);
-                }
-                return prev.filter((thumb) => thumb.localId !== key);
-              });
-            }}
-          />
-        </div>
-        <Button
-          type="submit"
-          size="sm"
-          className="!h-9 !min-h-9 !py-0 self-center"
-          disabled={
-            pending ||
-            commentThumbs.some((thumb) => thumb.uploading) ||
-            (!commentDraft.trim() &&
-              commentThumbs.every((thumb) => !thumb.fileId))
-          }
-        >
-          <Send className="h-4 w-4" aria-hidden />
-          Send
-        </Button>
+        {(() => {
+          const commentExpanded =
+            commentFocused ||
+            Boolean(commentDraft.trim()) ||
+            commentThumbs.length > 0;
+          return (
+            <>
+              <div
+                className={`flex gap-2 ${
+                  commentExpanded ? "items-end" : "h-9 items-center"
+                }`}
+                data-paste-zone="comment"
+              >
+                <InitialsAvatar
+                  name={board.currentUser.name}
+                  initials={board.currentUser.initials}
+                  size="sm"
+                  className="!h-9 !w-9 !text-[11px]"
+                />
+                <div
+                  className={`min-w-0 flex-1 ${commentExpanded ? "" : "h-9"}`}
+                >
+                  <WorkCommentComposer
+                    people={board.members}
+                    value={commentDraft}
+                    disabled={pending}
+                    rows={commentExpanded ? 3 : 1}
+                    showShortcutHint={commentExpanded}
+                    className={
+                      commentExpanded
+                        ? `${commentClass} min-h-[5.5rem] resize-none`
+                        : commentCollapsedClass
+                    }
+                    onChange={setCommentDraft}
+                    onFocus={() => setCommentFocused(true)}
+                    onBlur={() => {
+                      if (!commentDraft.trim() && commentThumbs.length === 0) {
+                        setCommentFocused(false);
+                      }
+                    }}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="!h-9 !min-h-9 !max-h-9 shrink-0"
+                  disabled={
+                    pending ||
+                    commentThumbs.some((thumb) => thumb.uploading) ||
+                    (!commentDraft.trim() &&
+                      commentThumbs.every((thumb) => !thumb.fileId))
+                  }
+                >
+                  <Send className="h-4 w-4" aria-hidden />
+                  Send
+                </Button>
+              </div>
+              <WorkInlineImageThumbs
+                items={commentThumbs.map((thumb) => ({
+                  key: thumb.localId,
+                  src: thumb.previewUrl,
+                  uploading: thumb.uploading,
+                }))}
+                onRemove={(key) => {
+                  setCommentThumbs((prev) => {
+                    const row = prev.find((thumb) => thumb.localId === key);
+                    if (row?.revokeOnClear) {
+                      URL.revokeObjectURL(row.previewUrl);
+                    }
+                    return prev.filter((thumb) => thumb.localId !== key);
+                  });
+                }}
+              />
+            </>
+          );
+        })()}
       </form>
       ) : null}
     </div>

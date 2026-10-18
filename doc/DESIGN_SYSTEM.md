@@ -108,7 +108,7 @@ Suggested CSS names: `--color-surface-page`, `--color-text-primary`, `--color-bo
 | `border/inverse` | zinc/800 `#292b2f` | zinc/200 `#e4e5e8` |
 | `border/focus` | blue/600 `#5067bc` | blue/400 `#8499e5` |
 
-Form controls use `border/default`. Do not invent a harsher form border.
+Form controls use `border/subtle` via the `--color-border-form` alias. Do not invent a harsher form border. Prefer **quiet fields** (below) in drawers and detail surfaces: no permanent border at rest.
 
 ### Icon
 
@@ -343,13 +343,14 @@ Overview **list pages** use **comfortable** table density (Figma). Compact remai
 | PanelSection padding | 6px 12px |
 | Gap between major sections | 24px (`gap-6`) |
 | Gap between fields in a section | 4–8px |
-| Label-to-value spacing | 4px |
+| Label-to-value spacing | 8–12px (`gap-3`) |
 | Overview list table row | comfortable (`px-4 py-3.5`) |
 | Overview list table header | 50px tall (`px-4`), `radius/lg` on top corners |
 | Operational grid row | compact |
 | Drawer padding | 24px (`px-6`) |
-| Drawer identity row | label left, value box 14.5rem right (`py-3`) |
-| Drawer summary row | semibold label, unboxed value (`py-3.5`) |
+| Drawer identity row | label left (`w-36`), value `flex-1` (`py-1.5`); quiet chrome |
+| Drawer summary row | semibold label (`w-36`), unboxed value (`py-2`) |
+| Drawer grouped-list header | Label/S uppercase `text/tertiary` on `surface/subtle` wash — not the same type as row titles |
 
 Do not wrap overview list tables in a bordered `Panel`. The table body is `surface/default` on `surface/page`. Comfortable headers use `table/header` (`blue/100`) and `radius/lg` on the top corners only; compact operational grids stay square.
 
@@ -372,6 +373,29 @@ Hierarchy comes from spacing, type, and tokens – not heavy borders.
 
 - Interactive controls use a hand cursor on hover: links, `button:not(:disabled)`, `[role="button"]`, `[aria-pressed]`, `[role="tab"]`.
 - Enforced globally in `src/app/globals.css`. Do not override unless required for accessibility.
+
+### Quiet fields (mandatory for drawers & issue detail)
+
+Default interaction pattern for settings drawers, Work issue drawers, and similar side panels. Inspired by property chips: **value first, chrome on interaction**.
+
+| State | Treatment |
+|-------|-----------|
+| Rest | No border (or `border-transparent`). Transparent / flush background. |
+| Hover | Soft wash: `hover:bg-text-primary/[0.06]` (`quietFieldWashClass`). |
+| Edit / focus | Light `border-form` (= `border/subtle`) + soft accent focus ring (`ring-brand-signal/20–30`, inset). |
+| Segmented (`OptionSegments`) | Track: muted wash, no outer border. Selected: raised surface + light shadow, no heavy ring. |
+
+**Do**
+- Use `DrawerFieldRow` + `drawerEditTriggerClass` / `drawerSelectTriggerClass` from `inlineEditStyles`.
+- Use `DrawerItemList` for collection CRUD in drawers (checklists, components, similar named-item lists): flat `divide-y`, click-to-edit, hover remove — not boxed lists or always-on bordered inputs.
+- Use `quietComposeInputClass` (or equivalent) for “add item” rows.
+
+**Don't**
+- Don't use always-on `border-form` boxes for drawer display values.
+- Don't use `justify-between` + fixed `14.5rem` value columns (creates empty mid-gap in wide drawers).
+- Don't invent heavier borders than `border/subtle` for resting form chrome.
+
+Standalone page forms and modals may keep a resting `border-form` for scanability; still use the quiet token (subtle), not `border/default`.
 
 ### Form recognition
 

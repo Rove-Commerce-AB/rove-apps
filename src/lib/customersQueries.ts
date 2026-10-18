@@ -163,17 +163,40 @@ async function consultantNamesMap(
   return map;
 }
 
+type CustomerProjectRow = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  type: string;
+  probability: number | null;
+  hasWorkProject?: boolean;
+};
+
+async function workLinkedProjectIds(
+  projectIds: string[]
+): Promise<Set<string>> {
+  if (projectIds.length === 0) return new Set();
+  try {
+    const { rows } = await cloudSqlPool.query<{
+      planner_project_id: string;
+    }>(
+      `SELECT planner_project_id
+       FROM work_projects
+       WHERE planner_project_id = ANY($1::uuid[])
+         AND archived_at IS NULL`,
+      [projectIds]
+    );
+    return new Set(rows.map((row) => row.planner_project_id));
+  } catch {
+    return new Set();
+  }
+}
+
 function toCustomerWithDetails(
   customer: Customer,
   accountManagerNames: Map<string, string>,
   contactUsers: Map<string, { name: string; email: string }>,
-  customerProjects: {
-    id: string;
-    name: string;
-    is_active: boolean;
-    type: string;
-    probability: number | null;
-  }[]
+  customerProjects: CustomerProjectRow[]
 ): CustomerWithDetails {
   const contact = customer.contact_app_user_id
     ? contactUsers.get(customer.contact_app_user_id)
@@ -212,6 +235,7 @@ function toCustomerWithDetails(
       isActive: project.is_active,
       type: project.type as ProjectType,
       probability: project.probability,
+      hasWorkProject: Boolean(project.hasWorkProject),
     })),
   };
 }
@@ -233,18 +257,10 @@ export async function fetchCustomerById(
     ? await appUserContactMap([data.contact_app_user_id])
     : new Map<string, { name: string; email: string }>();
 
-  const projectsByCustomer = new Map<
-    string,
-    {
-      id: string;
-      name: string;
-      is_active: boolean;
-      type: string;
-      probability: number | null;
-    }[]
-  >();
+  const projectsByCustomer = new Map<string, CustomerProjectRow[]>();
   try {
     const projects = await fetchProjectsByCustomerIds([data.id]);
+    const workLinked = await workLinkedProjectIds(projects.map((p) => p.id));
     for (const p of projects) {
       const list = projectsByCustomer.get(p.customer_id) ?? [];
       list.push({
@@ -253,6 +269,7 @@ export async function fetchCustomerById(
         is_active: p.is_active,
         type: p.type ?? "customer",
         probability: p.probability,
+        hasWorkProject: workLinked.has(p.id),
       });
       projectsByCustomer.set(p.customer_id, list);
     }
@@ -512,8 +529,41 @@ export async function updateLitiumVersionsBySubscriptionId(
   return { updated: rows.length, notFound };
 }
 
+/** True when hard-deleting would remove or be blocked by time-report history. */
+export async function customerHasDeleteBlockers(id: string): Promise<boolean> {
+  const { rows } = await cloudSqlPool.query<{ blocked: boolean }>(
+    `SELECT (
+       EXISTS (SELECT 1 FROM time_report_entry_lines WHERE customer_id = $1)
+       OR EXISTS (SELECT 1 FROM time_report_entries WHERE customer_id = $1)
+     ) AS blocked`,
+    [id]
+  );
+  return Boolean(rows[0]?.blocked);
+}
+
 export async function deleteCustomerQuery(id: string): Promise<void> {
-  await cloudSqlPool.query(`DELETE FROM customers WHERE id = $1`, [id]);
+  if (await customerHasDeleteBlockers(id)) {
+    throw new Error(
+      "This customer has time report history and cannot be deleted. Set status to Inactive instead."
+    );
+  }
+  try {
+    await cloudSqlPool.query(`DELETE FROM customers WHERE id = $1`, [id]);
+  } catch (error) {
+    const code =
+      typeof error === "object" &&
+      error != null &&
+      "code" in error &&
+      typeof (error as { code: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : null;
+    if (code === "23503") {
+      throw new Error(
+        "This customer has related history and cannot be deleted. Set status to Inactive instead."
+      );
+    }
+    throw error;
+  }
 }
 
 export async function fetchCustomersWithDetails(): Promise<
@@ -532,20 +582,12 @@ export async function fetchCustomersWithDetails(): Promise<
     appUserContactMap(contactUserIds),
   ]);
 
-  const projectsByCustomer = new Map<
-    string,
-    {
-      id: string;
-      name: string;
-      is_active: boolean;
-      type: string;
-      probability: number | null;
-    }[]
-  >();
+  const projectsByCustomer = new Map<string, CustomerProjectRow[]>();
   try {
     const projects = await fetchProjectsByCustomerIds(
       customers.map((c) => c.id)
     );
+    const workLinked = await workLinkedProjectIds(projects.map((p) => p.id));
     for (const p of projects) {
       const list = projectsByCustomer.get(p.customer_id) ?? [];
       list.push({
@@ -554,6 +596,7 @@ export async function fetchCustomersWithDetails(): Promise<
         is_active: p.is_active,
         type: p.type ?? "customer",
         probability: p.probability,
+        hasWorkProject: workLinked.has(p.id),
       });
       projectsByCustomer.set(p.customer_id, list);
     }

@@ -124,7 +124,7 @@ export function WorkTimelineView({
   issues: WorkIssue[];
   sprints: WorkSprint[];
   onIssuesChange: (issues: WorkIssue[]) => void;
-  onOpenIssue: (issueId: string) => void;
+  onOpenIssue: (issueId: string, options?: { tab?: string }) => void;
   onError: (message: string) => void;
   onChanged: () => void;
 }) {

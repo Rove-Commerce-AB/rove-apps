@@ -71,7 +71,9 @@ import {
 import {
   completeWorkSprint,
   createWorkSprint,
+  deleteWorkSprint,
   editWorkSprint,
+  startWorkSprint,
   setWorkIssueSchedule,
   setWorkIssueSprint,
 } from "@/lib/workSprints";
@@ -932,6 +934,32 @@ export async function closeWorkSprintAction(
 ): Promise<Ok | Err> {
   try {
     await completeWorkSprint(boardId, sprintId, unfinishedAction);
+    revalidateBoard(boardId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function startWorkSprintAction(
+  boardId: string,
+  sprintId: string
+): Promise<(Ok & { sprint: WorkSprint }) | Err> {
+  try {
+    const sprint = await startWorkSprint(boardId, sprintId);
+    revalidateBoard(boardId);
+    return { ok: true, sprint };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkSprintAction(
+  boardId: string,
+  sprintId: string
+): Promise<Ok | Err> {
+  try {
+    await deleteWorkSprint(boardId, sprintId);
     revalidateBoard(boardId);
     return { ok: true };
   } catch (error) {

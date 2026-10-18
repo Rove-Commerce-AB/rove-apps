@@ -24,9 +24,11 @@ import { TemporaryPasswordReveal } from "@/components/TemporaryPasswordReveal";
 import {
   createConsultantProfileForUser,
   createUserPerson,
+  deletePerson,
   setPersonApps,
 } from "@/lib/people";
 import { setCustomerTemporaryPassword } from "@/lib/customerPasswords";
+import { updateConsultant } from "@/lib/consultantsClient";
 import { deleteConsultantAction } from "@/app/(app)/consultants/actions";
 import {
   APP_KEYS,
@@ -58,6 +60,7 @@ import {
   InlineEditStatus,
   InlineEditTrigger,
   Input,
+  OptionSegments,
   PageHeader,
   SAVED_DURATION_MS,
   Select,
@@ -69,6 +72,17 @@ import {
   editInputClass,
   type DataTableColumn,
 } from "@/components/ui";
+
+/** Yesterday as YYYY-MM-DD in local time — makes consultant `isActive` false. */
+function inactiveEndDateLocal(): string {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 type Props = {
   people: PersonListItem[];
@@ -662,16 +676,38 @@ function PersonDangerZone({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"login" | "consultant" | "password" | null>(
+  const [busy, setBusy] = useState<
+    "login" | "consultant" | "password" | "status" | "person" | null
+  >(null);
+  const [confirm, setConfirm] = useState<"login" | "consultant" | "person" | null>(
     null
   );
-  const [confirm, setConfirm] = useState<"login" | "consultant" | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [consultantActive, setConsultantActive] = useState(
+    () => person.consultant?.isActive ?? true
+  );
 
   const canRemoveLogin = Boolean(person.appUserId);
   const canRemoveConsultant = Boolean(person.consultantId);
   const canResetPassword =
     Boolean(person.appUserId) && person.userRole === "customer";
+  const canToggleStatus = Boolean(person.consultantId);
+  const canDeletePerson = canRemoveLogin || canRemoveConsultant;
+
+  useEffect(() => {
+    setConsultantActive(person.consultant?.isActive ?? true);
+  }, [person.consultant?.isActive, person.key]);
+
+  const deletePersonSummary = [
+    person.appUserId
+      ? `Login account${person.email ? ` (${person.email})` : ""}`
+      : null,
+    person.consultantId
+      ? `Consultant profile (${person.name}) and planning/time links`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
 
   async function resetPassword() {
     if (!person.appUserId) return;
@@ -685,6 +721,29 @@ function PersonDangerZone({
         cause instanceof Error
           ? cause.message
           : "Failed to reset temporary password"
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setConsultantStatus(nextActive: boolean) {
+    if (!person.consultantId || nextActive === consultantActive) return;
+    setError(null);
+    setBusy("status");
+    const previous = consultantActive;
+    setConsultantActive(nextActive);
+    try {
+      await updateConsultant(person.consultantId, {
+        end_date: nextActive ? null : inactiveEndDateLocal(),
+      });
+      router.refresh();
+    } catch (cause) {
+      setConsultantActive(previous);
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Failed to update status"
       );
     } finally {
       setBusy(null);
@@ -739,7 +798,32 @@ function PersonDangerZone({
     }
   }
 
-  if (!canRemoveLogin && !canRemoveConsultant && !canResetPassword) {
+  async function handleDeletePerson() {
+    setError(null);
+    setBusy("person");
+    try {
+      await deletePerson({
+        appUserId: person.appUserId,
+        consultantId: person.consultantId,
+      });
+      setConfirm(null);
+      onCloseDrawer();
+      router.refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Failed to delete person"
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (
+    !canRemoveLogin &&
+    !canRemoveConsultant &&
+    !canResetPassword &&
+    !canToggleStatus
+  ) {
     return (
       <div className="px-6 py-6">
         <p className="text-sm text-text-secondary">
@@ -751,95 +835,163 @@ function PersonDangerZone({
 
   return (
     <>
-      <div className="space-y-8 px-6 py-6">
-        <div>
-          <h2 className="text-sm font-medium text-text-primary">Danger zone</h2>
-          <p className="mt-1 text-sm text-text-secondary">
-            These actions are permanent or hard to reverse. Use with care.
-          </p>
-        </div>
-
-        {error ? (
-          <p className="text-sm text-danger" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        {canResetPassword ? (
+      <div className="px-6 py-6">
+        <div className="space-y-6 rounded-lg border border-danger/30 bg-danger/5 p-4">
           <div>
-            <h3 className="text-sm font-medium text-text-primary">
-              Reset temporary password
-            </h3>
+            <h2 className="text-label-l text-danger">Danger zone</h2>
             <p className="mt-1 text-sm text-text-secondary">
-              Generates a new temporary password and requires the customer to
-              change it on next login. Share it out of band; it is shown once.
+              Inactivate hides the consultant from normal workflows. Delete
+              removes the person permanently when there is no time or planning
+              history.
             </p>
-            {tempPassword && person.email ? (
+          </div>
+
+          {error ? (
+            <p className="text-sm text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {canToggleStatus ? (
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">Status</h3>
+              <p className="mt-1 text-sm text-text-secondary">
+                Inactive consultants are filtered out of default lists and
+                pickers. Time and planning history is kept.
+              </p>
               <div className="mt-4">
-                <TemporaryPasswordReveal
-                  email={person.email}
-                  temporaryPassword={tempPassword}
-                  onDone={() => setTempPassword(null)}
+                <OptionSegments
+                  name="Status"
+                  value={consultantActive ? "active" : "inactive"}
+                  onChange={(value) =>
+                    void setConsultantStatus(value === "active")
+                  }
+                  disabled={busy !== null}
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "inactive", label: "Inactive" },
+                  ]}
                 />
               </div>
-            ) : (
+            </div>
+          ) : null}
+
+          {canResetPassword ? (
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">
+                Reset temporary password
+              </h3>
+              <p className="mt-1 text-sm text-text-secondary">
+                Generates a new temporary password and requires the customer to
+                change it on next login. Share it out of band; it is shown once.
+              </p>
+              {tempPassword && person.email ? (
+                <div className="mt-4">
+                  <TemporaryPasswordReveal
+                    email={person.email}
+                    temporaryPassword={tempPassword}
+                    onDone={() => setTempPassword(null)}
+                  />
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-3"
+                  disabled={busy !== null}
+                  onClick={() => void resetPassword()}
+                >
+                  {busy === "password"
+                    ? "Generating…"
+                    : "Generate temporary password"}
+                </Button>
+              )}
+            </div>
+          ) : null}
+
+          {canDeletePerson ? (
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">
+                Delete person
+              </h3>
+              <p className="mt-1 text-sm text-text-secondary">
+                Permanently removes linked login and/or consultant profile.
+                Blocked when time report or planning history exists — use
+                Inactive instead.
+              </p>
               <Button
                 type="button"
-                variant="secondary"
-                className="mt-4"
-                disabled={busy !== null}
-                onClick={() => void resetPassword()}
+                variant="dangerSecondary"
+                size="sm"
+                className="mt-3"
+                disabled={busy != null}
+                onClick={() => setConfirm("person")}
               >
-                {busy === "password" ? "Generating…" : "Generate temporary password"}
+                Delete person
               </Button>
-            )}
-          </div>
-        ) : null}
+            </div>
+          ) : null}
 
-        {canRemoveLogin ? (
-          <div>
-            <h3 className="text-sm font-medium text-text-primary">
-              Remove login access
-            </h3>
-            <p className="mt-1 text-sm text-text-secondary">
-              {person.consultantId
-                ? "Removes the login account. The consultant profile and its history remain."
-                : "Removes the login account. This cannot be undone."}
-            </p>
-            <Button
-              type="button"
-              variant="danger"
-              className="mt-4"
-              disabled={busy != null}
-              onClick={() => setConfirm("login")}
-            >
-              Remove login
-            </Button>
-          </div>
-        ) : null}
+          {canRemoveLogin ? (
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">
+                Remove login access
+              </h3>
+              <p className="mt-1 text-sm text-text-secondary">
+                {person.consultantId
+                  ? "Removes the login account. The consultant profile and its history remain."
+                  : "Removes the login account. This cannot be undone."}
+              </p>
+              <Button
+                type="button"
+                variant="dangerSecondary"
+                size="sm"
+                className="mt-3"
+                disabled={busy != null}
+                onClick={() => setConfirm("login")}
+              >
+                Remove login
+              </Button>
+            </div>
+          ) : null}
 
-        {canRemoveConsultant ? (
-          <div>
-            <h3 className="text-sm font-medium text-text-primary">
-              Remove consultant profile
-            </h3>
-            <p className="mt-1 text-sm text-text-secondary">
-              {person.appUserId
-                ? "Removes the consultant profile used for planning and time. The login account remains."
-                : "Removes the consultant profile. This cannot be undone."}
-            </p>
-            <Button
-              type="button"
-              variant="danger"
-              className="mt-4"
-              disabled={busy != null}
-              onClick={() => setConfirm("consultant")}
-            >
-              Remove profile
-            </Button>
-          </div>
-        ) : null}
+          {canRemoveConsultant ? (
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">
+                Remove consultant profile
+              </h3>
+              <p className="mt-1 text-sm text-text-secondary">
+                {person.appUserId
+                  ? "Removes the consultant profile used for planning and time. The login account remains. Blocked when history exists."
+                  : "Removes the consultant profile. Blocked when history exists."}
+              </p>
+              <Button
+                type="button"
+                variant="dangerSecondary"
+                size="sm"
+                className="mt-3"
+                disabled={busy != null}
+                onClick={() => setConfirm("consultant")}
+              >
+                Remove profile
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirm === "person"}
+        title={`Delete ${person.name}?`}
+        message={`This permanently deletes: ${deletePersonSummary}. This cannot be undone. If time or planning history exists, deletion is blocked — set Inactive instead.`}
+        confirmLabel={busy === "person" ? "Deleting…" : "Delete person"}
+        variant="danger"
+        onClose={() => {
+          if (busy) return;
+          setConfirm(null);
+        }}
+        onConfirm={() => void handleDeletePerson()}
+      />
 
       <ConfirmModal
         isOpen={confirm === "login"}
@@ -863,8 +1015,8 @@ function PersonDangerZone({
         title="Remove consultant profile"
         message={
           person.appUserId
-            ? "Remove this consultant profile? The login account will remain."
-            : `Remove ${person.name}'s consultant profile? This cannot be undone.`
+            ? "Remove this consultant profile? The login account will remain. Blocked if time or planning history exists."
+            : `Remove ${person.name}'s consultant profile? Blocked if time or planning history exists.`
         }
         confirmLabel={busy === "consultant" ? "Removing…" : "Remove profile"}
         variant="danger"
