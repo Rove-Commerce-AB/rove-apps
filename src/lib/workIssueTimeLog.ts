@@ -92,6 +92,8 @@ export async function listTimeEntriesForWorkIssue(
      JOIN time_report_entries e
        ON e.entry_line_id = l.id
       AND e.consultant_id = l.consultant_id
+      AND l.iso_year = EXTRACT(ISOYEAR FROM e.entry_date)::int
+      AND l.iso_week = EXTRACT(WEEK FROM e.entry_date)::int
      JOIN consultants c ON c.id = e.consultant_id
      WHERE l.work_issue_id = $1
      ORDER BY e.entry_date DESC, c.name ASC, e.created_at DESC`,
@@ -269,19 +271,21 @@ export async function updateTimeOnWorkIssue(
   boardId: string,
   issueId: string,
   entryId: string,
-  input: { hours: number; date: string; note?: string }
+  input: { hours: number; date: string; note?: string | null },
+  mcpUser?: McpUser
 ): Promise<
   | { ok: true; loggedHours: number; entries: WorkIssueTimeLogEntry[] }
   | { ok: false; error: string }
 > {
-  const visible = await requireVisibleWorkBoard(boardId);
+  const visible = await requireTimeLogBoard(boardId, mcpUser);
   if (!visible) return { ok: false, error: "Unauthorized" };
   if (!canLogWorkTime(visible.actor)) {
     return { ok: false, error: "Customer users cannot log time." };
   }
 
-  const appUser = await getCurrentAppUser();
-  if (!appUser?.appKeys.includes("time_report")) {
+  const appUser = mcpUser ?? await getCurrentAppUser();
+
+  if (!mcpUser && !appUser?.appKeys.includes("time_report")) {
     return { ok: false, error: "Time report access is required to log hours." };
   }
 
@@ -308,32 +312,34 @@ export async function updateTimeOnWorkIssue(
     date: input.date,
     note: input.note,
     lineDescription,
-  });
+  }, mcpUser);
 
   if (!result.success) {
     return { ok: false, error: result.error };
   }
 
-  const entries = await listTimeEntriesForWorkIssue(boardId, issueId);
+  const entries = await listTimeEntriesForWorkIssue(boardId, issueId, mcpUser);
   return { ok: true, loggedHours: result.loggedHours, entries };
 }
 
 export async function deleteTimeOnWorkIssue(
   boardId: string,
   issueId: string,
-  entryId: string
+  entryId: string,
+  mcpUser?: McpUser
 ): Promise<
   | { ok: true; loggedHours: number; entries: WorkIssueTimeLogEntry[] }
   | { ok: false; error: string }
 > {
-  const visible = await requireVisibleWorkBoard(boardId);
+  const visible = await requireTimeLogBoard(boardId, mcpUser);
   if (!visible) return { ok: false, error: "Unauthorized" };
   if (!canLogWorkTime(visible.actor)) {
     return { ok: false, error: "Customer users cannot log time." };
   }
 
-  const appUser = await getCurrentAppUser();
-  if (!appUser?.appKeys.includes("time_report")) {
+  const appUser = mcpUser ?? await getCurrentAppUser();
+
+  if (!mcpUser && !appUser?.appKeys.includes("time_report")) {
     return { ok: false, error: "Time report access is required to log hours." };
   }
 
@@ -344,12 +350,12 @@ export async function deleteTimeOnWorkIssue(
     customerId: issue.customer_id,
     workIssueId: issueId,
     entryId,
-  });
+  }, mcpUser);
 
   if (!result.success) {
     return { ok: false, error: result.error };
   }
 
-  const entries = await listTimeEntriesForWorkIssue(boardId, issueId);
+  const entries = await listTimeEntriesForWorkIssue(boardId, issueId, mcpUser);
   return { ok: true, loggedHours: result.loggedHours, entries };
 }
