@@ -362,8 +362,8 @@ export async function insertWorkIssueEvent(input: {
   actorAppUserId: string;
   kind: string;
   summary: string;
-}): Promise<void> {
-  await cloudSqlPool.query(
+}, client?: PoolClient): Promise<void> {
+  await (client ?? cloudSqlPool).query(
     `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
      VALUES ($1, $2, $3, $4)`,
     [input.issueId, input.actorAppUserId, input.kind, input.summary]
@@ -1330,8 +1330,8 @@ export async function deleteWorkIssueFile(
   return rows[0]?.file_name ?? null;
 }
 
-export async function fetchWorkIssueRelations(boardId: string) {
-  const { rows } = await cloudSqlPool.query<{
+export async function fetchWorkIssueRelations(boardId: string, client?: PoolClient) {
+  const { rows } = await (client ?? cloudSqlPool).query<{
     id: string;
     project_id: string;
     from_issue_id: string;
@@ -1351,8 +1351,8 @@ export async function insertWorkIssueRelation(input: {
   fromIssueId: string;
   toIssueId: string;
   kind: "blocks" | "relates" | "parent";
-}): Promise<string> {
-  const { rows } = await cloudSqlPool.query<{ id: string }>(
+}, client?: PoolClient): Promise<string> {
+  const { rows } = await (client ?? cloudSqlPool).query<{ id: string }>(
     `INSERT INTO work_issue_relations (project_id, from_issue_id, to_issue_id, kind)
      SELECT $1, $2, $3, $4
      WHERE EXISTS (

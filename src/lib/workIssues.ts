@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { canSeeWorkTime, type WorkActor } from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { WorkInputError } from "@/lib/workErrors";
@@ -56,6 +57,7 @@ import {
   childAlreadyHasParent,
   relationEdgeFromRole,
   relationEventSummary,
+  WORK_RELATION_ROLES,
   wouldCreateBlocksCycle,
   wouldCreateParentCycle,
   type WorkRelationRole,
@@ -896,55 +898,58 @@ export async function addIssueRelation(
   boardId: string,
   issueId: string,
   otherIssueId: string,
-  role: WorkRelationRole
-): Promise<void> {
-  const { actor, board } = await requireBoardAccess(boardId);
-  if (issueId === otherIssueId) throw new Error("An issue cannot relate to itself");
+  role: WorkRelationRole,
+  authenticatedActor?: WorkActor
+): Promise<string> {
+  const { actor, board } = await requireBoardAccess(boardId, authenticatedActor);
+
+  if (issueId === otherIssueId) throw new WorkInputError("An issue cannot relate to itself.");
+  if (!WORK_RELATION_ROLES.includes(role)) throw new WorkInputError("Invalid relation role.");
+
   const edge = relationEdgeFromRole(issueId, otherIssueId, role);
-  const rows = (await fetchWorkIssueRelations(boardId)).map((row) => ({
-    id: row.id,
-    boardId: row.project_id,
-    fromIssueId: row.from_issue_id,
-    toIssueId: row.to_issue_id,
-    kind: row.kind,
-  }));
-  if (edge.kind === "parent") {
-    if (childAlreadyHasParent(rows, edge.toIssueId)) {
-      throw new Error("That issue already has a parent");
-    }
-    if (wouldCreateParentCycle(rows, edge.fromIssueId, edge.toIssueId)) {
-      throw new Error("That parent would create a cycle");
-    }
-  }
-  if (edge.kind === "blocks") {
-    if (wouldCreateBlocksCycle(rows, edge.fromIssueId, edge.toIssueId)) {
-      throw new Error("That block would create a cycle");
-    }
-  }
+
   try {
-    await insertWorkIssueRelation({
-      boardId,
-      fromIssueId: edge.fromIssueId,
-      toIssueId: edge.toIssueId,
-      kind: edge.kind,
+    return await withCloudSqlTransaction("work-add-relation", async (client) => {
+      // Serialize graph validation with relation creation to prevent concurrent cycles.
+      await client.query("SELECT id FROM work_projects WHERE id = $1 FOR UPDATE", [boardId]);
+      const { rows: issues } = await client.query<{ id: string; number: number }>(
+        "SELECT id, number FROM work_issues WHERE project_id = $1 AND id = ANY($2::uuid[]) FOR KEY SHARE",
+        [boardId, [issueId, otherIssueId]]
+      );
+
+      if (issues.length !== 2) throw new WorkInputError("Both issues must belong to this project.");
+
+      const rows = (await fetchWorkIssueRelations(boardId, client)).map((row) => ({
+        id: row.id, boardId: row.project_id, fromIssueId: row.from_issue_id, toIssueId: row.to_issue_id, kind: row.kind,
+      }));
+
+      if (edge.kind === "parent") {
+        if (childAlreadyHasParent(rows, edge.toIssueId)) throw new WorkInputError("That issue already has a parent.");
+        if (wouldCreateParentCycle(rows, edge.fromIssueId, edge.toIssueId)) throw new WorkInputError("That parent would create a cycle.");
+      }
+
+      if (edge.kind === "blocks" && wouldCreateBlocksCycle(rows, edge.fromIssueId, edge.toIssueId)) {
+        throw new WorkInputError("That block would create a cycle.");
+      }
+
+      const relationId = await insertWorkIssueRelation({ boardId, ...edge }, client);
+      const other = issues.find((issue) => issue.id === otherIssueId)!;
+      await insertWorkIssueEvent({
+        issueId, actorAppUserId: actor.id, kind: "relation",
+        summary: relationEventSummary(role, workIssueKey(board.prefix, other.number)),
+      }, client);
+
+      return relationId;
     });
   } catch (error) {
     const maybePg = error as { code?: string };
+
     if (maybePg.code === "23505") {
-      throw new Error("That relation already exists");
+      throw new WorkInputError("That relation already exists.");
     }
+
     throw error;
   }
-  const other = await fetchWorkIssueNotifyMeta(boardId, otherIssueId);
-  const otherKey = other
-    ? workIssueKey(board.prefix, other.number)
-    : "another issue";
-  await logEvent(
-    issueId,
-    actor.id,
-    "relation",
-    relationEventSummary(role, otherKey)
-  );
 }
 
 export async function removeIssueRelation(

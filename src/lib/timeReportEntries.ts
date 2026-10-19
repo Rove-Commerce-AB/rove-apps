@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
+import { fetchConsultantByAppUserId } from "@/lib/consultantsQueries";
+import type { McpUser } from "@/lib/mcpAuth";
 import {
   getProjectBillingTypesByIds,
   getProjectsByCustomerIds,
@@ -57,10 +59,10 @@ import {
   workIssueLinkKey,
 } from "@/lib/workIssueTimeLink";
 
-async function getTimeReportAccessContext() {
+async function getTimeReportAccessContext(workMcpUser?: McpUser) {
   const [appUser, consultant] = await Promise.all([
-    getCurrentAppUser(),
-    getConsultantForCurrentUser(),
+    workMcpUser ?? getCurrentAppUser(),
+    workMcpUser ? fetchConsultantByAppUserId(workMcpUser.id) : getConsultantForCurrentUser(),
   ]);
   if (!consultant?.id) {
     return {
@@ -1923,6 +1925,7 @@ export type LogHoursAgainstWorkIssueResult =
 /**
  * Log time on a Work issue as a new Time Report row (never merges same-day cells).
  * Uses optimistic concurrency via week revision lock.
+ * The optional MCP identity must come from verified authentication after Work project access checks.
  */
 export async function logHoursAgainstWorkIssue(input: {
   customerId: string;
@@ -1934,8 +1937,12 @@ export async function logHoursAgainstWorkIssue(input: {
   roleId: string;
   note?: string | null;
   lineDescription?: string | null;
-}): Promise<LogHoursAgainstWorkIssueResult> {
-  const ctx = await getTimeReportAccessContext();
+}, workMcpUser?: McpUser): Promise<LogHoursAgainstWorkIssueResult> {
+  if (workMcpUser && (workMcpUser.role === "customer" || !workMcpUser.appKeys.includes("work"))) {
+    return { success: false, error: "Work access is required to log hours.", code: "unauthorized" };
+  }
+
+  const ctx = await getTimeReportAccessContext(workMcpUser);
   const consultant = ctx.consultant;
   if (!consultant?.id) {
     return { success: false, error: "No consultant profile linked.", code: "unauthorized" };
@@ -1983,7 +1990,7 @@ export async function logHoursAgainstWorkIssue(input: {
   const linkKey = workIssueLinkKey(input.workIssueId);
   const note = (input.note ?? "").trim() || null;
   const lineDescription = (input.lineDescription ?? "").trim() || null;
-  const appUserId = await getAppUserIdForAudit();
+  const appUserId = ctx.appUser?.id ?? null;
 
   try {
     return await withCloudSqlTransaction<LogHoursAgainstWorkIssueResult>(
@@ -2234,8 +2241,8 @@ async function bumpWeekRevision(
 }
 
 /**
- * Update or delete the current consultant's time entry on a Work issue.
- * Date changes within the same ISO week update in place; other weeks delete + re-log.
+ * Update the current consultant's Work entry. Moves between weeks commit atomically
+ * and preserve the entry ID and its billing snapshots.
  */
 export async function updateWorkIssueTimeEntry(input: {
   customerId: string;
@@ -2246,8 +2253,12 @@ export async function updateWorkIssueTimeEntry(input: {
   date: string;
   note?: string | null;
   lineDescription?: string | null;
-}): Promise<LogHoursAgainstWorkIssueResult> {
-  const ctx = await getTimeReportAccessContext();
+}, workMcpUser?: McpUser): Promise<LogHoursAgainstWorkIssueResult> {
+  if (workMcpUser && (workMcpUser.role === "customer" || !workMcpUser.appKeys.includes("work"))) {
+    return { success: false, error: "Work access is required to edit hours.", code: "unauthorized" };
+  }
+
+  const ctx = await getTimeReportAccessContext(workMcpUser);
   const consultant = ctx.consultant;
   if (!consultant?.id) {
     return { success: false, error: "No consultant profile linked.", code: "unauthorized" };
@@ -2265,20 +2276,10 @@ export async function updateWorkIssueTimeEntry(input: {
     return { success: false, error: "Invalid date." };
   }
   const dateStr = input.date.trim();
-  const note = (input.note ?? "").trim() || null;
-  const appUserId = await getAppUserIdForAudit();
-
-  type UpdateTxnResult =
-    | LogHoursAgainstWorkIssueResult
-    | {
-        success: true;
-        loggedHours: number;
-        movedWeek: true;
-        billingKey: string;
-      };
+  const appUserId = ctx.appUser?.id ?? null;
 
   try {
-    const result = await withCloudSqlTransaction<UpdateTxnResult>(
+    return await withCloudSqlTransaction<LogHoursAgainstWorkIssueResult>(
       `work-issue time update`,
       async (client, rollback) => {
         const existing = await loadOwnedWorkIssueEntry(
@@ -2294,6 +2295,12 @@ export async function updateWorkIssueTimeEntry(input: {
           });
         }
 
+        if (existing.customer_id !== input.customerId ||
+            (isExternalConsultant(consultant) && existing.project_id && !ctx.bookedProjectIds.has(existing.project_id))) {
+          return rollback({ success: false, error: "Unauthorized project.", code: "unauthorized" });
+        }
+
+        const note = input.note === undefined ? existing.internal_comment : (input.note ?? "").trim() || null;
         const oldDate = existing.entry_date.slice(0, 10);
         const oldWeek = {
           year: Number(existing.iso_year),
@@ -2398,13 +2405,35 @@ export async function updateWorkIssueTimeEntry(input: {
           };
         }
 
-        // Different ISO week: delete here, then re-log after commit.
+        // Create the destination line and move the entry in the same transaction.
         const newRevision = await bumpWeekRevision(
           client,
           consultant.id,
           oldWeek.year,
           oldWeek.week,
           appUserId
+        );
+        const targetRevision = await bumpWeekRevision(client, consultant.id, nextWeek.year, nextWeek.week, appUserId);
+        const entryLineId = randomUUID();
+        const { rows: orderRows } = await client.query<{ display_order: number }>(
+          `SELECT COALESCE(MAX(display_order), 0) + 1000 AS display_order
+           FROM time_report_entry_lines WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
+          [consultant.id, nextWeek.year, nextWeek.week]
+        );
+        const displayOrder = Number(orderRows[0].display_order);
+        await client.query(
+          `INSERT INTO time_report_entry_lines (
+             id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+             customer_rate_id, project_rate_id, jira_devops_key, description, work_issue_id, display_order
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [entryLineId, consultant.id, nextWeek.year, nextWeek.week, existing.customer_id, existing.project_id,
+            existing.role_id, existing.customer_rate_id, existing.project_rate_id, existing.jira_devops_key,
+            existing.description, input.workIssueId, displayOrder]
+        );
+        await client.query(
+          `UPDATE time_report_entries SET entry_line_id = $2, entry_date = $3::date,
+             hours = $4, pm_edited_hours = $4, internal_comment = $5, display_order = $6 WHERE id = $1`,
+          [existing.id, entryLineId, dateStr, hours, note, displayOrder]
         );
         await writeEntryHistory(client, {
           timeReportEntryId: existing.id,
@@ -2416,37 +2445,23 @@ export async function updateWorkIssueTimeEntry(input: {
           sourceRevision: newRevision,
           changedByAppUserId: appUserId,
         });
-        await client.query(`DELETE FROM time_report_entries WHERE id = $1`, [
-          existing.id,
-        ]);
-        const billingKey = lineBillingKey(existing);
-        if (!billingKey) {
-          return await rollback({
-            success: false,
-            error: "Could not resolve role for this time entry.",
-          });
-        }
+        await writeEntryHistory(client, {
+          timeReportEntryId: existing.id,
+          entryLineId,
+          consultantId: consultant.id,
+          operation: "insert",
+          before: null,
+          after: { ...snapshotRowDb(existing), entry_line_id: entryLineId, entry_date: dateStr, hours, internal_comment: note, display_order: displayOrder },
+          sourceRevision: targetRevision,
+          changedByAppUserId: appUserId,
+        });
+
         return {
           success: true,
-          loggedHours: 0,
-          movedWeek: true as const,
-          billingKey,
+          loggedHours: await sumLoggedHoursForWorkIssue(client, input.workIssueId),
         };
       }
     );
-
-    if (!result.success) return result;
-    if (!("movedWeek" in result)) return result;
-    return logHoursAgainstWorkIssue({
-      customerId: input.customerId,
-      plannerProjectId: input.plannerProjectId,
-      workIssueId: input.workIssueId,
-      date: dateStr,
-      hours,
-      roleId: result.billingKey,
-      note,
-      lineDescription: input.lineDescription,
-    });
   } catch (e) {
     return {
       success: false,
@@ -2459,8 +2474,12 @@ export async function deleteWorkIssueTimeEntry(input: {
   customerId: string;
   workIssueId: string;
   entryId: string;
-}): Promise<LogHoursAgainstWorkIssueResult> {
-  const ctx = await getTimeReportAccessContext();
+}, workMcpUser?: McpUser): Promise<LogHoursAgainstWorkIssueResult> {
+  if (workMcpUser && (workMcpUser.role === "customer" || !workMcpUser.appKeys.includes("work"))) {
+    return { success: false, error: "Work access is required to delete hours.", code: "unauthorized" };
+  }
+
+  const ctx = await getTimeReportAccessContext(workMcpUser);
   const consultant = ctx.consultant;
   if (!consultant?.id) {
     return { success: false, error: "No consultant profile linked.", code: "unauthorized" };
@@ -2469,7 +2488,7 @@ export async function deleteWorkIssueTimeEntry(input: {
     return { success: false, error: "Unauthorized customer.", code: "unauthorized" };
   }
 
-  const appUserId = await getAppUserIdForAudit();
+  const appUserId = ctx.appUser?.id ?? null;
 
   try {
     return await withCloudSqlTransaction<LogHoursAgainstWorkIssueResult>(
@@ -2486,6 +2505,11 @@ export async function deleteWorkIssueTimeEntry(input: {
             success: false,
             error: "Time entry not found.",
           });
+        }
+
+        if (existing.customer_id !== input.customerId ||
+            (isExternalConsultant(consultant) && existing.project_id && !ctx.bookedProjectIds.has(existing.project_id))) {
+          return rollback({ success: false, error: "Unauthorized project.", code: "unauthorized" });
         }
 
         const year = Number(existing.iso_year);
