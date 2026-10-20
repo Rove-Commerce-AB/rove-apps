@@ -14,7 +14,8 @@ import {
   canCreateWorkProject,
   canSeeWorkBoard,
   canSeeWorkCustomer,
-  canSeeWorkTime,
+  canSeeWorkEstimates,
+  canSeeWorkReportedTime,
   isWorkActivityVisibleToActor,
   type WorkActor,
 } from "@/lib/workAccess";
@@ -375,9 +376,13 @@ export async function getWorkBoardView(
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) return null;
   const { actor, board } = visible;
-  const showTime = canSeeWorkTime(
+  const showEstimates = canSeeWorkEstimates(
     actor,
-    board.work_show_time_to_customer_users
+    board.work_show_estimates_to_customer_users
+  );
+  const showReportedTime = canSeeWorkReportedTime(
+    actor,
+    board.work_show_reported_time_to_customer_users
   );
   const [
     issueRows,
@@ -419,7 +424,7 @@ export async function getWorkBoardView(
     fetchIssuePreDeployActions(issueIds),
     fetchIssueReferences(issueIds),
     fetchWorkIssueRelations(board.id),
-    showTime
+    showReportedTime
       ? fetchLoggedHoursByIssueIds(issueIds)
       : Promise.resolve(new Map<string, number>()),
   ]);
@@ -461,7 +466,14 @@ export async function getWorkBoardView(
   }
   const eventsByIssue = new Map<string, WorkEvent[]>();
   for (const row of eventRows) {
-    if (!isWorkActivityVisibleToActor(actor, row.kind)) continue;
+    if (
+      !isWorkActivityVisibleToActor(actor, row.kind, {
+        showEstimates,
+        showReportedTime,
+      })
+    ) {
+      continue;
+    }
     const list = eventsByIssue.get(row.issue_id) ?? [];
     list.push({
       id: row.id,
@@ -583,12 +595,14 @@ export async function getWorkBoardView(
       preDeployActions: preDeployByIssue.get(row.id) ?? [],
       references: referencesByIssue.get(row.id) ?? [],
       relations: emptyWorkIssueRelations(),
-      estimateHours: showTime
+      estimateHours: showEstimates
         ? row.estimate_hours == null
           ? null
           : Number(row.estimate_hours)
         : null,
-      loggedHours: showTime ? loggedHoursByIssue.get(row.id) ?? 0 : 0,
+      loggedHours: showReportedTime
+        ? loggedHoursByIssue.get(row.id) ?? 0
+        : 0,
       sprintId: row.sprint_id,
       startDate: pgDateToDateOnlyOrNull(row.start_date),
       dueDate: pgDateToDateOnlyOrNull(row.due_date),
@@ -635,7 +649,8 @@ export async function getWorkBoardView(
     customerName: board.customer_name,
     plannerProjectId: board.planner_project_id ?? null,
     plannerProjectName: board.planner_project_name ?? null,
-    showTime,
+    showEstimates,
+    showReportedTime,
     viewerRole: user.role,
     currentUser: workPersonFromUser({
       id: user.id,

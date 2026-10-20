@@ -1,6 +1,10 @@
 import "server-only";
 
-import { canSeeWorkTime, type WorkActor } from "@/lib/workAccess";
+import {
+  canSeeWorkEstimates,
+  canSeeWorkReportedTime,
+  type WorkActor,
+} from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
 import { WorkInputError } from "@/lib/workErrors";
@@ -54,7 +58,14 @@ export async function getWorkIssue(actor: WorkActor, input: WorkIssueLookup): Pr
   if (!row || !column) throw new WorkInputError("Issue not found in this project.");
 
   const issueIds = [row.id];
-  const showTime = canSeeWorkTime(actor, board.work_show_time_to_customer_users);
+  const showEstimates = canSeeWorkEstimates(
+    actor,
+    board.work_show_estimates_to_customer_users
+  );
+  const showReportedTime = canSeeWorkReportedTime(
+    actor,
+    board.work_show_reported_time_to_customer_users
+  );
   const [assignees, labels, files, requirements, preDeployActions, references, relations, hours] = await Promise.all([
     fetchIssueAssignees(issueIds),
     fetchIssueLabels(issueIds),
@@ -63,7 +74,9 @@ export async function getWorkIssue(actor: WorkActor, input: WorkIssueLookup): Pr
     fetchIssuePreDeployActions(issueIds),
     fetchIssueReferences(issueIds),
     fetchWorkIssueRelationDetails(board.id, row.id),
-    showTime ? fetchLoggedHoursByIssueIds(issueIds) : Promise.resolve(new Map<string, number>()),
+    showReportedTime
+      ? fetchLoggedHoursByIssueIds(issueIds)
+      : Promise.resolve(new Map<string, number>()),
   ]);
   const key = workIssueKey(board.prefix, row.number);
   const refs = new Map([
@@ -121,9 +134,13 @@ export async function getWorkIssue(actor: WorkActor, input: WorkIssueLookup): Pr
       preDeployActions: preDeployActions.map(checklistItem),
       references: references.map((reference) => ({ id: reference.id, url: reference.url, label: reference.label, sortOrder: reference.sort_order })),
       relations: groupedRelations.get(row.id) ?? emptyWorkIssueRelations(),
-      showTime,
-      estimateHours: showTime && row.estimate_hours !== null ? Number(row.estimate_hours) : null,
-      loggedHours: showTime ? hours.get(row.id) ?? 0 : 0,
+      showEstimates,
+      showReportedTime,
+      estimateHours:
+        showEstimates && row.estimate_hours !== null
+          ? Number(row.estimate_hours)
+          : null,
+      loggedHours: showReportedTime ? hours.get(row.id) ?? 0 : 0,
       sprintId: row.sprint_id,
       startDate: pgDateToDateOnlyOrNull(row.start_date),
       dueDate: pgDateToDateOnlyOrNull(row.due_date),

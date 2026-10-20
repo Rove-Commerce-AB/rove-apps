@@ -124,8 +124,10 @@ export type CustomerWithDetails = {
   litiumVersion: string | null;
   billingCurrency: string;
   isInternal: boolean;
-  /** When true, customer-role users can see estimates and reported time on Work. */
-  workShowTimeToCustomerUsers: boolean;
+  /** When true, customer-role users can see estimates on Work. */
+  workShowEstimatesToCustomerUsers: boolean;
+  /** When true, customer-role users can see reported/logged time on Work. */
+  workShowReportedTimeToCustomerUsers: boolean;
   initials: string;
   isActive: boolean;
   activeProjectCount: number;

@@ -3,7 +3,7 @@ import "server-only";
 import { withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import {
   canDeleteWorkIssue,
-  canSeeWorkTime,
+  canSeeWorkEstimates,
   type WorkActor,
 } from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
@@ -356,7 +356,7 @@ export async function setWorkIssueEstimate(
 ): Promise<void> {
   const { actor, board } = await requireBoardAccess(boardId);
   if (
-    !canSeeWorkTime(actor, board.work_show_time_to_customer_users)
+    !canSeeWorkEstimates(actor, board.work_show_estimates_to_customer_users)
   ) {
     throw new Error("Unauthorized");
   }

@@ -2,7 +2,10 @@ import "server-only";
 
 import { withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { pgDateToDateOnly, pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
-import { canSeeWorkTime, type WorkActor } from "@/lib/workAccess";
+import {
+  canSeeWorkEstimates,
+  type WorkActor,
+} from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { WorkInputError } from "@/lib/workErrors";
 import { workPersonFromUser } from "@/lib/workIssueKey";
@@ -118,9 +121,16 @@ export async function setWorkIssueAssignments(
 
 export async function listWorkProjectSprints(actor: WorkActor, projectId: string) {
   const { board } = await requireProject(actor, projectId);
-  const showTime = canSeeWorkTime(actor, board.work_show_time_to_customer_users);
+  const showEstimates = canSeeWorkEstimates(
+    actor,
+    board.work_show_estimates_to_customer_users
+  );
   const sprints = (await fetchWorkSprintsForBoard(projectId)).map((row) => ({
-    ...mapWorkSprintRow(row), capacityHours: showTime && row.capacity_hours != null ? Number(row.capacity_hours) : null,
+    ...mapWorkSprintRow(row),
+    capacityHours:
+      showEstimates && row.capacity_hours != null
+        ? Number(row.capacity_hours)
+        : null,
   }));
 
   return { projectId, sprints };
@@ -147,10 +157,17 @@ export async function setWorkIssuePlanning(
   actor: WorkActor, projectId: string, issueId: string, changes: WorkIssueScheduleChanges
 ) {
   const { board } = await requireProject(actor, projectId);
-  const showTime = canSeeWorkTime(actor, board.work_show_time_to_customer_users);
+  const showEstimates = canSeeWorkEstimates(
+    actor,
+    board.work_show_estimates_to_customer_users
+  );
 
   if (Object.values(changes).every((value) => value === undefined)) throw new WorkInputError("Provide at least one scheduling field.");
-  if (changes.estimateHours !== undefined && !showTime) throw new WorkInputError("Time is not shared with customer users on this account.");
+  if (changes.estimateHours !== undefined && !showEstimates) {
+    throw new WorkInputError(
+      "Estimates are not shared with customer users on this account."
+    );
+  }
 
   if (changes.estimateHours != null &&
       (!Number.isFinite(changes.estimateHours) || changes.estimateHours < 0 || changes.estimateHours > WORK_ESTIMATE_HOURS_MAX)) {
@@ -218,6 +235,13 @@ export async function setWorkIssuePlanning(
       await insertWorkIssueEvent({ issueId, actorAppUserId: actor.id, kind: "schedule", summary: parts.join(", ") }, client);
     }
 
-    return { projectId, issueId, estimateHours: showTime ? estimateHours : null, sprintId, startDate, dueDate };
+    return {
+      projectId,
+      issueId,
+      estimateHours: showEstimates ? estimateHours : null,
+      sprintId,
+      startDate,
+      dueDate,
+    };
   });
 }

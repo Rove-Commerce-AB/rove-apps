@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatVisibleWorkHours,
   formatWorkHours,
   formatWorkHoursPair,
   hasWorkTimeToShow,
@@ -36,6 +37,41 @@ describe("formatWorkHoursPair", () => {
   it("shows logged against estimate when both exist", () => {
     expect(formatWorkHoursPair(3.5, 8)).toBe("3.5h / 8h");
     expect(formatWorkHoursPair(2, null)).toBe("2h");
+  });
+});
+
+describe("formatVisibleWorkHours", () => {
+  it("respects estimate and reported-time visibility flags", () => {
+    expect(
+      formatVisibleWorkHours(3.5, 8, {
+        showEstimates: true,
+        showReportedTime: true,
+      })
+    ).toBe("3.5h / 8h");
+    expect(
+      formatVisibleWorkHours(3.5, 8, {
+        showEstimates: false,
+        showReportedTime: true,
+      })
+    ).toBe("3.5h");
+    expect(
+      formatVisibleWorkHours(3.5, 8, {
+        showEstimates: true,
+        showReportedTime: false,
+      })
+    ).toBe("8h");
+    expect(
+      formatVisibleWorkHours(3.5, null, {
+        showEstimates: true,
+        showReportedTime: false,
+      })
+    ).toBeNull();
+    expect(
+      formatVisibleWorkHours(3.5, 8, {
+        showEstimates: false,
+        showReportedTime: false,
+      })
+    ).toBeNull();
   });
 });
 

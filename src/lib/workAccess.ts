@@ -10,6 +10,11 @@ export type WorkBoardVisibilityInput = {
   memberAppUserIds: readonly string[];
 };
 
+export type WorkActivityTimeVisibility = {
+  showEstimates: boolean;
+  showReportedTime: boolean;
+};
+
 /** Admin sees every customer. Others only see assigned customers. */
 export function canSeeWorkCustomer(
   actor: WorkActor,
@@ -38,34 +43,53 @@ export function filterVisibleWorkBoards<T extends WorkBoardVisibilityInput>(
 }
 
 /**
- * Customer-role users only see estimate/logged time when the customer setting
- * allows it. Everyone else always sees time.
+ * Customer-role users only see estimates when the customer setting allows it.
+ * Everyone else always sees estimates.
  */
-export function canSeeWorkTime(
+export function canSeeWorkEstimates(
   actor: WorkActor,
-  customerAllowsTimeForCustomerUsers: boolean
+  customerAllowsEstimatesForCustomerUsers: boolean
 ): boolean {
   if (actor.role !== "customer") return true;
-  return customerAllowsTimeForCustomerUsers;
+  return customerAllowsEstimatesForCustomerUsers;
 }
 
 /**
- * Activity rows that reveal an estimate or a time report.
- * Customer users never see these, even when the customer setting shows the Time tab.
+ * Customer-role users only see reported/logged time when the customer setting
+ * allows it. Everyone else always sees reported time.
  */
-const CUSTOMER_HIDDEN_ACTIVITY_KINDS = new Set([
-  "estimate",
+export function canSeeWorkReportedTime(
+  actor: WorkActor,
+  customerAllowsReportedTimeForCustomerUsers: boolean
+): boolean {
+  if (actor.role !== "customer") return true;
+  return customerAllowsReportedTimeForCustomerUsers;
+}
+
+const ESTIMATE_ACTIVITY_KINDS = new Set(["estimate"]);
+const REPORTED_TIME_ACTIVITY_KINDS = new Set([
   "time",
   "time_log",
   "time_report",
 ]);
 
+/**
+ * Activity rows that reveal an estimate or a time report follow the matching
+ * customer visibility setting. Staff always see every activity kind.
+ */
 export function isWorkActivityVisibleToActor(
   actor: WorkActor,
-  kind: string
+  kind: string,
+  visibility?: WorkActivityTimeVisibility
 ): boolean {
   if (actor.role !== "customer") return true;
-  return !CUSTOMER_HIDDEN_ACTIVITY_KINDS.has(kind);
+  if (ESTIMATE_ACTIVITY_KINDS.has(kind)) {
+    return visibility?.showEstimates === true;
+  }
+  if (REPORTED_TIME_ACTIVITY_KINDS.has(kind)) {
+    return visibility?.showReportedTime === true;
+  }
+  return true;
 }
 
 /** Customer-role users never log time on Work issues. */

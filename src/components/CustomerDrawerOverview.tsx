@@ -62,8 +62,12 @@ export function CustomerDrawerOverview({
   const [logoUrl, setLogoUrl] = useState(customer.logoUrl ?? "");
   const [color, setColor] = useState(customer.color);
   const [isInternal, setIsInternal] = useState(customer.isInternal);
-  const [workShowTimeToCustomerUsers, setWorkShowTimeToCustomerUsers] =
-    useState(customer.workShowTimeToCustomerUsers ?? false);
+  const [workShowEstimatesToCustomerUsers, setWorkShowEstimatesToCustomerUsers] =
+    useState(customer.workShowEstimatesToCustomerUsers ?? false);
+  const [
+    workShowReportedTimeToCustomerUsers,
+    setWorkShowReportedTimeToCustomerUsers,
+  ] = useState(customer.workShowReportedTimeToCustomerUsers ?? false);
   const [billingCurrency, setBillingCurrency] = useState<BillingCurrency>(
     parseBillingCurrency(customer.billingCurrency)
   );
@@ -86,10 +90,17 @@ export function CustomerDrawerOverview({
 
   useEffect(() => {
     setIsInternal(customer.isInternal);
-    setWorkShowTimeToCustomerUsers(
-      customer.workShowTimeToCustomerUsers ?? false
+    setWorkShowEstimatesToCustomerUsers(
+      customer.workShowEstimatesToCustomerUsers ?? false
     );
-  }, [customer.isInternal, customer.workShowTimeToCustomerUsers]);
+    setWorkShowReportedTimeToCustomerUsers(
+      customer.workShowReportedTimeToCustomerUsers ?? false
+    );
+  }, [
+    customer.isInternal,
+    customer.workShowEstimatesToCustomerUsers,
+    customer.workShowReportedTimeToCustomerUsers,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -234,19 +245,40 @@ export function CustomerDrawerOverview({
     }
   }
 
-  async function setWorkShowTime(next: boolean) {
-    if (next === workShowTimeToCustomerUsers) return;
+  async function setWorkShowEstimates(next: boolean) {
+    if (next === workShowEstimatesToCustomerUsers) return;
     setError(null);
     setSubmitting(true);
     try {
       await updateCustomerAction(customer.id, {
-        work_show_time_to_customer_users: next,
+        work_show_estimates_to_customer_users: next,
       });
-      setWorkShowTimeToCustomerUsers(next);
+      setWorkShowEstimatesToCustomerUsers(next);
       router.refresh();
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : "Failed to update Work time setting"
+        e instanceof Error ? e.message : "Failed to update Show estimates"
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function setWorkShowReportedTime(next: boolean) {
+    if (next === workShowReportedTimeToCustomerUsers) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateCustomerAction(customer.id, {
+        work_show_reported_time_to_customer_users: next,
+      });
+      setWorkShowReportedTimeToCustomerUsers(next);
+      router.refresh();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to update Show reported time"
       );
     } finally {
       setSubmitting(false);
@@ -421,21 +453,44 @@ export function CustomerDrawerOverview({
             />
           </DrawerFieldRow>
           {!isInternal ? (
-            <DrawerFieldRow
-              label="Work time"
-              info="Customer users can see estimates and reported time"
-            >
-              <OptionSegments
-                name="Work time visibility"
-                value={workShowTimeToCustomerUsers ? "show" : "hide"}
-                onChange={(value) => void setWorkShowTime(value === "show")}
-                disabled={submitting}
-                options={[
-                  { value: "hide", label: "Hidden" },
-                  { value: "show", label: "Visible" },
-                ]}
-              />
-            </DrawerFieldRow>
+            <>
+              <DrawerFieldRow
+                label="Show estimates"
+                info="Customer users can see estimates on Work"
+              >
+                <OptionSegments
+                  name="Show estimates"
+                  value={workShowEstimatesToCustomerUsers ? "show" : "hide"}
+                  onChange={(value) =>
+                    void setWorkShowEstimates(value === "show")
+                  }
+                  disabled={submitting}
+                  options={[
+                    { value: "hide", label: "Hidden" },
+                    { value: "show", label: "Visible" },
+                  ]}
+                />
+              </DrawerFieldRow>
+              <DrawerFieldRow
+                label="Show reported time"
+                info="Customer users can see logged time on Work"
+              >
+                <OptionSegments
+                  name="Show reported time"
+                  value={
+                    workShowReportedTimeToCustomerUsers ? "show" : "hide"
+                  }
+                  onChange={(value) =>
+                    void setWorkShowReportedTime(value === "show")
+                  }
+                  disabled={submitting}
+                  options={[
+                    { value: "hide", label: "Hidden" },
+                    { value: "show", label: "Visible" },
+                  ]}
+                />
+              </DrawerFieldRow>
+            </>
           ) : null}
           <DrawerFieldRow
             label="Billing currency"

@@ -16,7 +16,7 @@ import {
   type WorkBoardPriorityFilterId,
   type WorkColumnGroup,
 } from "@/lib/workBoardView";
-import { formatWorkHoursPair } from "@/lib/workTime";
+import { formatVisibleWorkHours } from "@/lib/workTime";
 import type {
   WorkIssueType,
   WorkLabel,
@@ -242,13 +242,15 @@ export function WorkCardTypeBadge({
 export function WorkColumnGroupHeader({
   groupBy,
   group,
-  showTime = true,
+  showEstimates = true,
+  showReportedTime = true,
   className = "",
   actions,
 }: {
   groupBy: WorkBoardGroupBy;
   group: WorkColumnGroup;
-  showTime?: boolean;
+  showEstimates?: boolean;
+  showReportedTime?: boolean;
   className?: string;
   actions?: ReactNode;
 }) {
@@ -264,9 +266,11 @@ export function WorkColumnGroupHeader({
   const hasEstimate = group.issues.some(
     (issue) => issue.estimateHours != null
   );
-  const timeLabel = showTime
-    ? formatWorkHoursPair(loggedSum, hasEstimate ? estimateSum : null)
-    : null;
+  const timeLabel = formatVisibleWorkHours(
+    loggedSum,
+    hasEstimate ? estimateSum : null,
+    { showEstimates, showReportedTime }
+  );
   return (
     <div className={`flex min-w-0 items-center gap-1.5 px-0.5 ${className}`.trim()}>
       {groupBy === "owner" ? (

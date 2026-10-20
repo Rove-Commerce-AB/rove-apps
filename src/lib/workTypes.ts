@@ -100,7 +100,7 @@ export type WorkIssueLookup = { projectId: string; issueId?: string; issueKey?: 
 export type WorkIssueDetails = WorkIssueListItem & Pick<WorkIssue,
   "reporter" | "component" | "requirements" | "definitionOfDone" | "preDeployActions" |
   "references" | "relations" | "files" | "estimateHours" | "loggedHours" | "sprintId" | "startDate" | "dueDate"
-> & { showTime: boolean };
+> & { showEstimates: boolean; showReportedTime: boolean };
 
 export type WorkIssueCommentsInput = { projectId: string; issueId: string; limit?: number; cursor?: string };
 
@@ -221,10 +221,15 @@ export type WorkBoardView = {
   plannerProjectId: string | null;
   plannerProjectName: string | null;
   /**
-   * Whether the current viewer may see estimates and reported time.
+   * Whether the current viewer may see estimates.
    * False for customer-role users when the customer setting is off.
    */
-  showTime: boolean;
+  showEstimates: boolean;
+  /**
+   * Whether the current viewer may see reported/logged time.
+   * False for customer-role users when the customer setting is off.
+   */
+  showReportedTime: boolean;
   /** Role of the signed-in viewer (for UI gates such as Danger tabs). */
   viewerRole: AppUserRole;
   currentUser: WorkPerson;

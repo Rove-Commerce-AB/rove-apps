@@ -22,6 +22,22 @@ export function formatWorkHoursPair(loggedHours: number, estimateHours: number |
   return `${formatWorkHours(loggedHours)} / ${formatWorkHours(estimateHours)}`;
 }
 
+/** Format hours according to which Work visibility flags the viewer has. */
+export function formatVisibleWorkHours(
+  loggedHours: number,
+  estimateHours: number | null,
+  opts: { showEstimates: boolean; showReportedTime: boolean }
+): string | null {
+  if (opts.showReportedTime && opts.showEstimates) {
+    return formatWorkHoursPair(loggedHours, estimateHours);
+  }
+  if (opts.showReportedTime) return formatWorkHours(loggedHours);
+  if (opts.showEstimates) {
+    return estimateHours == null ? null : formatWorkHours(estimateHours);
+  }
+  return null;
+}
+
 export function workTimeBarPercents(
   loggedHours: number,
   estimateHours: number | null

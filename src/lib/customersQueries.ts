@@ -24,7 +24,8 @@ export type Customer = {
   litium_version: string | null;
   billing_currency: BillingCurrency;
   is_internal: boolean;
-  work_show_time_to_customer_users: boolean;
+  work_show_estimates_to_customer_users: boolean;
+  work_show_reported_time_to_customer_users: boolean;
   is_active: boolean;
 };
 
@@ -38,7 +39,8 @@ export type CreateCustomerInput = {
   url?: string | null;
   billing_currency?: BillingCurrency;
   is_internal?: boolean;
-  work_show_time_to_customer_users?: boolean;
+  work_show_estimates_to_customer_users?: boolean;
+  work_show_reported_time_to_customer_users?: boolean;
   is_active?: boolean;
 };
 
@@ -55,12 +57,13 @@ export type UpdateCustomerInput = {
   litium_version?: string | null;
   billing_currency?: BillingCurrency;
   is_internal?: boolean;
-  work_show_time_to_customer_users?: boolean;
+  work_show_estimates_to_customer_users?: boolean;
+  work_show_reported_time_to_customer_users?: boolean;
   is_active?: boolean;
 };
 
 const CUSTOMER_SELECT =
-  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, subscription_id, litium_version, billing_currency, is_internal, work_show_time_to_customer_users, is_active";
+  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, subscription_id, litium_version, billing_currency, is_internal, work_show_estimates_to_customer_users, work_show_reported_time_to_customer_users, is_active";
 
 const SINGLE_INTERNAL_CUSTOMER_ERROR_PREFIX =
   "Only one customer can be internal";
@@ -221,8 +224,10 @@ function toCustomerWithDetails(
     litiumVersion: customer.litium_version ?? null,
     billingCurrency: parseBillingCurrency(customer.billing_currency),
     isInternal: customer.is_internal ?? false,
-    workShowTimeToCustomerUsers:
-      customer.work_show_time_to_customer_users ?? false,
+    workShowEstimatesToCustomerUsers:
+      customer.work_show_estimates_to_customer_users ?? false,
+    workShowReportedTimeToCustomerUsers:
+      customer.work_show_reported_time_to_customer_users ?? false,
     initials: getInitials(customer.name),
     isActive: customer.is_active ?? true,
     activeProjectCount: activeProjects.length,
@@ -447,9 +452,13 @@ export async function updateCustomerQuery(
       values.push(null);
     }
   }
-  if (input.work_show_time_to_customer_users !== undefined) {
-    sets.push(`work_show_time_to_customer_users = $${i++}`);
-    values.push(input.work_show_time_to_customer_users);
+  if (input.work_show_estimates_to_customer_users !== undefined) {
+    sets.push(`work_show_estimates_to_customer_users = $${i++}`);
+    values.push(input.work_show_estimates_to_customer_users);
+  }
+  if (input.work_show_reported_time_to_customer_users !== undefined) {
+    sets.push(`work_show_reported_time_to_customer_users = $${i++}`);
+    values.push(input.work_show_reported_time_to_customer_users);
   }
   if (input.is_active !== undefined) {
     sets.push(`is_active = $${i++}`);

@@ -6,7 +6,8 @@ import {
   canLogWorkTime,
   canSeeWorkBoard,
   canSeeWorkCustomer,
-  canSeeWorkTime,
+  canSeeWorkEstimates,
+  canSeeWorkReportedTime,
   filterVisibleWorkBoards,
   isWorkActivityVisibleToActor,
 } from "./workAccess";
@@ -52,24 +53,72 @@ describe("canSeeWorkBoard", () => {
   });
 });
 
-describe("canSeeWorkTime", () => {
+describe("canSeeWorkEstimates", () => {
   it("always allows non-customer roles", () => {
-    expect(canSeeWorkTime(admin, false)).toBe(true);
-    expect(canSeeWorkTime(member, false)).toBe(true);
+    expect(canSeeWorkEstimates(admin, false)).toBe(true);
+    expect(canSeeWorkEstimates(member, false)).toBe(true);
   });
 
   it("follows the customer setting for customer users", () => {
-    expect(canSeeWorkTime(customer, false)).toBe(false);
-    expect(canSeeWorkTime(customer, true)).toBe(true);
+    expect(canSeeWorkEstimates(customer, false)).toBe(false);
+    expect(canSeeWorkEstimates(customer, true)).toBe(true);
+  });
+});
+
+describe("canSeeWorkReportedTime", () => {
+  it("always allows non-customer roles", () => {
+    expect(canSeeWorkReportedTime(admin, false)).toBe(true);
+    expect(canSeeWorkReportedTime(member, false)).toBe(true);
+  });
+
+  it("follows the customer setting for customer users", () => {
+    expect(canSeeWorkReportedTime(customer, false)).toBe(false);
+    expect(canSeeWorkReportedTime(customer, true)).toBe(true);
   });
 });
 
 describe("isWorkActivityVisibleToActor", () => {
-  it("hides estimate and time-report activity from customer users", () => {
+  it("hides estimate and time activity from customer users when settings are off", () => {
     expect(isWorkActivityVisibleToActor(customer, "estimate")).toBe(false);
     expect(isWorkActivityVisibleToActor(customer, "time")).toBe(false);
     expect(isWorkActivityVisibleToActor(customer, "time_log")).toBe(false);
     expect(isWorkActivityVisibleToActor(customer, "time_report")).toBe(false);
+    expect(
+      isWorkActivityVisibleToActor(customer, "estimate", {
+        showEstimates: false,
+        showReportedTime: false,
+      })
+    ).toBe(false);
+  });
+
+  it("shows estimate activity to customer users when estimates are visible", () => {
+    expect(
+      isWorkActivityVisibleToActor(customer, "estimate", {
+        showEstimates: true,
+        showReportedTime: false,
+      })
+    ).toBe(true);
+    expect(
+      isWorkActivityVisibleToActor(customer, "time_report", {
+        showEstimates: true,
+        showReportedTime: false,
+      })
+    ).toBe(false);
+  });
+
+  it("shows time activity to customer users when reported time is visible", () => {
+    expect(
+      isWorkActivityVisibleToActor(customer, "time_report", {
+        showEstimates: false,
+        showReportedTime: true,
+      })
+    ).toBe(true);
+    expect(
+      isWorkActivityVisibleToActor(customer, "estimate", {
+        showEstimates: false,
+        showReportedTime: true,
+      })
+    ).toBe(false);
   });
 
   it("keeps other activity visible to customer users", () => {

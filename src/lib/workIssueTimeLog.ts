@@ -12,7 +12,7 @@ import {
   logHoursAgainstWorkIssue,
   updateWorkIssueTimeEntry,
 } from "@/lib/timeReportEntries";
-import { canLogWorkTime, canSeeWorkTime } from "@/lib/workAccess";
+import { canLogWorkTime, canSeeWorkReportedTime } from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { workIssueKey } from "@/lib/workIssueKey";
 import type {
@@ -69,7 +69,15 @@ export async function listTimeEntriesForWorkIssue(
 ): Promise<WorkIssueTimeLogEntry[]> {
   const visible = await requireTimeLogBoard(boardId, mcpUser);
 
-  if (!visible || !canSeeWorkTime(visible.actor, visible.board.work_show_time_to_customer_users)) return [];
+  if (
+    !visible ||
+    !canSeeWorkReportedTime(
+      visible.actor,
+      visible.board.work_show_reported_time_to_customer_users
+    )
+  ) {
+    return [];
+  }
 
   const issue = await loadIssueOnBoard(boardId, issueId);
   if (!issue) return [];
@@ -123,9 +131,9 @@ export async function getWorkIssueTimeLogState(
     return emptyTimeLogState({ cannotLogReason: "Unauthorized" });
   }
 
-  const showTime = canSeeWorkTime(
+  const showReportedTime = canSeeWorkReportedTime(
     visible.actor,
-    visible.board.work_show_time_to_customer_users
+    visible.board.work_show_reported_time_to_customer_users
   );
   const allowLog = canLogWorkTime(visible.actor);
 
@@ -133,7 +141,7 @@ export async function getWorkIssueTimeLogState(
     mcpUser ?? getCurrentAppUser(),
     mcpUser ? fetchConsultantByAppUserId(mcpUser.id) : getConsultantForCurrentUser(),
     loadIssueOnBoard(boardId, issueId),
-    showTime
+    showReportedTime
       ? listTimeEntriesForWorkIssue(boardId, issueId, mcpUser)
       : Promise.resolve([] as WorkIssueTimeLogEntry[]),
   ]);
@@ -150,9 +158,10 @@ export async function getWorkIssueTimeLogState(
     });
   }
 
-  if (!showTime) {
+  if (!showReportedTime) {
     return emptyTimeLogState({
-      cannotLogReason: "Time is not shared with customer users on this account.",
+      cannotLogReason:
+        "Reported time is not shared with customer users on this account.",
       currentConsultantId,
     });
   }

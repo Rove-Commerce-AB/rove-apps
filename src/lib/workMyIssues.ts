@@ -2,7 +2,10 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { canSeeWorkTime } from "@/lib/workAccess";
+import {
+  canSeeWorkEstimates,
+  canSeeWorkReportedTime,
+} from "@/lib/workAccess";
 import { fetchLoggedHoursByIssueIds } from "@/lib/workIssuesQueries";
 import { workIssueKey } from "@/lib/workIssueKey";
 import { workSprintLabel } from "@/lib/workSprintLabel";
@@ -26,7 +29,8 @@ export type WorkMyIssue = {
   projectId: string;
   projectTitle: string;
   sprintLabel: string | null;
-  showTime: boolean;
+  showEstimates: boolean;
+  showReportedTime: boolean;
   estimateHours: number | null;
   loggedHours: number;
   dueDate: string | null;
@@ -42,16 +46,23 @@ export async function listMyWorkIssues(): Promise<WorkMyIssue[]> {
   const rows = await fetchMyWorkIssues(projectIds, user.id);
   const actor = { id: user.id, role: user.role };
   const needsHours = rows.some((row) =>
-    canSeeWorkTime(actor, row.work_show_time_to_customer_users)
+    canSeeWorkReportedTime(
+      actor,
+      row.work_show_reported_time_to_customer_users
+    )
   );
   const loggedHours = needsHours
     ? await fetchLoggedHoursByIssueIds(rows.map((row) => row.id))
     : new Map<string, number>();
 
   return rows.map((row) => {
-    const showTime = canSeeWorkTime(
+    const showEstimates = canSeeWorkEstimates(
       actor,
-      row.work_show_time_to_customer_users
+      row.work_show_estimates_to_customer_users
+    );
+    const showReportedTime = canSeeWorkReportedTime(
+      actor,
+      row.work_show_reported_time_to_customer_users
     );
     return {
       id: row.id,
@@ -73,13 +84,14 @@ export async function listMyWorkIssues(): Promise<WorkMyIssue[]> {
               number: row.sprint_number,
               title: row.sprint_title ?? "",
             }),
-      showTime,
-      estimateHours: showTime
+      showEstimates,
+      showReportedTime,
+      estimateHours: showEstimates
         ? row.estimate_hours == null
           ? null
           : Number(row.estimate_hours)
         : null,
-      loggedHours: showTime ? loggedHours.get(row.id) ?? 0 : 0,
+      loggedHours: showReportedTime ? loggedHours.get(row.id) ?? 0 : 0,
       dueDate: typeof row.due_date === "string" ? row.due_date : null,
       isOwner: row.is_owner,
       isAssignee: row.is_assignee,

@@ -1397,7 +1397,7 @@ export function WorkBoardPageClient({
                   )}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
-                  {board.showTime && columnEstimateSum > 0 ? (
+                  {board.showEstimates && columnEstimateSum > 0 ? (
                     <span
                       className="tabular-nums text-caption text-current/55"
                       title={`Total estimate ${formatWorkHours(columnEstimateSum)}`}
@@ -1469,7 +1469,8 @@ export function WorkBoardPageClient({
                         <WorkColumnGroupHeader
                           groupBy={groupBy}
                           group={group}
-                          showTime={board.showTime}
+                          showEstimates={board.showEstimates}
+                          showReportedTime={board.showReportedTime}
                           className={groupIndex === 0 ? "" : "mt-1"}
                         />
                       </li>
@@ -1694,7 +1695,7 @@ export function WorkBoardPageClient({
                         </p>
                         <WorkCardComponent component={issue.component} />
                         <WorkCardLabels labels={issue.labels} />
-                        {board.showTime ? (
+                        {board.showEstimates ? (
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <WorkCardEstimate
                               estimateHours={issue.estimateHours}
@@ -1733,9 +1734,11 @@ export function WorkBoardPageClient({
                           </div>
                         ) : null}
                       </div>
-                      {board.showTime ? (
+                      {board.showReportedTime ? (
                         <WorkTimeGraph
-                          estimateHours={issue.estimateHours}
+                          estimateHours={
+                            board.showEstimates ? issue.estimateHours : null
+                          }
                           loggedHours={issue.loggedHours}
                         />
                       ) : null}
@@ -2054,7 +2057,7 @@ export function WorkBoardPageClient({
                   "priority",
                   "key",
                   "title",
-                  ...(board.showTime ? (["estimate"] as const) : []),
+                  ...(board.showEstimates ? (["estimate"] as const) : []),
                   "owner",
                   "created",
                   "updated",

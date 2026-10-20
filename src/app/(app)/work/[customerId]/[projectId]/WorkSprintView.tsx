@@ -612,7 +612,7 @@ export function WorkSprintView({
           deleteSprintDisabled={pending}
           actions={
             <>
-              {viewing && board.showTime ? (
+              {viewing && board.showEstimates ? (
                 <div
                   className="flex w-[11rem] flex-col gap-1"
                   title={
@@ -1382,7 +1382,7 @@ function SprintColumn({
             onRemoveAssignee={(person) => onRemoveAssignee(issue.id, person)}
           />
           {/* Fixed slot so edit mode does not push avatars left. */}
-          {board?.showTime !== false ? (
+          {board?.showEstimates !== false ? (
             <div className="flex w-14 shrink-0 justify-end">
               <WorkCardEstimate
                 estimateHours={issue.estimateHours}
@@ -1486,7 +1486,8 @@ function SprintColumn({
                   <WorkColumnGroupHeader
                     groupBy={groupBy}
                     group={group}
-                    showTime={board?.showTime}
+                    showEstimates={board?.showEstimates}
+                    showReportedTime={board?.showReportedTime}
                     className={groupIndex === 0 ? "" : "mt-1"}
                     actions={
                       onMoveGroupToSprint && group.issues.length > 0 ? (

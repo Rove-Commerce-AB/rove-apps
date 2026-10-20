@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui";
 import { workIssueHref } from "@/lib/routes";
 import { workIssuePriorityLabel } from "@/lib/workBoardView";
 import type { WorkMyIssue } from "@/lib/workMyIssues";
-import { formatWorkHoursPair } from "@/lib/workTime";
+import { formatVisibleWorkHours } from "@/lib/workTime";
 import { compareTextSv } from "@/lib/sort";
 import { WorkIssueTypeIcon } from "../[customerId]/[projectId]/WorkIssueTypeIcon";
 
@@ -183,7 +183,16 @@ export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
                 </h2>
               ) : null}
               <ul className="overflow-hidden rounded-xl border border-border-subtle bg-bg-default">
-                {group.issues.map((issue, index) => (
+                {group.issues.map((issue, index) => {
+                  const hoursLabel = formatVisibleWorkHours(
+                    issue.loggedHours,
+                    issue.estimateHours,
+                    {
+                      showEstimates: issue.showEstimates,
+                      showReportedTime: issue.showReportedTime,
+                    }
+                  );
+                  return (
                   <li
                     key={issue.id}
                     className={
@@ -225,12 +234,9 @@ export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
                           {workIssuePriorityLabel(issue.priority)}
                         </span>
                       ) : null}
-                      {issue.showTime ? (
+                      {hoursLabel ? (
                         <span className="shrink-0 tabular-nums text-caption text-text-tertiary">
-                          {formatWorkHoursPair(
-                            issue.loggedHours,
-                            issue.estimateHours
-                          )}
+                          {hoursLabel}
                         </span>
                       ) : null}
                       <span className="w-20 shrink-0 text-right text-caption tabular-nums text-text-tertiary">
@@ -245,7 +251,8 @@ export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
                       </span>
                     </Link>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </section>
           ))}

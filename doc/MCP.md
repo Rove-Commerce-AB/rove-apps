@@ -162,7 +162,7 @@ The `issue` result contains every field from `listIssues`, plus:
 - `relations`: `parent`, `children`, `blocks`, `blockedBy` and `relates`. Each related issue includes its ID, key, title, column ID as `status`, completion flag and relation ID. Relations stay within the project.
 - `files`: attachment metadata only, including ID, name, MIME type, size and creation time. File contents are not downloaded.
 - `sprintId`, `startDate` and `dueDate`.
-- `showTime`, `estimateHours` and `loggedHours`. Existing customer time-visibility rules apply. When time is hidden, `showTime` is false, `estimateHours` is null and `loggedHours` is 0.
+- `showEstimates`, `showReportedTime`, `estimateHours` and `loggedHours`. Existing customer visibility settings apply separately for estimates and reported time. When estimates are hidden, `showEstimates` is false and `estimateHours` is null. When reported time is hidden, `showReportedTime` is false and `loggedHours` is 0.
 
 Only the selected issue and its related records are loaded. Comments use `listIssueComments`, and activity history is not included.
 

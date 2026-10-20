@@ -382,8 +382,8 @@ export function WorkIssueDrawer({
   }, [issue.id, initialTab, canShowDangerTab]);
 
   useEffect(() => {
-    if (!board.showTime && tab === "time") setTab("details");
-  }, [board.showTime, tab]);
+    if (!board.showReportedTime && tab === "time") setTab("details");
+  }, [board.showReportedTime, tab]);
 
   useEffect(() => {
     if (!canShowDangerTab && tab === "danger") setTab("details");
@@ -578,7 +578,7 @@ export function WorkIssueDrawer({
   }, [issue.id]);
 
   useEffect(() => {
-    if (!board.showTime) {
+    if (!board.showReportedTime) {
       setTimeEntries([]);
       setTimeCanLog(false);
       setTimeCannotLogReason(null);
@@ -605,7 +605,7 @@ export function WorkIssueDrawer({
     return () => {
       cancelled = true;
     };
-  }, [board.id, issue.id, board.plannerProjectId, board.showTime]);
+  }, [board.id, issue.id, board.plannerProjectId, board.showReportedTime]);
 
   useEffect(() => {
     return () => {
@@ -1060,7 +1060,7 @@ export function WorkIssueDrawer({
             <TabsTrigger value="pre-deploy" className="px-3 !px-3">
               Pre-deploy
             </TabsTrigger>
-            {board.showTime ? (
+            {board.showReportedTime ? (
               <TabsTrigger value="time" className="px-3 !px-3">
                 Time
               </TabsTrigger>
@@ -1225,7 +1225,7 @@ export function WorkIssueDrawer({
                   />
                 </div>
               </div>
-              {board.showTime ? (
+              {board.showEstimates ? (
                 <div>
                   <label
                     className={`${propertyChipClass} cursor-text gap-1`}
