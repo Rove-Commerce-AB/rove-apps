@@ -3,7 +3,10 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import type { UserNotificationRow } from "@/lib/userNotificationKinds";
-import { USER_NOTIFICATION_KIND } from "@/lib/userNotificationKinds";
+import {
+  LEGACY_TASK_NOTIFICATION_KIND,
+  USER_NOTIFICATION_KIND,
+} from "@/lib/userNotificationKinds";
 import { workIssueHref } from "@/lib/routes";
 
 /** Absolute timestamp: yyMMdd HH:mm (local). */
@@ -112,9 +115,7 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
       ),
     };
   }
-  if (n.kind === USER_NOTIFICATION_KIND.TASK_BOARD_INVITED) {
-    const boardId =
-      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
+  if (n.kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_BOARD_INVITED) {
     const boardTitle =
       typeof p.boardTitle === "string" && p.boardTitle.trim()
         ? p.boardTitle.trim()
@@ -123,24 +124,16 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
       typeof p.inviterLabel === "string" && p.inviterLabel.trim()
         ? p.inviterLabel.trim()
         : "Someone";
-    const text = (
-      <>
-        <span className="font-medium">{inviter}</span> added you to the board{" "}
-        {boardId ? (
-          <Link href={`/taskboard/${boardId}`} className={linkClass}>
-            {boardTitle}
-          </Link>
-        ) : (
-          <span className="font-medium">{boardTitle}</span>
-        )}
-        .
-      </>
-    );
-    return { text };
+    return {
+      text: (
+        <>
+          <span className="font-medium">{inviter}</span> added you to the board{" "}
+          <span className="font-medium">{boardTitle}</span>.
+        </>
+      ),
+    };
   }
-  if (n.kind === USER_NOTIFICATION_KIND.TASK_TODO_ASSIGNED) {
-    const boardId =
-      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
+  if (n.kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_TODO_ASSIGNED) {
     const boardTitle =
       typeof p.boardTitle === "string" && p.boardTitle.trim()
         ? p.boardTitle.trim()
@@ -153,26 +146,29 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
       typeof p.assignerLabel === "string" && p.assignerLabel.trim()
         ? p.assignerLabel.trim()
         : "Someone";
-    const text = (
-      <>
-        <span className="font-medium">{assigner}</span> assigned you a todo on{" "}
-        {boardId ? (
-          <Link href={`/taskboard/${boardId}`} className={linkClass}>
-            {boardTitle}
-          </Link>
-        ) : (
-          <span className="font-medium">{boardTitle}</span>
-        )}
-        : <span className="font-medium opacity-90">&quot;{todoTitle}&quot;</span>
-      </>
-    );
-    return { text };
+    return {
+      text: (
+        <>
+          <span className="font-medium">{assigner}</span> assigned you a todo on{" "}
+          <span className="font-medium">{boardTitle}</span>:{" "}
+          <span className="font-medium opacity-90">&quot;{todoTitle}&quot;</span>
+        </>
+      ),
+    };
   }
-  if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED) {
-    const mentioner =
-      typeof p.mentionerName === "string" && p.mentionerName.trim()
+  if (
+    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED ||
+    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
+    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED
+  ) {
+    const actorName =
+      (typeof p.mentionerName === "string" && p.mentionerName.trim()
         ? p.mentionerName.trim()
-        : "Someone";
+        : null) ||
+      (typeof p.actorName === "string" && p.actorName.trim()
+        ? p.actorName.trim()
+        : null) ||
+      "Someone";
     const issueKey =
       typeof p.issueKey === "string" && p.issueKey.trim()
         ? p.issueKey.trim()
@@ -204,18 +200,38 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
         ) : null}
       </>
     );
+    const linkedIssue = href ? (
+      <Link href={href} prefetch={false} className={linkClass}>
+        {issueLabel}
+      </Link>
+    ) : (
+      issueLabel
+    );
+    if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET) {
+      return {
+        text: (
+          <>
+            <span className="font-medium">{actorName}</span> made you owner of{" "}
+            {linkedIssue}.
+          </>
+        ),
+      };
+    }
+    if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED) {
+      return {
+        text: (
+          <>
+            <span className="font-medium">{actorName}</span> assigned you to{" "}
+            {linkedIssue}.
+          </>
+        ),
+      };
+    }
     return {
       text: (
         <>
-          <span className="font-medium">{mentioner}</span> mentioned you on{" "}
-          {href ? (
-            <Link href={href} prefetch={false} className={linkClass}>
-              {issueLabel}
-            </Link>
-          ) : (
-            issueLabel
-          )}
-          .
+          <span className="font-medium">{actorName}</span> mentioned you on{" "}
+          {linkedIssue}.
         </>
       ),
     };

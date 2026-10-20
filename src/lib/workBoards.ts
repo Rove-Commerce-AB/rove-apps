@@ -10,6 +10,7 @@ import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
 import { WorkInputError } from "@/lib/workErrors";
 import { compareTextSv } from "@/lib/sort";
 import {
+  canArchiveWorkProject,
   canCreateWorkProject,
   canSeeWorkBoard,
   canSeeWorkCustomer,
@@ -635,6 +636,7 @@ export async function getWorkBoardView(
     plannerProjectId: board.planner_project_id ?? null,
     plannerProjectName: board.planner_project_name ?? null,
     showTime,
+    viewerRole: user.role,
     currentUser: workPersonFromUser({
       id: user.id,
       name: user.name,
@@ -785,6 +787,9 @@ export async function saveWorkProjectInstructions(projectId: string, agentsMd: s
 export async function archiveWorkBoard(boardId: string): Promise<string> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
+  if (!canArchiveWorkProject(visible.actor)) {
+    throw new WorkInputError("Unauthorized");
+  }
   await q.archiveWorkBoard(boardId);
   return visible.board.customer_id;
 }

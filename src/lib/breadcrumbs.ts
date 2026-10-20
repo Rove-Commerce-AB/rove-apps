@@ -84,10 +84,6 @@ export function breadcrumbsForPathname(
     return [root, { label: "Projects" }];
   }
 
-  if (pathname.startsWith("/taskboard")) {
-    return [root, { label: "Taskboard" }];
-  }
-
   if (pathname.startsWith("/insights")) {
     return [root, { label: "Insights" }];
   }

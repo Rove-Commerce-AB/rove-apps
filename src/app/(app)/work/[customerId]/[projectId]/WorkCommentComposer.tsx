@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { InitialsAvatar } from "@/components/ui";
+import {
+  mentionListKeyDown,
+  WorkMentionSuggest,
+} from "@/components/WorkMentionSuggest";
 import {
   filterMentionPeople,
   insertMention,
@@ -143,42 +146,12 @@ export function WorkCommentComposer({
   return (
     <div className="relative flex h-full w-full min-w-0 flex-col">
       {mention ? (
-        <div
-          role="listbox"
-          aria-label="Mention someone on this board"
-          className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-48 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
-        >
-          {matches.length === 0 ? (
-            <p className="px-2.5 py-1.5 text-body-m text-text-tertiary">
-              No matching people
-            </p>
-          ) : (
-            matches.map((person, index) => (
-              <button
-                key={person.id}
-                type="button"
-                role="option"
-                aria-selected={index === activeIndex}
-                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-body-m ${
-                  index === activeIndex
-                    ? "bg-accent-primary-subtle text-text-primary"
-                    : "text-text-primary hover:bg-bg-muted"
-                }`}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  pick(person);
-                }}
-              >
-                <InitialsAvatar
-                  name={person.name}
-                  initials={person.initials}
-                  size="xxs"
-                />
-                <span className="min-w-0 truncate">{person.name}</span>
-              </button>
-            ))
-          )}
-        </div>
+        <WorkMentionSuggest
+          matches={matches}
+          activeIndex={activeIndex}
+          onPick={pick}
+          placement="above"
+        />
       ) : null}
       <textarea
         ref={textareaRef}
@@ -196,31 +169,16 @@ export function WorkCommentComposer({
         onClick={(event) => syncMention(event.currentTarget)}
         onKeyUp={(event) => syncMention(event.currentTarget)}
         onKeyDown={(event) => {
-          if (mention && matches.length > 0) {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setActiveIndex((index) => (index + 1) % matches.length);
-              return;
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setActiveIndex(
-                (index) => (index - 1 + matches.length) % matches.length
-              );
-              return;
-            }
-            if (event.key === "Enter" || event.key === "Tab") {
-              const person = matches[activeIndex];
-              if (person) {
-                event.preventDefault();
-                pick(person);
-                return;
-              }
-            }
-          }
-          if (event.key === "Escape" && mention) {
-            event.preventDefault();
-            setMention(null);
+          if (
+            mentionListKeyDown(event, {
+              open: Boolean(mention),
+              matches,
+              activeIndex,
+              setActiveIndex,
+              onPick: pick,
+              onClose: () => setMention(null),
+            })
+          ) {
             return;
           }
           if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {

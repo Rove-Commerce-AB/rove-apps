@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  canArchiveWorkProject,
   canCreateWorkProject,
+  canDeleteWorkIssue,
   canLogWorkTime,
   canSeeWorkBoard,
   canSeeWorkCustomer,
@@ -94,6 +96,27 @@ describe("canCreateWorkProject", () => {
     expect(canCreateWorkProject(customer)).toBe(false);
     expect(canCreateWorkProject(admin)).toBe(true);
     expect(canCreateWorkProject(member)).toBe(true);
+  });
+});
+
+describe("canArchiveWorkProject", () => {
+  it("blocks customer users and allows others", () => {
+    expect(canArchiveWorkProject(customer)).toBe(false);
+    expect(canArchiveWorkProject(admin)).toBe(true);
+    expect(canArchiveWorkProject(member)).toBe(true);
+  });
+});
+
+describe("canDeleteWorkIssue", () => {
+  it("lets admin and member delete any issue", () => {
+    expect(canDeleteWorkIssue(admin, "other")).toBe(true);
+    expect(canDeleteWorkIssue(member, null)).toBe(true);
+  });
+
+  it("lets customer users delete only issues they created", () => {
+    expect(canDeleteWorkIssue(customer, customer.id)).toBe(true);
+    expect(canDeleteWorkIssue(customer, "other")).toBe(false);
+    expect(canDeleteWorkIssue(customer, null)).toBe(false);
   });
 });
 

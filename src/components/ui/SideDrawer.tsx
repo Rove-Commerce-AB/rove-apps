@@ -20,6 +20,12 @@ function eventTargetElement(target: EventTarget | null): Element | null {
   return (target as { parentElement?: Element | null } | null)?.parentElement ?? null;
 }
 
+/** Commit focused inputs (blur handlers) before the drawer unmounts. */
+function blurActiveElement() {
+  const el = document.activeElement;
+  if (el instanceof HTMLElement) el.blur();
+}
+
 /**
  * Right-side overlay drawer. Slides in from the right; dims the page.
  * Closes via X, Escape, or click on the overlay.
@@ -33,8 +39,21 @@ export function SideDrawer({
   bodyClassName = "overflow-y-auto p-4",
   children,
 }: SideDrawerProps) {
+  function requestClose() {
+    // Outside-click / dismiss can unmount before React runs input onBlur.
+    // Force blur first so draft fields (estimate, title, …) flush to the server.
+    blurActiveElement();
+    onOpenChange(false);
+  }
+
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) blurActiveElement();
+        onOpenChange(next);
+      }}
+    >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="side-drawer-overlay fixed inset-0 z-50 bg-black/25" />
         <DialogPrimitive.Content
@@ -60,7 +79,9 @@ export function SideDrawer({
               e.preventDefault();
               return;
             }
-            onOpenChange(false);
+            // Prevent Radix from dismissing before our blur+close runs.
+            e.preventDefault();
+            requestClose();
           }}
           onInteractOutside={(e) => {
             const original = (
@@ -132,6 +153,13 @@ export function SideDrawer({
             )}
             <DialogPrimitive.Close
               aria-label="Close"
+              onPointerDown={(event) => {
+                // Blur focused fields before the close button takes focus/unmounts.
+                if (document.activeElement instanceof HTMLElement) {
+                  const active = document.activeElement;
+                  if (active !== event.currentTarget) active.blur();
+                }
+              }}
               className="cursor-pointer rounded-md border border-border-default p-1.5 text-text-secondary transition-colors hover:bg-interactive-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal"
             >
               <X className="h-4 w-4" />

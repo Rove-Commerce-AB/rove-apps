@@ -49,6 +49,7 @@ export function WorkProjectSettingsDrawer({
   onDeleteComponent,
   onArchive,
   onImportFromJira,
+  showDangerTab = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -77,6 +78,8 @@ export function WorkProjectSettingsDrawer({
   onDeleteComponent: (component: WorkComponent) => Promise<boolean>;
   onArchive: () => void;
   onImportFromJira?: () => void;
+  /** Hidden for customer-role viewers. */
+  showDangerTab?: boolean;
 }) {
   const [tab, setTab] = useState<WorkProjectSettingsTab>(initialTab);
   const [nameDraft, setNameDraft] = useState(title);
@@ -97,9 +100,15 @@ export function WorkProjectSettingsDrawer({
   useEffect(() => {
     if (!open) return;
     setNameDraft(title);
-    setTab(initialTab);
+    setTab(
+      !showDangerTab && initialTab === "danger" ? "details" : initialTab
+    );
     setNewComponentName("");
-  }, [open, title, initialTab]);
+  }, [open, title, initialTab, showDangerTab]);
+
+  useEffect(() => {
+    if (!showDangerTab && tab === "danger") setTab("details");
+  }, [showDangerTab, tab]);
 
   useEffect(() => {
     if (!open || plannerProjectId) {
@@ -189,9 +198,11 @@ export function WorkProjectSettingsDrawer({
                 <TabsTrigger value="agents.md" className="px-3 !px-3">
                   agents.md
                 </TabsTrigger>
-                <TabsTrigger value="danger" className="px-3 !px-3">
-                  Danger
-                </TabsTrigger>
+                {showDangerTab ? (
+                  <TabsTrigger value="danger" className="px-3 !px-3">
+                    Danger
+                  </TabsTrigger>
+                ) : null}
               </TabsList>
             </div>
 
@@ -374,26 +385,28 @@ export function WorkProjectSettingsDrawer({
               <ProjectInstructionsForm key={projectId} projectId={projectId} agentsMd={agentsMd} />
             </TabsContent>
 
-            <TabsContent
-              value="danger"
-              className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 py-5"
-            >
-              <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
-                <h2 className="text-label-l text-danger">Danger zone</h2>
-                <p className="mt-1 text-sm text-text-secondary">
-                  Archive hides this project from Rove Work. Issues are kept.
-                </p>
-                <Button
-                  type="button"
-                  variant="dangerSecondary"
-                  size="sm"
-                  className="mt-3"
-                  onClick={onArchive}
-                >
-                  Archive project
-                </Button>
-              </div>
-            </TabsContent>
+            {showDangerTab ? (
+              <TabsContent
+                value="danger"
+                className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 py-5"
+              >
+                <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+                  <h2 className="text-label-l text-danger">Danger zone</h2>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Archive hides this project from Rove Work. Issues are kept.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="dangerSecondary"
+                    size="sm"
+                    className="mt-3"
+                    onClick={onArchive}
+                  >
+                    Archive project
+                  </Button>
+                </div>
+              </TabsContent>
+            ) : null}
           </Tabs>
         </div>
       </SideDrawer>

@@ -89,7 +89,8 @@ import { WorkCommentComposer, WorkInlineImageThumbs } from "./WorkCommentCompose
 import { WorkIssueComment } from "./WorkIssueComment";
 import { WorkIssueRelations } from "./WorkIssueRelations";
 import { WorkTimeGraph } from "./WorkTimeGraph";
-import { encodeMentions } from "@/lib/workMentions";
+import { canDeleteWorkIssue } from "@/lib/workAccess";
+import { encodeMentions, mentionPlainText } from "@/lib/workMentions";
 import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
 import type {
   WorkIssueTimeLogEntry,
@@ -369,17 +370,28 @@ export function WorkIssueDrawer({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const canShowDangerTab = canDeleteWorkIssue(
+    { id: board.currentUser.id, role: board.viewerRole },
+    issue.reporter?.id ?? null
+  );
+
   useEffect(() => {
-    setTab(initialTab);
-  }, [issue.id, initialTab]);
+    setTab(
+      !canShowDangerTab && initialTab === "danger" ? "details" : initialTab
+    );
+  }, [issue.id, initialTab, canShowDangerTab]);
 
   useEffect(() => {
     if (!board.showTime && tab === "time") setTab("details");
   }, [board.showTime, tab]);
+
+  useEffect(() => {
+    if (!canShowDangerTab && tab === "danger") setTab("details");
+  }, [canShowDangerTab, tab]);
   const [feed, setFeed] = useState<"comments" | "activity">("comments");
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(
-    () => splitWorkInlineImages(issue.description).text
+    () => mentionPlainText(splitWorkInlineImages(issue.description).text)
   );
   const [descriptionThumbs, setDescriptionThumbs] = useState<InlinePasteThumb[]>(
     () => thumbsFromFileIds(splitWorkInlineImages(issue.description).fileIds)
@@ -401,6 +413,23 @@ export function WorkIssueDrawer({
   const [estimateDraft, setEstimateDraft] = useState(
     issue.estimateHours == null ? "" : String(issue.estimateHours)
   );
+  const [estimateFocused, setEstimateFocused] = useState(false);
+  const estimateDraftRef = useRef(estimateDraft);
+  estimateDraftRef.current = estimateDraft;
+  /** Last value we successfully sent (or optimistically committed) to the server. */
+  const lastSubmittedEstimateRef = useRef(issue.estimateHours);
+  const skipEstimateSaveRef = useRef(false);
+  const estimateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const onIssuePatchRef = useRef(onIssuePatch);
+  onIssuePatchRef.current = onIssuePatch;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const boardIdRef = useRef(board.id);
+  boardIdRef.current = board.id;
+  const issueIdRef = useRef(issue.id);
+  issueIdRef.current = issue.id;
   const [startDateDraft, setStartDateDraft] = useState(issue.startDate ?? "");
   const [dueDateDraft, setDueDateDraft] = useState(issue.dueDate ?? "");
   const [timeEntries, setTimeEntries] = useState<WorkIssueTimeLogEntry[]>([]);
@@ -454,7 +483,7 @@ export function WorkIssueDrawer({
 
   function persistDescription(thumbs: InlinePasteThumb[]) {
     const next = joinWorkInlineImages(
-      descriptionRef.current,
+      encodeMentions(descriptionRef.current, board.members),
       thumbs
         .map((thumb) => thumb.fileId)
         .filter((id): id is string => Boolean(id))
@@ -469,7 +498,7 @@ export function WorkIssueDrawer({
   useEffect(() => {
     const split = splitWorkInlineImages(issue.description);
     setTitle(issue.title);
-    setDescription(split.text);
+    setDescription(mentionPlainText(split.text));
     setDescriptionThumbs((prev) => {
       const fromServer = thumbsFromFileIds(split.fileIds);
       const pending = prev.filter(
@@ -496,9 +525,13 @@ export function WorkIssueDrawer({
     setCurrentState(issue.currentState);
     setNextStep(issue.nextStep);
     setOutOfScope(issue.outOfScope);
-    setEstimateDraft(
-      issue.estimateHours == null ? "" : String(issue.estimateHours)
-    );
+    // Don't clobber an in-progress estimate edit when other issue fields patch
+    // (description save, time log sync, etc.) — same guard as WorkCardEstimate.
+    if (!estimateFocused) {
+      setEstimateDraft(
+        issue.estimateHours == null ? "" : String(issue.estimateHours)
+      );
+    }
     setStartDateDraft(issue.startDate ?? "");
     setDueDateDraft(issue.dueDate ?? "");
     if (issue.currentState.trim()) setShowCurrentState(true);
@@ -514,6 +547,7 @@ export function WorkIssueDrawer({
     issue.estimateHours,
     issue.startDate,
     issue.dueDate,
+    estimateFocused,
   ]);
 
   useEffect(() => {
@@ -639,7 +673,7 @@ export function WorkIssueDrawer({
 
   function saveDescription() {
     const next = joinWorkInlineImages(
-      description,
+      encodeMentions(description, board.members),
       descriptionThumbs
         .map((thumb) => thumb.fileId)
         .filter((id): id is string => Boolean(id))
@@ -667,31 +701,85 @@ export function WorkIssueDrawer({
     });
   }
 
-  function saveEstimate() {
-    const parsed = parseWorkEstimateHours(estimateDraft);
+  function saveEstimate(
+    raw: string = estimateDraftRef.current,
+    options?: { revertOnInvalid?: boolean }
+  ) {
+    const parsed = parseWorkEstimateHours(raw);
     if (!parsed.ok) {
-      setEstimateDraft(
-        issue.estimateHours == null ? "" : String(issue.estimateHours)
-      );
-      onError("Estimate must be a number of hours");
+      if (options?.revertOnInvalid !== false) {
+        setEstimateDraft(
+          lastSubmittedEstimateRef.current == null
+            ? ""
+            : String(lastSubmittedEstimateRef.current)
+        );
+        onError("Estimate must be a number of hours");
+      }
       return;
     }
-    const current = issue.estimateHours;
-    if (parsed.value === current) {
-      setEstimateDraft(current == null ? "" : String(current));
-      return;
-    }
+    setEstimateDraft(parsed.value == null ? "" : String(parsed.value));
+    estimateDraftRef.current =
+      parsed.value == null ? "" : String(parsed.value);
+    if (parsed.value === lastSubmittedEstimateRef.current) return;
+    const previous = lastSubmittedEstimateRef.current;
+    lastSubmittedEstimateRef.current = parsed.value;
     onIssuePatch({ estimateHours: parsed.value });
-    run(
-      () =>
-        updateWorkIssueEstimateAction(
-          board.id,
-          issue.id,
-          parsed.value == null ? "" : String(parsed.value)
-        ),
-      { refresh: false }
-    );
+    // Call the action directly (not via startTransition) so the POST is in
+    // flight before a drawer dismiss navigates away.
+    void updateWorkIssueEstimateAction(
+      boardIdRef.current,
+      issueIdRef.current,
+      parsed.value == null ? "" : String(parsed.value)
+    ).then((result) => {
+      if (result.ok) return;
+      lastSubmittedEstimateRef.current = previous;
+      onError(result.error);
+    });
   }
+
+  function scheduleEstimateSave(raw: string) {
+    if (estimateSaveTimerRef.current) {
+      clearTimeout(estimateSaveTimerRef.current);
+    }
+    estimateSaveTimerRef.current = setTimeout(() => {
+      estimateSaveTimerRef.current = null;
+      saveEstimate(raw, { revertOnInvalid: false });
+    }, 400);
+  }
+
+  // Flush a dirty estimate if the drawer unmounts without blur (e.g. route close).
+  useEffect(() => {
+    const boardId = board.id;
+    const issueId = issue.id;
+    return () => {
+      if (estimateSaveTimerRef.current) {
+        clearTimeout(estimateSaveTimerRef.current);
+        estimateSaveTimerRef.current = null;
+      }
+      const parsed = parseWorkEstimateHours(estimateDraftRef.current);
+      if (!parsed.ok) return;
+      if (parsed.value === lastSubmittedEstimateRef.current) return;
+      lastSubmittedEstimateRef.current = parsed.value;
+      onIssuePatchRef.current({ estimateHours: parsed.value });
+      void updateWorkIssueEstimateAction(
+        boardId,
+        issueId,
+        parsed.value == null ? "" : String(parsed.value)
+      ).then((result) => {
+        if (result.ok) return;
+        onErrorRef.current(result.error);
+      });
+    };
+  }, [board.id, issue.id]);
+
+  useEffect(() => {
+    lastSubmittedEstimateRef.current = issue.estimateHours;
+  }, [issue.id]);
+
+  useEffect(() => {
+    if (estimateFocused) return;
+    lastSubmittedEstimateRef.current = issue.estimateHours;
+  }, [issue.estimateHours, estimateFocused]);
 
   function saveSchedule() {
     const start = startDateDraft.trim() || null;
@@ -980,9 +1068,11 @@ export function WorkIssueDrawer({
             <TabsTrigger value="files" className="px-3 !px-3">
               Files
             </TabsTrigger>
-            <TabsTrigger value="danger" className="px-3 !px-3">
-              Danger
-            </TabsTrigger>
+            {canShowDangerTab ? (
+              <TabsTrigger value="danger" className="px-3 !px-3">
+                Danger
+              </TabsTrigger>
+            ) : null}
           </TabsList>
           <TabsContent value="details" className="mt-5 space-y-8">
             <div className="space-y-1 rounded-xl bg-bg-muted/40 px-3 py-2.5">
@@ -1152,14 +1242,48 @@ export function WorkIssueDrawer({
                       disabled={pending}
                       aria-label="Estimate in hours"
                       placeholder="Est"
-                      onChange={(event) => setEstimateDraft(event.target.value)}
-                      onBlur={saveEstimate}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setEstimateDraft(next);
+                        estimateDraftRef.current = next;
+                        scheduleEstimateSave(next);
+                      }}
+                      onFocus={() => setEstimateFocused(true)}
+                      onBlur={(event) => {
+                        if (estimateSaveTimerRef.current) {
+                          clearTimeout(estimateSaveTimerRef.current);
+                          estimateSaveTimerRef.current = null;
+                        }
+                        if (skipEstimateSaveRef.current) {
+                          skipEstimateSaveRef.current = false;
+                          setEstimateFocused(false);
+                          return;
+                        }
+                        saveEstimate(event.currentTarget.value);
+                        setEstimateFocused(false);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.currentTarget.blur();
                         }
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          if (estimateSaveTimerRef.current) {
+                            clearTimeout(estimateSaveTimerRef.current);
+                            estimateSaveTimerRef.current = null;
+                          }
+                          const revert =
+                            lastSubmittedEstimateRef.current == null
+                              ? ""
+                              : String(lastSubmittedEstimateRef.current);
+                          skipEstimateSaveRef.current = true;
+                          estimateDraftRef.current = revert;
+                          setEstimateDraft(revert);
+                          setEstimateFocused(false);
+                          event.currentTarget.blur();
+                        }
                       }}
-                      className="w-6 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+                      className="w-10 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
                     />
                     <span className="text-[13px] text-text-tertiary">h</span>
                   </label>
@@ -1209,8 +1333,9 @@ export function WorkIssueDrawer({
                 <WorkDescriptionEditor
                   contentKey={issue.id}
                   value={description}
+                  people={board.members}
                   disabled={pending}
-                  placeholder="Add description…"
+                  placeholder="Add description… Use @ to mention"
                   onChange={setDescription}
                   onBlur={saveDescription}
                   onPasteImages={pasteDescriptionImages}
@@ -2138,35 +2263,37 @@ export function WorkIssueDrawer({
             )}
           </TabsContent>
 
-          <TabsContent value="danger" className="mt-5 space-y-4">
-            <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
-              <h2 className="text-label-l text-danger">Danger zone</h2>
-              <p className="mt-1 text-sm text-text-secondary">
-                Delete permanently removes this issue and its comments, files,
-                and activity. This cannot be undone.
-              </p>
-              {issue.loggedHours > 0 ? (
-                <p className="mt-3 text-sm text-text-secondary">
-                  This issue has logged time and cannot be deleted.
+          {canShowDangerTab ? (
+            <TabsContent value="danger" className="mt-5 space-y-4">
+              <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+                <h2 className="text-label-l text-danger">Danger zone</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Delete permanently removes this issue and its comments, files,
+                  and activity. This cannot be undone.
                 </p>
-              ) : null}
-              <Button
-                type="button"
-                variant="dangerSecondary"
-                size="sm"
-                className="mt-3"
-                disabled={pending || issue.loggedHours > 0}
-                onClick={() => setDeleteOpen(true)}
-              >
-                Delete issue
-              </Button>
-            </div>
-          </TabsContent>
+                {issue.loggedHours > 0 ? (
+                  <p className="mt-3 text-sm text-text-secondary">
+                    This issue has logged time and cannot be deleted.
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="dangerSecondary"
+                  size="sm"
+                  className="mt-3"
+                  disabled={pending || issue.loggedHours > 0}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete issue
+                </Button>
+              </div>
+            </TabsContent>
+          ) : null}
         </Tabs>
       </div>
 
       <ConfirmModal
-        isOpen={deleteOpen}
+        isOpen={deleteOpen && canShowDangerTab}
         title={`Delete ${issue.key}?`}
         message="This permanently deletes the issue and its comments, files, and activity. Issues with logged time cannot be deleted."
         confirmLabel={deleting ? "Deleting…" : "Delete"}
@@ -2176,7 +2303,7 @@ export function WorkIssueDrawer({
           setDeleteOpen(false);
         }}
         onConfirm={async () => {
-          if (deleting) return;
+          if (deleting || !canShowDangerTab) return;
           setDeleting(true);
           const result = await deleteWorkIssueAction(board.id, issue.id);
           setDeleting(false);

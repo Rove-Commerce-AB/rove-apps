@@ -757,13 +757,48 @@ table thead th.time-grid-header-column-active {
   border-bottom-color: var(--color-border-subtle) !important;
 }
 
-/* Current-week separators use overlays in both header and body.
-   Keeping them out of the collapsed border model makes both sections share the
-   exact same column edge while the header remains sticky. */
+/*
+ * Week cells: real L/R borders change the cell box when only some weeks have
+ * bookings → current-week markers look jagged. Keep L/R width at 0 (same as
+ * frozen header). Booking side ticks use box-shadow; current-week uses opaque
+ * pseudo bars (box-shadow antialiases differently on tinted vs white cells,
+ * which showed up especially in project-detail embed green cells).
+ */
+.allocation-tables tbody td.allocation-pan-cell {
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+  box-sizing: border-box;
+}
+
+.allocation-tables
+  tbody
+  td.allocation-pan-cell.border-l:not(.current-week-cell):not(.drag-range-cell) {
+  box-shadow: inset 1px 0 0 var(--color-border-subtle);
+}
+
+.allocation-tables
+  tbody
+  td.allocation-pan-cell.border-r:not(.current-week-cell):not(.drag-range-cell) {
+  box-shadow: inset -1px 0 0 var(--color-border-subtle);
+}
+
+.allocation-tables
+  tbody
+  td.allocation-pan-cell.border-l.border-r:not(.current-week-cell):not(
+    .drag-range-cell
+  ) {
+  box-shadow:
+    inset 1px 0 0 var(--color-border-subtle),
+    inset -1px 0 0 var(--color-border-subtle);
+}
+
 .allocation-tables td.current-week-cell {
   position: relative;
   border-left-width: 0 !important;
   border-right-width: 0 !important;
+  /* Let the 2px bars sit on the cell edge; overflow-hidden would clip them. */
+  overflow: visible !important;
+  box-shadow: none !important;
 }
 
 .allocation-tables td.current-week-cell::before,
@@ -773,8 +808,8 @@ table thead th.time-grid-header-column-active {
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--color-brand-signal);
-  z-index: 1;
+  background-color: var(--color-brand-signal);
+  z-index: 4;
   pointer-events: none;
 }
 
@@ -786,7 +821,7 @@ table thead th.time-grid-header-column-active {
   right: 0;
 }
 
-/* Header current-week separators are drawn via pseudo-elements as well (see below). */
+/* Header current-week separators are drawn via pseudo-elements (frozen thead). */
 .allocation-tables th.current-week-header {
   border-left-width: 0 !important;
   border-right-width: 0 !important;
@@ -804,10 +839,15 @@ body.allocation-project-row-dragging * {
 .allocation-tables td.drag-range-cell,
 .allocation-tables td.drag-range-cell:hover {
   background-color: color-mix(in srgb, var(--color-brand-signal) 45%, transparent) !important;
+  border-left-width: 1px !important;
+  border-right-width: 1px !important;
+  border-top-width: 1px !important;
+  border-bottom-width: 1px !important;
   border-left-color: var(--color-brand-signal) !important;
   border-right-color: var(--color-brand-signal) !important;
   border-top-color: var(--color-brand-signal) !important;
   border-bottom-color: var(--color-brand-signal) !important;
+  box-shadow: none;
 }
 
 /* Inline edit: saved checkmark fades out over 2s (visible ~50%, then fade). */

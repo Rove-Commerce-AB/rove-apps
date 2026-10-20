@@ -18,6 +18,18 @@ function allocationTaskName(
   return a.role_id ? (roleMap.get(a.role_id) ?? "Unknown") : "";
 }
 
+/** Prefer the task/rate name stored on cells; roleMap only has role UUIDs (not cr:/pr: keys). */
+function roleNameFromWeekCells(
+  byWeek: Map<string, { roleName: string }[]> | undefined
+): string {
+  if (!byWeek) return "";
+  for (const cells of byWeek.values()) {
+    const name = cells.find((cell) => cell.roleName)?.roleName;
+    if (name) return name;
+  }
+  return "";
+}
+
 export type ProbabilityDisplay = "weighted" | "none";
 export type ProjectVisibility = "all" | "hideNon100" | "hide100";
 
@@ -392,8 +404,8 @@ export function buildPerCustomerView(
           const nameB = consultantMap.get(b.consultantId)?.name ?? "";
           const nameCmp = compareTextSv(nameA, nameB);
           if (nameCmp !== 0) return nameCmp;
-          const roleA = a.roleId ? (roleMap.get(a.roleId) ?? "") : "";
-          const roleB = b.roleId ? (roleMap.get(b.roleId) ?? "") : "";
+          const roleA = roleNameFromWeekCells(byConsultantRole.get(a.key));
+          const roleB = roleNameFromWeekCells(byConsultantRole.get(b.key));
           return compareTextSv(roleA, roleB);
         });
 
@@ -418,11 +430,12 @@ export function buildPerCustomerView(
             });
             return { week: w.week, cells };
           });
+          const roleName = roleNameFromWeekCells(byWeek);
           consultantRows.push({
             consultantId,
             consultantName: c?.name ?? "Unknown",
             roleId,
-            roleName: roleId ? (roleMap.get(roleId) ?? "Unknown") : "",
+            roleName: roleName || (roleId ? "Unknown" : ""),
             unavailableByWeek: c?.unavailableByWeek ?? data.weeks.map(() => false),
             weeks,
           });
@@ -582,8 +595,8 @@ export function buildPerProjectView(
         const nameB = consultantMap.get(b.consultantId)?.name ?? "";
         const nameCmp = compareTextSv(nameA, nameB);
         if (nameCmp !== 0) return nameCmp;
-        const roleA = a.roleId ? (roleMap.get(a.roleId) ?? "") : "";
-        const roleB = b.roleId ? (roleMap.get(b.roleId) ?? "") : "";
+        const roleA = roleNameFromWeekCells(byConsultantRole.get(a.key));
+        const roleB = roleNameFromWeekCells(byConsultantRole.get(b.key));
         return compareTextSv(roleA, roleB);
       });
       for (const { key: rowKey, consultantId, roleId } of rows) {
@@ -607,11 +620,12 @@ export function buildPerProjectView(
           });
           return { week: w.week, cells };
         });
+        const roleName = roleNameFromWeekCells(byWeek);
         consultantRows.push({
           consultantId,
           consultantName: c?.name ?? "Unknown",
           roleId,
-          roleName: roleId ? (roleMap.get(roleId) ?? "Unknown") : "",
+          roleName: roleName || (roleId ? "Unknown" : ""),
           unavailableByWeek: c?.unavailableByWeek ?? data.weeks.map(() => false),
           weeks,
         });

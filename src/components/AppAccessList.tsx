@@ -4,7 +4,10 @@ import { Briefcase, CalendarCheck, Clock, Sparkles } from "lucide-react";
 import { Switch } from "@/components/ui";
 import { APP_KEYS, type AppKey } from "@/lib/peopleTypes";
 
-const APP_ACCESS_ITEMS: Record<AppKey, { name: string; icon: typeof CalendarCheck; tileClass: string }> = {
+export const APP_ACCESS_ITEMS: Record<
+  AppKey,
+  { name: string; icon: typeof CalendarCheck; tileClass: string }
+> = {
   planner: {
     name: "Rove Planner",
     icon: CalendarCheck,

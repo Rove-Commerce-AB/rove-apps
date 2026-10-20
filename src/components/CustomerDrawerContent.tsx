@@ -22,6 +22,7 @@ import {
 import { AddCustomerConsultantModal } from "@/components/AddCustomerConsultantModal";
 import { AddCustomerRateModal } from "@/components/AddCustomerRateModal";
 import { AddCustomerUserModal } from "@/components/AddCustomerUserModal";
+import { CreateProjectAppAvailability } from "@/components/CreateProjectAppAvailability";
 import { CustomerDrawerOverview } from "@/components/CustomerDrawerOverview";
 import { CustomerProjectGroup } from "@/components/CustomerProjectGroup";
 import { CustomerRatesTab } from "@/components/CustomerRatesTab";
@@ -35,6 +36,7 @@ import { removeCustomerUserFromCustomer } from "@/lib/customerAppUsersClient";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
+import { createWorkBoardAction } from "@/app/(app)/work/actions";
 import {
   createProject,
   getProjectWithDetailsById,
@@ -44,6 +46,7 @@ import {
   personHrefForUser,
   ROUTES,
 } from "@/lib/routes";
+import { suggestWorkBoardPrefix } from "@/lib/workIssueKey";
 import type {
   CustomerWithDetails,
   ProjectWithDetails,
@@ -179,15 +182,17 @@ function CustomerDrawerDanger({
 
 function NewProjectForm({
   customerId,
+  customerName,
   onCancel,
   onCreated,
 }: {
   customerId: string;
+  customerName: string;
   onCancel: () => void;
-  onCreated: () => void;
+  onCreated: (projectId: string) => void;
 }) {
-  const router = useRouter();
   const [name, setName] = useState("");
+  const [alsoCreateWork, setAlsoCreateWork] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -201,12 +206,29 @@ function NewProjectForm({
     setError(null);
     setSubmitting(true);
     try {
-      await createProject({
+      const project = await createProject({
         name: trimmed,
         customer_id: customerId,
       });
-      router.refresh();
-      onCreated();
+
+      if (alsoCreateWork) {
+        const workResult = await createWorkBoardAction(
+          customerId,
+          trimmed,
+          suggestWorkBoardPrefix(customerName, trimmed),
+          undefined,
+          project.id
+        );
+        if (!workResult.ok) {
+          setError(
+            `Project created, but Work project failed: ${workResult.error}`
+          );
+          onCreated(project.id);
+          return;
+        }
+      }
+
+      onCreated(project.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create project");
     } finally {
@@ -227,19 +249,27 @@ function NewProjectForm({
         <h2 className="mt-1 text-heading-l text-text-primary">New project</h2>
       </div>
 
-      <div className="mt-6">
-        <label
-          htmlFor="drawer-project-name"
-          className="mb-1.5 block text-label-m text-text-primary"
-        >
-          Project name
-        </label>
-        <Input
-          id="drawer-project-name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Enter project name"
-          autoFocus
+      <div className="mt-6 space-y-4">
+        <div>
+          <label
+            htmlFor="drawer-project-name"
+            className="mb-1.5 block text-label-m text-text-primary"
+          >
+            Project name
+          </label>
+          <Input
+            id="drawer-project-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Enter project name"
+            autoFocus
+          />
+        </div>
+
+        <CreateProjectAppAvailability
+          createWork={alsoCreateWork}
+          onCreateWorkChange={setAlsoCreateWork}
+          idPrefix="drawer-create-project-app"
         />
       </div>
 
@@ -380,8 +410,16 @@ export function CustomerDrawerContent({
     return (
       <NewProjectForm
         customerId={customer.id}
+        customerName={customer.name}
         onCancel={returnToProjects}
-        onCreated={returnToProjects}
+        onCreated={(projectId) => {
+          setCreatingProject(false);
+          setProjectLoadError(null);
+          setSelectedProject(null);
+          setSelectedProjectId(projectId);
+          setActiveTab("projects");
+          router.refresh();
+        }}
       />
     );
   }

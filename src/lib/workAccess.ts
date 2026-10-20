@@ -77,3 +77,20 @@ export function canLogWorkTime(actor: WorkActor): boolean {
 export function canCreateWorkProject(actor: WorkActor): boolean {
   return actor.role !== "customer";
 }
+
+/** Customer-role users cannot archive Work projects. */
+export function canArchiveWorkProject(actor: WorkActor): boolean {
+  return actor.role !== "customer";
+}
+
+/**
+ * Customer-role users may only delete issues they created (reporter).
+ * Admin/member can delete any issue on a board they can access (other rules apply).
+ */
+export function canDeleteWorkIssue(
+  actor: WorkActor,
+  createdByAppUserId: string | null | undefined
+): boolean {
+  if (actor.role !== "customer") return true;
+  return Boolean(createdByAppUserId && createdByAppUserId === actor.id);
+}

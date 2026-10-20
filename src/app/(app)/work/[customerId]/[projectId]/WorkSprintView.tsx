@@ -124,6 +124,7 @@ export function WorkSprintView({
   onOpenIssue,
   onError,
   onChanged,
+  onOptimisticIssuePatch,
 }: {
   board: WorkBoardView;
   issues: WorkIssue[];
@@ -134,6 +135,10 @@ export function WorkSprintView({
   onOpenIssue: (issueId: string, options?: { tab?: string }) => void;
   onError: (message: string) => void;
   onChanged: () => void;
+  onOptimisticIssuePatch?: (
+    issueId: string,
+    patch: Pick<WorkIssue, "estimateHours">
+  ) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [closeOpen, setCloseOpen] = useState(false);
@@ -348,6 +353,7 @@ export function WorkSprintView({
   }
 
   function commitEstimate(issueId: string, value: number | null) {
+    onOptimisticIssuePatch?.(issueId, { estimateHours: value });
     onIssuesChange(
       issues.map((issue) =>
         issue.id === issueId ? { ...issue, estimateHours: value } : issue

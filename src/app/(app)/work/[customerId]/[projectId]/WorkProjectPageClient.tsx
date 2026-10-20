@@ -565,6 +565,10 @@ export function WorkBoardPageClient({
   }
 
   function closeIssue() {
+    // Ensure drawer field blur handlers (estimate, title, …) flush before unmount.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     router.push(workBoardHref(board.customerId, board.id), { scroll: false });
   }
 
@@ -781,7 +785,9 @@ export function WorkBoardPageClient({
 
   function openProjectSettings(tab: WorkProjectSettingsTab = "details") {
     if (selectedIssueId) closeIssue();
-    setSettingsTab(tab);
+    setSettingsTab(
+      board.viewerRole === "customer" && tab === "danger" ? "details" : tab
+    );
     setSettingsOpen(true);
   }
 
@@ -1143,6 +1149,13 @@ export function WorkBoardPageClient({
           onIssuesChange={(next) => {
             issuesRef.current = next;
             setIssues(next);
+          }}
+          onOptimisticIssuePatch={(issueId, patch) => {
+            noteOptimisticIssuePatch(
+              optimisticPatchesRef.current,
+              issueId,
+              patch
+            );
           }}
           onSprintsChange={setSprints}
           onOpenIssue={(issueId, options) => openIssue(issueId, options)}
@@ -1687,6 +1700,11 @@ export function WorkBoardPageClient({
                               estimateHours={issue.estimateHours}
                               onError={setError}
                               onChange={(value) => {
+                                noteOptimisticIssuePatch(
+                                  optimisticPatchesRef.current,
+                                  issue.id,
+                                  { estimateHours: value }
+                                );
                                 setIssues((current) => {
                                   const next = current.map((row) =>
                                     row.id === issue.id
@@ -1703,6 +1721,10 @@ export function WorkBoardPageClient({
                                 ).then((result) => {
                                   if (result.ok) return;
                                   setError(result.error);
+                                  clearOptimisticIssuePatch(
+                                    optimisticPatchesRef.current,
+                                    issue.id
+                                  );
                                   issuesRef.current = board.issues;
                                   setIssues(board.issues);
                                 });
@@ -1837,6 +1859,7 @@ export function WorkBoardPageClient({
         members={members}
         people={board.people}
         components={components}
+        showDangerTab={board.viewerRole !== "customer"}
         onRename={applyBoardRename}
         onLinkPlannerProject={async (nextPlannerProjectId) => {
           const result = await linkWorkProjectToPlannerProjectAction(

@@ -139,7 +139,7 @@ Added by
 
 ## google_user_connections
 
-OAuth tokens for Google Tasks sync. Treat token columns as secrets.
+Legacy OAuth tokens previously used for Google Tasks sync (app no longer writes here). Treat token columns as secrets.
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -683,7 +683,7 @@ Indexes: `(project_key)`, `(space_id)`, `(folder_id)`.
 
 ## task_boards
 
-Shared task boards.
+Legacy shared task boards (Taskboard UI removed; tables retained).
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -1209,4 +1209,4 @@ Those are not part of the application model.
 - **time_report_entry_lines** (week row) → **time_report_entries** (day cells) + **time_report_week_revisions**
 - **customer_rates** / **project_rates** + **roles** drive pricing; **time_report_entries.rate_snapshot** stores the rate at save
 - **jira_issues** / **devops_work_items** / **clickup** integrate with **projects** for issue pickers
-- **task_boards** → **task_board_members** / **task_board_todos**; Google sync via **google_user_connections** + map tables
+- **task_boards** → **task_board_members** / **task_board_todos** (legacy; UI removed); Google sync tables unused

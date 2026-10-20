@@ -1,7 +1,11 @@
 import "server-only";
 
 import { withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import { canSeeWorkTime, type WorkActor } from "@/lib/workAccess";
+import {
+  canDeleteWorkIssue,
+  canSeeWorkTime,
+  type WorkActor,
+} from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { WorkInputError } from "@/lib/workErrors";
 import { workIssueKey } from "@/lib/workIssueKey";
@@ -9,6 +13,8 @@ import {
   addWorkIssueAssignee,
   deleteWorkIssueFile,
   fetchWorkIssueNotifyMeta,
+  fetchWorkIssueDescription,
+  fetchWorkIssueCreatedByAppUserId,
   fetchWorkBoardMembers,
   countIssuesUsingComponent,
   deleteBoardComponent,
@@ -245,7 +251,14 @@ export async function deleteWorkIssue(
   boardId: string,
   issueId: string
 ): Promise<void> {
-  await requireBoardAccess(boardId);
+  const { actor } = await requireBoardAccess(boardId);
+  const createdByAppUserId = await fetchWorkIssueCreatedByAppUserId(
+    boardId,
+    issueId
+  );
+  if (!canDeleteWorkIssue(actor, createdByAppUserId)) {
+    throw new WorkInputError("You can only delete issues you created.");
+  }
   if (await workIssueHasLoggedTime(issueId)) {
     throw new Error("Issues with logged time cannot be deleted");
   }
@@ -259,13 +272,15 @@ export async function setWorkIssueOwner(
   ownerAppUserId: string | null,
   ownerName: string
 ): Promise<void> {
-  const { actor } = await requireBoardAccess(boardId);
+  const { actor, board } = await requireBoardAccess(boardId);
   if (ownerAppUserId) {
     const member = await isWorkBoardMember(boardId, ownerAppUserId);
     if (!member) {
       throw new Error("Owner must have access to the project");
     }
   }
+  const previous = await fetchWorkIssueNotifyMeta(boardId, issueId);
+  const previousOwnerId = previous?.owner_app_user_id ?? null;
   const ok = await updateWorkIssueOwner(boardId, issueId, ownerAppUserId);
   if (!ok) throw new Error("Issue not found");
   await logEvent(
@@ -276,6 +291,22 @@ export async function setWorkIssueOwner(
       ? `changed the owner to ${ownerName}`
       : "cleared the owner"
   );
+  if (
+    ownerAppUserId &&
+    ownerAppUserId !== actor.id &&
+    ownerAppUserId !== previousOwnerId
+  ) {
+    await notifyWorkIssuePersonChange({
+      boardId,
+      issueId,
+      recipientAppUserId: ownerAppUserId,
+      actorId: actor.id,
+      kind: USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET,
+      customerId: board.customer_id,
+      boardTitle: board.title,
+      boardPrefix: board.prefix,
+    });
+  }
 }
 
 export async function setWorkIssueTextField(
@@ -284,7 +315,11 @@ export async function setWorkIssueTextField(
   field: "description" | "current_state" | "next_step" | "out_of_scope",
   value: string
 ): Promise<void> {
-  const { actor } = await requireBoardAccess(boardId);
+  const { actor, board } = await requireBoardAccess(boardId);
+  const previousDescription =
+    field === "description"
+      ? await fetchWorkIssueDescription(boardId, issueId)
+      : null;
   const ok = await updateWorkIssueField(boardId, issueId, field, value);
   if (!ok) throw new Error("Issue not found");
   const labels = {
@@ -299,6 +334,19 @@ export async function setWorkIssueTextField(
     field,
     `updated the ${labels[field]}`
   );
+  if (field === "description") {
+    await notifyWorkIssueMentions({
+      boardId,
+      issueId,
+      body: value,
+      previousBody: previousDescription ?? "",
+      actorId: actor.id,
+      memberIds: board.member_ids,
+      customerId: board.customer_id,
+      boardTitle: board.title,
+      boardPrefix: board.prefix,
+    });
+  }
 }
 
 export async function setWorkIssueEstimate(
@@ -657,13 +705,25 @@ export async function addIssueAssignee(
   appUserId: string,
   personName: string
 ): Promise<void> {
-  const { actor } = await requireBoardAccess(boardId);
+  const { actor, board } = await requireBoardAccess(boardId);
   const member = await isWorkBoardMember(boardId, appUserId);
   if (!member) {
     throw new Error("Assignee must have access to the project");
   }
-  await addWorkIssueAssignee(issueId, appUserId);
+  const inserted = await addWorkIssueAssignee(issueId, appUserId);
   await logEvent(issueId, actor.id, "assignees", `assigned ${personName}`);
+  if (inserted && appUserId !== actor.id) {
+    await notifyWorkIssuePersonChange({
+      boardId,
+      issueId,
+      recipientAppUserId: appUserId,
+      actorId: actor.id,
+      kind: USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED,
+      customerId: board.customer_id,
+      boardTitle: board.title,
+      boardPrefix: board.prefix,
+    });
+  }
 }
 
 export async function removeIssueAssignee(
@@ -848,28 +908,75 @@ export async function removeIssueFile(
   await logEvent(issueId, actor.id, "file", `removed ${fileName}`);
 }
 
+async function workIssueNotifyActorLabel(
+  boardId: string,
+  actorId: string
+): Promise<string> {
+  const members = await fetchWorkBoardMembers(boardId);
+  const user = members.find((member) => member.id === actorId);
+  return user?.name?.trim() || user?.email || "Someone";
+}
+
+async function notifyWorkIssuePersonChange(input: {
+  boardId: string;
+  issueId: string;
+  recipientAppUserId: string;
+  actorId: string;
+  kind:
+    | typeof USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET
+    | typeof USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED;
+  customerId: string;
+  boardTitle: string;
+  boardPrefix: string;
+}): Promise<void> {
+  try {
+    const [issue, actorName] = await Promise.all([
+      fetchWorkIssueNotifyMeta(input.boardId, input.issueId),
+      workIssueNotifyActorLabel(input.boardId, input.actorId),
+    ]);
+    if (!issue) return;
+    await insertUserNotification(input.recipientAppUserId, input.kind, {
+      customerId: input.customerId,
+      boardId: input.boardId,
+      boardTitle: input.boardTitle,
+      issueId: input.issueId,
+      issueKey: workIssueKey(input.boardPrefix, issue.number),
+      issueTitle: issue.title,
+      actorName,
+    });
+  } catch (error) {
+    console.warn("[work] owner/assignee notification failed", error);
+  }
+}
+
 async function notifyWorkIssueMentions(input: {
   boardId: string;
   issueId: string;
   body: string;
+  /** When set, only newly added mention tokens are notified. */
+  previousBody?: string;
   actorId: string;
   memberIds: readonly string[];
   customerId: string;
   boardTitle: string;
   boardPrefix: string;
 }): Promise<void> {
+  const previouslyMentioned = new Set(
+    extractMentionedIds(input.previousBody ?? "")
+  );
   const mentioned = extractMentionedIds(input.body).filter(
-    (id) => id !== input.actorId && input.memberIds.includes(id)
+    (id) =>
+      id !== input.actorId &&
+      input.memberIds.includes(id) &&
+      !previouslyMentioned.has(id)
   );
   if (mentioned.length === 0) return;
   try {
-    const [issue, members] = await Promise.all([
+    const [issue, mentionerName] = await Promise.all([
       fetchWorkIssueNotifyMeta(input.boardId, input.issueId),
-      fetchWorkBoardMembers(input.boardId),
+      workIssueNotifyActorLabel(input.boardId, input.actorId),
     ]);
     if (!issue) return;
-    const user = members.find((member) => member.id === input.actorId);
-    const mentionerName = user?.name?.trim() || user?.email || "Someone";
     const payload = {
       customerId: input.customerId,
       boardId: input.boardId,

@@ -1,3 +1,4 @@
+import type { AppUserRole } from "@/lib/peopleTypes";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkIssueRelations } from "@/lib/workIssueRelations";
 
@@ -224,6 +225,8 @@ export type WorkBoardView = {
    * False for customer-role users when the customer setting is off.
    */
   showTime: boolean;
+  /** Role of the signed-in viewer (for UI gates such as Danger tabs). */
+  viewerRole: AppUserRole;
   currentUser: WorkPerson;
   people: WorkPerson[];
   members: WorkPerson[];

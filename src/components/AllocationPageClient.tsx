@@ -401,7 +401,7 @@ function AllocationPageClientImpl({
 
   const weekCount = data?.weeks?.length ?? 0;
   const hasBudgetTotal = Boolean(embedMode && data?.consultantTotalHours != null);
-  const allocationNameColWidth = embedMode ? "72px" : "300px";
+  const allocationNameColWidth = "300px";
   const allocationActionsColWidth =
     !embedMode && activeTab === "consultant" ? "1.5rem" : "0px";
   const allocationTrailingTotalsWidth = hasBudgetTotal ? "9rem" : "4.5rem";

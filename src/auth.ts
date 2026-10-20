@@ -7,7 +7,6 @@ import {
 } from "@/lib/cloudSqlPool";
 import { findCustomerForPasswordLogin } from "@/lib/customerPasswordQueries";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
-import { upsertGoogleUserConnection } from "@/lib/googleTasksSyncQueries";
 import {
   isValidEmailFormat,
   normalizeEmail,
@@ -48,14 +47,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/tasks",
-          prompt: "consent",
-          access_type: "offline",
-        },
-      },
     }),
     Credentials({
       id: "customer-password",
@@ -223,45 +214,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         mustChangePassword: token.mustChangePassword ?? false,
       });
 
-      if (
-        token.appUserId &&
-        account?.provider === "google" &&
-        account.providerAccountId
-      ) {
-        const expiresAt =
-          typeof account.expires_at === "number" &&
-          Number.isFinite(account.expires_at)
-            ? new Date(account.expires_at * 1000)
-            : null;
-        try {
-          await upsertGoogleUserConnection({
-            appUserId: token.appUserId,
-            googleSub: account.providerAccountId,
-            googleEmail:
-              typeof profile?.email === "string" ? profile.email : email,
-            scope: typeof account.scope === "string" ? account.scope : null,
-            accessToken:
-              typeof account.access_token === "string"
-                ? account.access_token
-                : null,
-            refreshToken:
-              typeof account.refresh_token === "string"
-                ? account.refresh_token
-                : null,
-            tokenType:
-              typeof account.token_type === "string"
-                ? account.token_type
-                : null,
-            accessTokenExpiresAt: expiresAt,
-          });
-        } catch (e) {
-          if (!isTransientCloudSqlConnectError(e)) throw e;
-          console.warn(
-            "[auth] upsertGoogleUserConnection skipped (transient db error)",
-            { email, error: e instanceof Error ? e.message : String(e) }
-          );
-        }
-      }
       return token;
     },
     async session({ session, token }) {

@@ -1012,13 +1012,14 @@ export async function deleteWorkIssue(
 export async function addWorkIssueAssignee(
   issueId: string,
   appUserId: string
-): Promise<void> {
-  await cloudSqlPool.query(
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
     `INSERT INTO work_issue_assignees (issue_id, app_user_id)
      VALUES ($1, $2)
      ON CONFLICT DO NOTHING`,
     [issueId, appUserId]
   );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function removeWorkIssueAssignee(
@@ -1186,14 +1187,50 @@ export async function deleteWorkIssueComment(input: {
 export async function fetchWorkIssueNotifyMeta(
   boardId: string,
   issueId: string
-): Promise<{ number: number; title: string } | null> {
-  const { rows } = await cloudSqlPool.query<{ number: number; title: string }>(
-    `SELECT number, title
+): Promise<{
+  number: number;
+  title: string;
+  owner_app_user_id: string | null;
+} | null> {
+  const { rows } = await cloudSqlPool.query<{
+    number: number;
+    title: string;
+    owner_app_user_id: string | null;
+  }>(
+    `SELECT number, title, owner_app_user_id
      FROM work_issues
      WHERE id = $1 AND project_id = $2`,
     [issueId, boardId]
   );
   return rows[0] ?? null;
+}
+
+export async function fetchWorkIssueDescription(
+  boardId: string,
+  issueId: string
+): Promise<string | null> {
+  const { rows } = await cloudSqlPool.query<{ description: string }>(
+    `SELECT description
+     FROM work_issues
+     WHERE id = $1 AND project_id = $2`,
+    [issueId, boardId]
+  );
+  return rows[0]?.description ?? null;
+}
+
+export async function fetchWorkIssueCreatedByAppUserId(
+  boardId: string,
+  issueId: string
+): Promise<string | null> {
+  const { rows } = await cloudSqlPool.query<{
+    created_by_app_user_id: string | null;
+  }>(
+    `SELECT created_by_app_user_id
+     FROM work_issues
+     WHERE id = $1 AND project_id = $2`,
+    [issueId, boardId]
+  );
+  return rows[0]?.created_by_app_user_id ?? null;
 }
 
 export async function moveWorkIssue(input: {
