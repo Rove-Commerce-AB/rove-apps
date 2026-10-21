@@ -23,6 +23,7 @@ export const ROUTES = {
   work: "/work",
   workMine: "/work/mine",
   settings: "/settings/general",
+  monitors: "/settings/monitors",
   people: "/settings/people",
   consultants: "/settings/consultants",
   customers: "/settings/customers",
