@@ -154,10 +154,13 @@ async function saveSlackNotifications(client: PoolClient, monitorId: string, ids
   );
   if (ids.length) {
     await client.query(
-      `INSERT INTO monitoring.monitor_slack_notifications (monitor_id, notification_id, enabled)
+      `INSERT INTO monitoring.monitor_slack_notifications AS route (monitor_id, notification_id, enabled)
        SELECT $1, selected.id, true FROM unnest($2::uuid[]) AS selected(id)
        ON CONFLICT (monitor_id, notification_id)
-       DO UPDATE SET enabled=true, alert_on_down=true, alert_on_recovery=true,
+       DO UPDATE SET enabled=true,
+                     alert_on_down=CASE
+                       WHEN NOT route.alert_on_down AND NOT route.alert_on_recovery
+                       THEN true ELSE route.alert_on_down END,
                      updated_at=now()`, [monitorId, ids]
     );
   }
