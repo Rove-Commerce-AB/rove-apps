@@ -7,17 +7,18 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button, ConfirmModal, Dialog, Input, PageHeader, Panel } from "@/components/ui";
 import {
   createMonitor, deleteMonitor, setMonitorEnabled, updateMonitor,
-  type Monitor, type MonitorInput,
+  type Monitor, type MonitorInput, type SlackNotificationOption,
 } from "@/lib/monitors";
 import { monitorIncidentsHref } from "@/lib/routes";
 
 type CustomerOption = { id: string; name: string };
-type Props = { monitors: Monitor[]; customers: CustomerOption[]; loadError?: string };
+type Props = { monitors: Monitor[]; customers: CustomerOption[]; slackNotifications: SlackNotificationOption[]; loadError?: string };
 
 const emptyInput: MonitorInput = {
   customerId: "", name: "", url: "", enabled: true,
   intervalSeconds: 60, retryDelaySeconds: null, timeoutMs: 10000,
   expectedStatusMin: 200, expectedStatusMax: 299, authSecretRef: null,
+  slackNotificationIds: [],
 };
 
 function inputFromMonitor(monitor: Monitor): MonitorInput {
@@ -28,6 +29,7 @@ function inputFromMonitor(monitor: Monitor): MonitorInput {
     expectedStatusMin: monitor.expected_status_min,
     expectedStatusMax: monitor.expected_status_max,
     authSecretRef: monitor.auth_secret_ref,
+    slackNotificationIds: monitor.slack_notification_ids,
   };
 }
 
@@ -35,7 +37,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong. Try again.";
 }
 
-export function MonitorsPageClient({ monitors, customers, loadError }: Props) {
+export function MonitorsPageClient({ monitors, customers, slackNotifications, loadError }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Monitor | "new" | null>(null);
@@ -53,7 +55,11 @@ export function MonitorsPageClient({ monitors, customers, loadError }: Props) {
 
   function openForm(target: Monitor | "new") {
     setEditing(target);
-    setForm(target === "new" ? { ...emptyInput, customerId: customers[0]?.id ?? "" } : inputFromMonitor(target));
+    setForm(target === "new" ? {
+      ...emptyInput,
+      customerId: customers[0]?.id ?? "",
+      slackNotificationIds: slackNotifications.filter((channel) => channel.default_enabled).map((channel) => channel.id),
+    } : inputFromMonitor(target));
     setError(null);
   }
 
@@ -89,7 +95,10 @@ export function MonitorsPageClient({ monitors, customers, loadError }: Props) {
         await deleteMonitor(deleteTarget.id);
         setDeleteTarget(null);
         router.refresh();
-      } catch (cause) { setError(errorMessage(cause)); }
+      } catch (cause) {
+        setDeleteTarget(null);
+        setError(errorMessage(cause));
+      }
     });
   }
 
@@ -164,12 +173,30 @@ export function MonitorsPageClient({ monitors, customers, loadError }: Props) {
             {numberField("expectedStatusMax", "Expected status to", 100, 599)}
           </div>
           <Input id="monitor-secret" label="Auth secret reference (optional)" value={form.authSecretRef ?? ""} onChange={(event) => setForm((prev) => ({ ...prev, authSecretRef: event.target.value || null }))} />
+          <fieldset className="space-y-2 rounded-lg border border-form p-3">
+            <legend className="px-1 text-sm font-medium text-text-primary">Slack channels for incidents</legend>
+            {slackNotifications.length === 0 ? (
+              <p className="text-sm text-text-secondary">No Slack channels are configured.</p>
+            ) : slackNotifications.map((channel) => (
+              <label key={channel.id} className="flex items-center gap-2 text-sm text-text-primary">
+                <input type="checkbox" checked={form.slackNotificationIds.includes(channel.id)} onChange={(event) => {
+                  setForm((prev) => ({
+                    ...prev,
+                    slackNotificationIds: event.target.checked
+                      ? [...prev.slackNotificationIds, channel.id]
+                      : prev.slackNotificationIds.filter((id) => id !== channel.id),
+                  }));
+                }} />
+                {channel.channel_name} <span className="text-text-secondary">({channel.name})</span>
+              </label>
+            ))}
+          </fieldset>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((prev) => ({ ...prev, enabled: event.target.checked }))} /> Enabled</label>
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)} disabled={pending}>Cancel</Button><Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button></div>
         </form>
       </Dialog>
-      <ConfirmModal isOpen={deleteTarget !== null} title="Delete monitor?" message="A monitor with check history or linked records cannot be deleted. You can pause it instead." confirmLabel="Delete" onClose={() => setDeleteTarget(null)} onConfirm={remove} />
+      <ConfirmModal isOpen={deleteTarget !== null} title="Delete monitor?" message="The monitor will stop checking and disappear from this list. Its incident history will be retained." confirmLabel="Delete" onClose={() => setDeleteTarget(null)} onConfirm={remove} />
     </div>
   );
 }

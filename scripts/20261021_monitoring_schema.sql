@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS monitoring.monitors (
   next_due_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
   CONSTRAINT monitors_name_nonempty CHECK (btrim(name) <> ''),
   CONSTRAINT monitors_url_nonempty CHECK (btrim(url) <> ''),
   CONSTRAINT monitors_interval_range CHECK (interval_seconds BETWEEN 30 AND 86400),

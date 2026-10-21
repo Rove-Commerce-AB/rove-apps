@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { getMonitorCustomers, getMonitors } from "@/lib/monitors";
+import { getMonitorCustomers, getMonitors, getSlackNotifications } from "@/lib/monitors";
 import { MonitorsPageClient } from "@/components/MonitorsPageClient";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +11,14 @@ export default async function MonitorsPage() {
 
   let monitors: Awaited<ReturnType<typeof getMonitors>> = [];
   let customers: Awaited<ReturnType<typeof getMonitorCustomers>> = [];
+  let slackNotifications: Awaited<ReturnType<typeof getSlackNotifications>> = [];
   let loadError: string | undefined;
   try {
-    [monitors, customers] = await Promise.all([getMonitors(), getMonitorCustomers()]);
+    [monitors, customers, slackNotifications] = await Promise.all([
+      getMonitors(), getMonitorCustomers(), getSlackNotifications(),
+    ]);
   } catch (error) {
     loadError = error instanceof Error ? error.message : "Failed to load monitors";
   }
-  return <MonitorsPageClient monitors={monitors} customers={customers} loadError={loadError} />;
+  return <MonitorsPageClient monitors={monitors} customers={customers} slackNotifications={slackNotifications} loadError={loadError} />;
 }
