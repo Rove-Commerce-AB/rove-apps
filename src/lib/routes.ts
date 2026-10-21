@@ -46,6 +46,10 @@ export function consultantHref(id: string): string {
   return `${ROUTES.consultants}/${id}`;
 }
 
+export function monitorIncidentsHref(id: string): string {
+  return `${ROUTES.monitors}/${id}/incidents`;
+}
+
 export function personHref(key: string): string {
   return `${ROUTES.people}/${key}`;
 }
