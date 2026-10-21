@@ -120,9 +120,13 @@ export function MonitorsPageClient({ monitors, customers, loadError }: Props) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <strong className="truncate text-sm text-text-primary">{monitor.name}</strong>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${monitor.enabled ? "bg-green-100 text-green-800" : "bg-bg-muted text-text-secondary"}`}>
-                      {monitor.enabled ? monitor.status : "Paused"}
-                    </span>
+                    {monitor.enabled ? (
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${monitor.status === "up" ? "bg-status-success-subtle text-status-success" : monitor.status === "down" ? "bg-danger/10 text-danger" : "bg-bg-muted text-text-secondary"}`}>
+                        {monitor.status}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-bg-muted px-2 py-0.5 text-xs text-text-secondary">Paused</span>
+                    )}
                   </div>
                   <p className="truncate text-xs text-text-secondary">{monitor.customer_name_snapshot} · {monitor.url}</p>
                   <p className="text-xs text-text-tertiary">
@@ -132,7 +136,7 @@ export function MonitorsPageClient({ monitors, customers, loadError }: Props) {
                 </div>
                 <div className="flex items-center gap-2">
                   <Link href={monitorIncidentsHref(monitor.id)} className="inline-flex h-9 items-center rounded-md border border-form bg-bg-default px-3 text-sm font-medium text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal">Incidents</Link>
-                  <Button size="sm" variant="secondary" disabled={pending} onClick={() => toggle(monitor)}>{monitor.enabled ? "Pause" : "Enable"}</Button>
+                  <Button size="sm" variant={monitor.enabled ? "warningSecondary" : "successSecondary"} disabled={pending} onClick={() => toggle(monitor)}>{monitor.enabled ? "Pause" : "Enable"}</Button>
                   <Button size="sm" variant="ghost" aria-label={`Edit ${monitor.name}`} onClick={() => openForm(monitor)}><Pencil className="h-4 w-4" /></Button>
                   <Button size="sm" variant="ghost" aria-label={`Delete ${monitor.name}`} onClick={() => setDeleteTarget(monitor)}><Trash2 className="h-4 w-4 text-danger" /></Button>
                 </div>

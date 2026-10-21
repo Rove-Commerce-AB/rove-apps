@@ -760,13 +760,6 @@ export function Sidebar({
                     indent
                     activeMatch="prefix"
                   />
-                  <NavLink
-                    href={ROUTES.monitors}
-                    label="Monitors"
-                    pathname={pathname}
-                    indent
-                    activeMatch="prefix"
-                  />
                 </>
               )}
               <NavLink
@@ -776,6 +769,15 @@ export function Sidebar({
                 indent
                 activeMatch="prefix"
               />
+              {isAdmin && (
+                <NavLink
+                  href={ROUTES.monitors}
+                  label="Monitors"
+                  pathname={pathname}
+                  indent
+                  activeMatch="prefix"
+                />
+              )}
             </AppGroup>
           </div>
         )}

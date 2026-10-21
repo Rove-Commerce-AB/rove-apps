@@ -25,6 +25,13 @@ function formatTime(value: string): string {
   }).format(new Date(value));
 }
 
+function formatMinutes(value: number): string {
+  return new Intl.NumberFormat("sv-SE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 function pageHref(data: IncidentPage, page: number): string {
   const search = new URLSearchParams();
   if (data.filters.from) search.set("from", data.filters.from);
@@ -68,21 +75,25 @@ export default async function MonitorIncidentsPage({ params, searchParams }: Pro
       <form action={monitorIncidentsHref(data.monitor.id)} method="get" className="flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="incident-from" className="mb-1 block text-sm font-medium text-text-primary">From</label>
-          <input id="incident-from" name="from" type="date" defaultValue={data.filters.from ?? ""} max={data.filters.to} className="h-10 rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary" />
+          <input id="incident-from" name="from" type="date" defaultValue={data.filters.from} max={data.filters.to} className="h-10 rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary" />
         </div>
         <div>
           <label htmlFor="incident-to" className="mb-1 block text-sm font-medium text-text-primary">To</label>
-          <input id="incident-to" name="to" type="date" defaultValue={data.filters.to ?? ""} min={data.filters.from} className="h-10 rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary" />
+          <input id="incident-to" name="to" type="date" defaultValue={data.filters.to} min={data.filters.from} max={data.today} className="h-10 rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary" />
         </div>
         <Button type="submit">Filter</Button>
-        {(data.filters.from || data.filters.to) && <Link href={monitorIncidentsHref(data.monitor.id)} className="inline-flex h-10 items-center px-2 text-sm text-text-secondary hover:underline">Clear</Link>}
+        <Link href={monitorIncidentsHref(data.monitor.id)} className="inline-flex h-10 items-center px-2 text-sm text-text-secondary hover:underline">Last 30 days</Link>
       </form>
-      <p className="text-xs text-text-tertiary">Filter by incident start date. Dates and times use Europe/Stockholm.</p>
+      <p className="text-xs text-text-tertiary">Shows incidents overlapping the selected dates. Dates and times use Europe/Stockholm. Uptime is based on recorded incidents since this monitor was created.</p>
+      <Panel className="max-w-sm p-5">
+        <p className="text-sm text-text-secondary">Uptime during selected period</p>
+        <p className="mt-2 text-heading-xl text-text-primary tabular-nums">
+          {data.uptimePercent === null ? "—" : `${new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(data.uptimePercent)} %`}
+        </p>
+        <p className="mt-1 text-xs text-text-tertiary">{data.filters.from} – {data.filters.to}</p>
+      </Panel>
       <Panel>
-        {data.incidents.length === 0 ? (
-          <p className="p-6 text-sm text-text-secondary">No incidents found for this period.</p>
-        ) : (
-          <div className="overflow-x-auto">
+        <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-border-subtle text-xs text-text-secondary">
                 <tr>
@@ -92,9 +103,13 @@ export default async function MonitorIncidentsPage({ params, searchParams }: Pro
                   <th scope="col" className="px-4 py-3 font-medium">Last failure</th>
                   <th scope="col" className="px-4 py-3 font-medium">Recovered</th>
                   <th scope="col" className="px-4 py-3 text-right font-medium">Failures</th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium">Downtime (min)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
+                {data.incidents.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-6 text-text-secondary">No incidents found for this period.</td></tr>
+                )}
                 {data.incidents.map((incident) => (
                   <tr key={incident.id}>
                     <td className="whitespace-nowrap px-4 py-3"><span className={incident.recoveredAt ? "text-text-secondary" : "font-medium text-danger"}>{incident.recoveredAt ? "Recovered" : "Open"}</span></td>
@@ -103,12 +118,18 @@ export default async function MonitorIncidentsPage({ params, searchParams }: Pro
                     <td className="whitespace-nowrap px-4 py-3">{formatTime(incident.lastFailureAt)}</td>
                     <td className="whitespace-nowrap px-4 py-3">{incident.recoveredAt ? formatTime(incident.recoveredAt) : "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{incident.failureCount}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatMinutes(incident.downtimeMinutes)}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot className="border-t border-border-subtle font-medium text-text-primary">
+                <tr>
+                  <td colSpan={6} className="px-4 py-3">Total downtime (all incidents in period)</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{formatMinutes(data.totalDowntimeMinutes)}</td>
+                </tr>
+              </tfoot>
             </table>
-          </div>
-        )}
+        </div>
       </Panel>
       <div className="flex items-center justify-between text-sm text-text-secondary">
         <span>{data.total} {data.total === 1 ? "incident" : "incidents"} · Page {data.page} of {data.pageCount}</span>
