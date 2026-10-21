@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { breadcrumbsForPathname } from "./breadcrumbs";
 
 describe("breadcrumbsForPathname", () => {
+  it("shows Monitors under Settings", () => {
+    expect(breadcrumbsForPathname("/settings/monitors")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Settings" },
+      { label: "Monitors" },
+    ]);
+  });
+
   it("uses Consultant as the current planner page", () => {
     expect(breadcrumbsForPathname("/planner/consultant")).toEqual([
       { label: "Rove Apps", href: "/" },
