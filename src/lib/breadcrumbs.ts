@@ -68,6 +68,9 @@ export function breadcrumbsForPathname(
       return [root, settings, { label: "People" }];
     }
     if (pathname.startsWith(ROUTES.monitors)) {
+      if (pathname.startsWith(`${ROUTES.monitors}/`)) {
+        return [root, settings, { label: "Monitors", href: ROUTES.monitors }, { label: "Incidents" }];
+      }
       return [root, settings, { label: "Monitors" }];
     }
     if (pathname.startsWith(ROUTES.consultants)) {

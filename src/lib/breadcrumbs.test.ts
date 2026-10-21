@@ -10,6 +10,15 @@ describe("breadcrumbsForPathname", () => {
     ]);
   });
 
+  it("shows incidents below Monitors", () => {
+    expect(breadcrumbsForPathname("/settings/monitors/abc/incidents")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Settings" },
+      { label: "Monitors", href: "/settings/monitors" },
+      { label: "Incidents" },
+    ]);
+  });
+
   it("uses Consultant as the current planner page", () => {
     expect(breadcrumbsForPathname("/planner/consultant")).toEqual([
       { label: "Rove Apps", href: "/" },

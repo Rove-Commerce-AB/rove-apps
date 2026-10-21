@@ -2,12 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button, ConfirmModal, Dialog, Input, PageHeader, Panel } from "@/components/ui";
 import {
   createMonitor, deleteMonitor, setMonitorEnabled, updateMonitor,
   type Monitor, type MonitorInput,
 } from "@/lib/monitors";
+import { monitorIncidentsHref } from "@/lib/routes";
 
 type CustomerOption = { id: string; name: string };
 type Props = { monitors: Monitor[]; customers: CustomerOption[]; loadError?: string };
@@ -129,6 +131,7 @@ export function MonitorsPageClient({ monitors, customers, loadError }: Props) {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Link href={monitorIncidentsHref(monitor.id)} className="inline-flex h-9 items-center rounded-md border border-form bg-bg-default px-3 text-sm font-medium text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal">Incidents</Link>
                   <Button size="sm" variant="secondary" disabled={pending} onClick={() => toggle(monitor)}>{monitor.enabled ? "Pause" : "Enable"}</Button>
                   <Button size="sm" variant="ghost" aria-label={`Edit ${monitor.name}`} onClick={() => openForm(monitor)}><Pencil className="h-4 w-4" /></Button>
                   <Button size="sm" variant="ghost" aria-label={`Delete ${monitor.name}`} onClick={() => setDeleteTarget(monitor)}><Trash2 className="h-4 w-4 text-danger" /></Button>
