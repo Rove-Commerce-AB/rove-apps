@@ -1,6 +1,6 @@
 import { forwardRef, cloneElement, Children, isValidElement } from "react";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "dangerSecondary" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "danger" | "dangerSecondary" | "warningSecondary" | "successSecondary" | "ghost";
 type ButtonSize = "default" | "sm";
 
 type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -21,6 +21,10 @@ const variantClasses: Record<ButtonVariant, string> = {
     `border border-form bg-bg-default text-text-primary hover:bg-bg-muted ${focusRing}`,
   dangerSecondary:
     `border border-form text-danger bg-bg-default hover:bg-danger/10 ${focusRing}`,
+  warningSecondary:
+    `border border-status-warning bg-status-warning-subtle text-status-warning hover:opacity-80 ${focusRing}`,
+  successSecondary:
+    `border border-status-success bg-status-success-subtle text-status-success hover:opacity-80 ${focusRing}`,
   ghost:
     `text-text-primary hover:bg-bg-muted ${focusRing}`,
 };

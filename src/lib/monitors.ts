@@ -6,6 +6,7 @@ import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { ROUTES } from "@/lib/routes";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import type { PoolClient } from "pg";
+import { compareTextSv } from "@/lib/sort";
 
 export type Monitor = {
   id: string;
@@ -79,13 +80,17 @@ export async function getMonitors(): Promise<Monitor[]> {
             s.last_checked_at, (s.active_incident_id IS NOT NULL) AS active_incident
        FROM monitoring.monitors m
        LEFT JOIN monitoring.monitor_state s ON s.monitor_id = m.id
-      ORDER BY lower(m.customer_name_snapshot), lower(m.name)`
+      ORDER BY lower(m.name), lower(m.customer_name_snapshot), m.id`
   );
   return rows.map((row) => ({
     ...row,
     next_due_at: new Date(row.next_due_at).toISOString(),
     last_checked_at: row.last_checked_at ? new Date(row.last_checked_at).toISOString() : null,
-  }));
+  })).sort((a, b) =>
+    compareTextSv(a.name, b.name) ||
+    compareTextSv(a.customer_name_snapshot, b.customer_name_snapshot) ||
+    a.id.localeCompare(b.id)
+  );
 }
 
 export async function getMonitorCustomers(): Promise<{ id: string; name: string }[]> {
