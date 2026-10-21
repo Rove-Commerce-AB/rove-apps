@@ -25,6 +25,14 @@ export type Monitor = {
   status: "unknown" | "up" | "down";
   last_checked_at: string | null;
   active_incident: boolean;
+  slack_notification_ids: string[];
+};
+
+export type SlackNotificationOption = {
+  id: string;
+  name: string;
+  channel_name: string;
+  default_enabled: boolean;
 };
 
 export type MonitorInput = {
@@ -38,6 +46,7 @@ export type MonitorInput = {
   expectedStatusMin: number;
   expectedStatusMax: number;
   authSecretRef: string | null;
+  slackNotificationIds: string[];
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -65,9 +74,14 @@ function validate(input: MonitorInput): MonitorInput {
     throw new Error("Expected HTTP status range must be within 100–599");
   }
   if (typeof input.enabled !== "boolean") throw new Error("Invalid enabled value");
+  if (!Array.isArray(input.slackNotificationIds) ||
+      input.slackNotificationIds.some((id) => typeof id !== "string" || !uuidPattern.test(id))) {
+    throw new Error("Invalid Slack channel selection");
+  }
   const authSecretRef = input.authSecretRef?.trim() || null;
   if (authSecretRef && authSecretRef.length > 500) throw new Error("Secret reference is too long");
-  return { ...input, name, url, authSecretRef };
+  return { ...input, name, url, authSecretRef,
+    slackNotificationIds: [...new Set(input.slackNotificationIds)] };
 }
 
 export async function getMonitors(): Promise<Monitor[]> {
@@ -77,9 +91,13 @@ export async function getMonitors(): Promise<Monitor[]> {
             m.enabled, m.interval_seconds, m.retry_delay_seconds, m.timeout_ms,
             m.expected_status_min, m.expected_status_max, m.auth_secret_ref,
             m.next_due_at, COALESCE(s.status, 'unknown') AS status,
-            s.last_checked_at, (s.active_incident_id IS NOT NULL) AS active_incident
+            s.last_checked_at, (s.active_incident_id IS NOT NULL) AS active_incident,
+            COALESCE((SELECT array_agg(n.notification_id)
+                        FROM monitoring.monitor_slack_notifications n
+                       WHERE n.monitor_id = m.id AND n.enabled), '{}') AS slack_notification_ids
        FROM monitoring.monitors m
        LEFT JOIN monitoring.monitor_state s ON s.monitor_id = m.id
+      WHERE m.deleted_at IS NULL
       ORDER BY lower(m.name), lower(m.customer_name_snapshot), m.id`
   );
   return rows.map((row) => ({
@@ -91,6 +109,16 @@ export async function getMonitors(): Promise<Monitor[]> {
     compareTextSv(a.customer_name_snapshot, b.customer_name_snapshot) ||
     a.id.localeCompare(b.id)
   );
+}
+
+export async function getSlackNotifications(): Promise<SlackNotificationOption[]> {
+  await assertAdmin();
+  const { rows } = await cloudSqlPool.query<SlackNotificationOption>(
+    `SELECT id, name, channel_name, default_enabled
+       FROM monitoring.slack_notifications
+      ORDER BY lower(channel_name), lower(name), id`
+  );
+  return rows;
 }
 
 export async function getMonitorCustomers(): Promise<{ id: string; name: string }[]> {
@@ -115,6 +143,26 @@ async function audit(client: PoolClient, actorId: string | undefined, action: st
   );
 }
 
+async function saveSlackNotifications(client: PoolClient, monitorId: string, ids: string[]) {
+  const { rows } = await client.query<{ id: string }>(
+    `SELECT id FROM monitoring.slack_notifications WHERE id = ANY($1::uuid[])`, [ids]
+  );
+  if (rows.length !== ids.length) throw new Error("A selected Slack channel no longer exists");
+  await client.query(
+    `DELETE FROM monitoring.monitor_slack_notifications
+      WHERE monitor_id=$1 AND NOT (notification_id = ANY($2::uuid[]))`, [monitorId, ids]
+  );
+  if (ids.length) {
+    await client.query(
+      `INSERT INTO monitoring.monitor_slack_notifications (monitor_id, notification_id, enabled)
+       SELECT $1, selected.id, true FROM unnest($2::uuid[]) AS selected(id)
+       ON CONFLICT (monitor_id, notification_id)
+       DO UPDATE SET enabled=true, alert_on_down=true, alert_on_recovery=true,
+                     updated_at=now()`, [monitorId, ids]
+    );
+  }
+}
+
 export async function createMonitor(raw: MonitorInput): Promise<void> {
   await assertAdmin();
   const actor = await getCurrentAppUser();
@@ -129,6 +177,7 @@ export async function createMonitor(raw: MonitorInput): Promise<void> {
       [input.customerId, customer, input.name, input.url, input.enabled, input.intervalSeconds,
        input.retryDelaySeconds, input.timeoutMs, input.expectedStatusMin, input.expectedStatusMax, input.authSecretRef]
     );
+    await saveSlackNotifications(client, rows[0].id, input.slackNotificationIds);
     await audit(client, actor?.id, "create", rows[0].id);
   });
   revalidatePath(ROUTES.monitors);
@@ -147,12 +196,13 @@ export async function updateMonitor(id: string, raw: MonitorInput): Promise<void
          timeout_ms=$9, expected_status_min=$10, expected_status_max=$11,
          auth_secret_ref=$12, updated_at=now(),
          next_due_at=CASE WHEN NOT enabled AND $6 THEN now() ELSE next_due_at END
-       WHERE id=$1`,
+       WHERE id=$1 AND deleted_at IS NULL`,
       [id, input.customerId, customer, input.name, input.url, input.enabled,
        input.intervalSeconds, input.retryDelaySeconds, input.timeoutMs,
        input.expectedStatusMin, input.expectedStatusMax, input.authSecretRef]
     );
     if (!rowCount) throw new Error("Monitor no longer exists");
+    await saveSlackNotifications(client, id, input.slackNotificationIds);
     await audit(client, actor?.id, "update", id);
   });
   revalidatePath(ROUTES.monitors);
@@ -166,7 +216,7 @@ export async function setMonitorEnabled(id: string, enabled: boolean): Promise<v
     const { rowCount } = await client.query(
       `UPDATE monitoring.monitors SET enabled=$2, updated_at=now(),
          next_due_at=CASE WHEN NOT enabled AND $2 THEN now() ELSE next_due_at END
-       WHERE id=$1`, [id, enabled]
+       WHERE id=$1 AND deleted_at IS NULL`, [id, enabled]
     );
     if (!rowCount) throw new Error("Monitor no longer exists");
     await audit(client, actor?.id, enabled ? "enable" : "disable", id);
@@ -178,17 +228,14 @@ export async function deleteMonitor(id: string): Promise<void> {
   await assertAdmin();
   const actor = await getCurrentAppUser();
   if (!uuidPattern.test(id)) throw new Error("Invalid monitor ID");
-  try {
-    await withCloudSqlTransaction("monitor-delete", async (client) => {
-      const { rowCount } = await client.query(`DELETE FROM monitoring.monitors WHERE id=$1`, [id]);
-      if (!rowCount) throw new Error("Monitor no longer exists");
-      await audit(client, actor?.id, "delete", id);
-    });
-  } catch (error) {
-    if ((error as { code?: string }).code === "23503") {
-      throw new Error("This monitor has history or linked records and cannot be deleted. Disable it instead.");
-    }
-    throw error;
-  }
+  await withCloudSqlTransaction("monitor-delete", async (client) => {
+    const { rowCount } = await client.query(
+      `UPDATE monitoring.monitors
+          SET enabled=false, deleted_at=now(), updated_at=now()
+        WHERE id=$1 AND deleted_at IS NULL`, [id]
+    );
+    if (!rowCount) throw new Error("Monitor no longer exists");
+    await audit(client, actor?.id, "delete", id);
+  });
   revalidatePath(ROUTES.monitors);
 }
