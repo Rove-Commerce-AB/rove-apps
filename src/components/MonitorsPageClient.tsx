@@ -5,10 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button, ConfirmModal, Dialog, Input, PageHeader, Panel } from "@/components/ui";
-import {
-  createMonitor, deleteMonitor, setMonitorEnabled, updateMonitor,
-  type Monitor, type MonitorInput, type SlackNotificationOption,
-} from "@/lib/monitors";
+import type { Monitor, MonitorInput, SlackNotificationOption } from "@/lib/monitors";
 import { monitorIncidentsHref } from "@/lib/routes";
 
 type CustomerOption = { id: string; name: string };
@@ -35,6 +32,19 @@ function inputFromMonitor(monitor: Monitor): MonitorInput {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong. Try again.";
+}
+
+async function changeMonitor(path: string, method: string, body?: MonitorInput | { enabled: boolean }) {
+  const response = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (response.ok) return;
+  const result: unknown = await response.json().catch(() => null);
+  const message = result && typeof result === "object" && "error" in result && typeof result.error === "string"
+    ? result.error : "Could not save monitor. Try again.";
+  throw new Error(message);
 }
 
 export function MonitorsPageClient({ monitors, customers, slackNotifications, loadError }: Props) {
@@ -69,8 +79,8 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
     setError(null);
     startTransition(async () => {
       try {
-        if (editing === "new") await createMonitor(form);
-        else await updateMonitor(editing.id, form);
+        if (editing === "new") await changeMonitor("/api/monitors", "POST", form);
+        else await changeMonitor(`/api/monitors/${editing.id}`, "PUT", form);
         setEditing(null);
         router.refresh();
       } catch (cause) { setError(errorMessage(cause)); }
@@ -81,7 +91,7 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
     setError(null);
     startTransition(async () => {
       try {
-        await setMonitorEnabled(monitor.id, !monitor.enabled);
+        await changeMonitor(`/api/monitors/${monitor.id}`, "PATCH", { enabled: !monitor.enabled });
         router.refresh();
       } catch (cause) { setError(errorMessage(cause)); }
     });
@@ -92,7 +102,7 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
     setError(null);
     startTransition(async () => {
       try {
-        await deleteMonitor(deleteTarget.id);
+        await changeMonitor(`/api/monitors/${deleteTarget.id}`, "DELETE");
         setDeleteTarget(null);
         router.refresh();
       } catch (cause) {
