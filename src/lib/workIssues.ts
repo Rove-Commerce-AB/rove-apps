@@ -34,9 +34,11 @@ import {
   insertWorkIssuePreDeployAction,
   insertWorkIssueReference,
   linkWorkIssueLabel,
+  hideDoneIssuesOnBoard,
   moveWorkIssue,
   removeWorkIssueAssignee,
   reorderWorkIssuesInStatus,
+  unhideHiddenIssuesOnBoard,
   unlinkWorkIssueLabel,
   updateWorkIssueComment,
   updateWorkIssueComponent,
@@ -78,7 +80,12 @@ import {
   type WorkIssueDetailsInput,
   type WorkRequirementKind,
 } from "@/lib/workTypes";
-import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
+import { parseBillingCurrency } from "@/lib/currency";
+import {
+  formatWorkEstimate,
+  parseWorkEstimateUnit,
+  parseWorkEstimateValue,
+} from "@/lib/workEstimate";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
 import { setWorkIssueSprint } from "@/lib/workSprints";
@@ -360,8 +367,10 @@ export async function setWorkIssueEstimate(
   ) {
     throw new Error("Unauthorized");
   }
-  const parsed = parseWorkEstimateHours(rawHours);
-  if (!parsed.ok) throw new Error("Estimate must be a number of hours");
+  const estimateUnit = parseWorkEstimateUnit(board.estimate_unit);
+  const billingCurrency = parseBillingCurrency(board.billing_currency);
+  const parsed = parseWorkEstimateValue(rawHours, estimateUnit);
+  if (!parsed.ok) throw new Error(parsed.message);
   const ok = await updateWorkIssueEstimate(boardId, issueId, parsed.value);
   if (!ok) throw new Error("Issue not found");
   await logEvent(
@@ -370,7 +379,7 @@ export async function setWorkIssueEstimate(
     "estimate",
     parsed.value == null
       ? "cleared the estimate"
-      : `set the estimate to ${formatWorkHours(parsed.value)}`
+      : `set the estimate to ${formatWorkEstimate(parsed.value, estimateUnit, billingCurrency)}`
   );
 }
 
@@ -842,18 +851,33 @@ export async function setWorkIssueStatus(
   }
 
   const statuses = await assertBoardStatus(boardId, status);
+  const target = statuses.find((row) => row.id === status)!;
   const nextOrder = await moveWorkIssue({
     boardId,
     issueId,
     status,
     sortOrder,
     actorAppUserId: actor.id,
-    statusName: statuses.find((row) => row.id === status)!.name,
+    statusName: target.name,
+    clearHiddenFromBoard: !target.isDone,
+    prependIfNoOrder: target.isDone && sortOrder === undefined,
   });
 
   if (nextOrder === null) throw new WorkInputError("Issue not found in this project.");
 
   return nextOrder;
+}
+
+export async function hideDoneIssuesFromBoard(boardId: string): Promise<number> {
+  await requireBoardAccess(boardId);
+  return hideDoneIssuesOnBoard(boardId);
+}
+
+export async function unhideHiddenIssuesFromBoard(
+  boardId: string
+): Promise<number> {
+  await requireBoardAccess(boardId);
+  return unhideHiddenIssuesOnBoard(boardId);
 }
 
 export async function reorderWorkIssues(

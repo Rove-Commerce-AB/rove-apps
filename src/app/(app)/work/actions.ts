@@ -19,8 +19,11 @@ import {
   reorderWorkBoardStatuses,
   restoreWorkBoard,
   saveWorkProjectInstructions,
+  setWorkProjectEstimateUnit,
   setWorkProjectPreferredView,
+  countWorkProjectEstimates,
 } from "@/lib/workBoards";
+import type { WorkEstimateUnit } from "@/lib/workEstimate";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
 import type {
   WorkAccessPerson,
@@ -63,9 +66,11 @@ import {
   setWorkIssuePriority,
   setWorkIssueType,
   updateIssueComment,
+  hideDoneIssuesFromBoard,
   setWorkIssueStatus,
   setWorkIssueTextField,
   setWorkIssueTitle,
+  unhideHiddenIssuesFromBoard,
   uploadIssueFile,
 } from "@/lib/workIssues";
 import {
@@ -216,6 +221,30 @@ export async function setWorkProjectPreferredViewAction(
   }
 }
 
+export async function hideDoneIssuesFromBoardAction(
+  boardId: string
+): Promise<{ ok: true; hiddenCount: number } | Err> {
+  try {
+    const hiddenCount = await hideDoneIssuesFromBoard(boardId);
+    revalidateBoard(boardId);
+    return { ok: true, hiddenCount };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function unhideHiddenIssuesFromBoardAction(
+  boardId: string
+): Promise<{ ok: true; restoredCount: number } | Err> {
+  try {
+    const restoredCount = await unhideHiddenIssuesFromBoard(boardId);
+    revalidateBoard(boardId);
+    return { ok: true, restoredCount };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
 export async function addWorkBoardMemberAction(
   boardId: string,
   appUserId: string
@@ -251,6 +280,39 @@ export async function renameWorkBoardAction(
     revalidatePath(ROUTES.work, "layout");
     revalidatePath(workCustomerHref(renamed.customerId));
     return { ok: true, title: renamed.title };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function countWorkProjectEstimatesAction(
+  boardId: string
+): Promise<{ ok: true; count: number } | Err> {
+  try {
+    const count = await countWorkProjectEstimates(boardId);
+    return { ok: true, count };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setWorkProjectEstimateUnitAction(
+  boardId: string,
+  unit: WorkEstimateUnit
+): Promise<
+  | { ok: true; estimateUnit: WorkEstimateUnit; clearedEstimates: number }
+  | Err
+> {
+  try {
+    const result = await setWorkProjectEstimateUnit(boardId, unit, {
+      clearEstimates: true,
+    });
+    revalidateBoard(boardId);
+    return {
+      ok: true,
+      estimateUnit: result.estimateUnit,
+      clearedEstimates: result.clearedEstimates,
+    };
   } catch (error) {
     return fail(error);
   }

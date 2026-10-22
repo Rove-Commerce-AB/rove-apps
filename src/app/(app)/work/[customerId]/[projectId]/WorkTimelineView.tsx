@@ -850,6 +850,8 @@ export function WorkTimelineView({
                       group={row.group}
                       showEstimates={board.showEstimates}
                       showReportedTime={board.showReportedTime}
+                      estimateUnit={board.estimateUnit}
+                      billingCurrency={board.billingCurrency}
                     />
                   </div>
                   <div style={{ width: chartW, height: GROUP_HEADER_H }} />

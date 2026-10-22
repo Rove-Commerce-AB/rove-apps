@@ -7,6 +7,12 @@ import { fetchConsultantByAppUserId } from "@/lib/consultantsQueries";
 import { getCustomersForAppUser } from "@/lib/customerAppUsers";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
+import { parseBillingCurrency } from "@/lib/currency";
+import {
+  isWorkEstimateUnit,
+  parseWorkEstimateUnit,
+  type WorkEstimateUnit,
+} from "@/lib/workEstimate";
 import { WorkInputError } from "@/lib/workErrors";
 import { compareTextSv } from "@/lib/sort";
 import {
@@ -606,6 +612,7 @@ export async function getWorkBoardView(
       sprintId: row.sprint_id,
       startDate: pgDateToDateOnlyOrNull(row.start_date),
       dueDate: pgDateToDateOnlyOrNull(row.due_date),
+      hiddenFromBoard: row.hidden_from_board_at != null,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }));
@@ -649,6 +656,8 @@ export async function getWorkBoardView(
     customerName: board.customer_name,
     plannerProjectId: board.planner_project_id ?? null,
     plannerProjectName: board.planner_project_name ?? null,
+    estimateUnit: parseWorkEstimateUnit(board.estimate_unit),
+    billingCurrency: parseBillingCurrency(board.billing_currency),
     showEstimates,
     showReportedTime,
     viewerRole: user.role,
@@ -783,6 +792,53 @@ export async function renameWorkBoard(
   if (!trimmed) throw new Error("Title is required");
   const nextTitle = await q.renameWorkBoard(boardId, trimmed);
   return { title: nextTitle, customerId: visible.board.customer_id };
+}
+
+export async function setWorkProjectEstimateUnit(
+  boardId: string,
+  unit: WorkEstimateUnit,
+  options?: { clearEstimates?: boolean }
+): Promise<{
+  estimateUnit: WorkEstimateUnit;
+  clearedEstimates: number;
+  customerId: string;
+}> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) throw new Error("Board not found");
+  if (visible.actor.role === "customer") {
+    throw new Error("Customer users cannot change estimate unit");
+  }
+  if (!isWorkEstimateUnit(unit)) {
+    throw new Error("Invalid estimate unit");
+  }
+  const current = parseWorkEstimateUnit(visible.board.estimate_unit);
+  if (current === unit) {
+    return {
+      estimateUnit: current,
+      clearedEstimates: 0,
+      customerId: visible.board.customer_id,
+    };
+  }
+  const estimateCount = await q.countWorkIssueEstimates(boardId);
+  // Changing unit clears existing estimates (1B: values are unit-specific).
+  const shouldClear =
+    estimateCount > 0 && options?.clearEstimates !== false;
+  await q.updateWorkProjectEstimateUnit(boardId, unit, {
+    clearEstimates: shouldClear,
+  });
+  return {
+    estimateUnit: unit,
+    clearedEstimates: shouldClear ? estimateCount : 0,
+    customerId: visible.board.customer_id,
+  };
+}
+
+export async function countWorkProjectEstimates(
+  boardId: string
+): Promise<number> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) throw new Error("Board not found");
+  return q.countWorkIssueEstimates(boardId);
 }
 
 export async function saveWorkProjectInstructions(projectId: string, agentsMd: string): Promise<string> {

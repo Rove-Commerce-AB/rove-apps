@@ -195,6 +195,43 @@ export async function setPersonApps(
   revalidatePath("/", "layout");
 }
 
+export type WorkBoardAssignmentOption = {
+  id: string;
+  title: string;
+  customerId: string;
+  customerName: string;
+};
+
+/** Active Work projects for the given customers (admin people wizard). */
+export async function listWorkBoardsForCustomerAssignment(
+  customerIds: string[]
+): Promise<WorkBoardAssignmentOption[]> {
+  await assertAdmin();
+  const unique = [...new Set(customerIds)].filter(Boolean);
+  if (unique.length === 0) return [];
+
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    title: string;
+    customer_id: string;
+    customer_name: string;
+  }>(
+    `SELECT b.id, b.title, b.customer_id, c.name AS customer_name
+     FROM work_projects b
+     JOIN customers c ON c.id = b.customer_id
+     WHERE b.customer_id = ANY($1::uuid[])
+       AND b.archived_at IS NULL
+     ORDER BY lower(c.name), lower(b.title)`,
+    [unique]
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+  }));
+}
+
 export async function createUserPerson(input: {
   name: string;
   email: string;
@@ -202,11 +239,13 @@ export async function createUserPerson(input: {
   appKeys: AppKey[];
   consultantId?: string | null;
   customerIds?: string[];
+  workBoardIds?: string[];
 }): Promise<{ key: string; temporaryPassword?: string }> {
   await assertAdmin();
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
   const appKeys = [...new Set(input.appKeys)];
+  const workBoardIds = [...new Set(input.workBoardIds ?? [])];
   if (!email) throw new Error("Email is required");
   if (!isAppUserRole(input.role)) {
     throw new Error("Invalid role");
@@ -224,6 +263,10 @@ export async function createUserPerson(input: {
     }
     if (appKeys.length === 0) throw new Error("Select at least one app");
     if (appKeys.some((key) => !isAppKey(key))) throw new Error("Invalid app");
+  }
+
+  if (workBoardIds.length > 0 && !appKeys.includes("work")) {
+    throw new Error("Work app access is required to assign Work projects");
   }
 
   const temporaryPassword =
@@ -293,12 +336,52 @@ export async function createUserPerson(input: {
           [customerId, id]
         );
       }
+
+      if (workBoardIds.length > 0) {
+        const { rows: boardRows } = await client.query<{
+          id: string;
+          customer_id: string;
+        }>(
+          `SELECT id, customer_id
+           FROM work_projects
+           WHERE id = ANY($1::uuid[])
+             AND archived_at IS NULL`,
+          [workBoardIds]
+        );
+        if (boardRows.length !== workBoardIds.length) {
+          throw new Error("One or more Work projects were not found");
+        }
+        if (input.role === "customer") {
+          if (customerIds.length === 0) {
+            throw new Error(
+              "Select at least one customer before assigning Work projects"
+            );
+          }
+          const customerSet = new Set(customerIds);
+          for (const board of boardRows) {
+            if (!customerSet.has(board.customer_id)) {
+              throw new Error(
+                "Work projects must belong to a selected customer"
+              );
+            }
+          }
+        }
+        for (const boardId of workBoardIds) {
+          await client.query(
+            `INSERT INTO work_project_members (project_id, app_user_id)
+             VALUES ($1, $2)
+             ON CONFLICT DO NOTHING`,
+            [boardId, id]
+          );
+        }
+      }
       return id;
     }
   );
 
   revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.customers);
+  revalidatePath(ROUTES.work);
   return {
     key: `user-${appUserId}`,
     ...(temporaryPassword ? { temporaryPassword } : {}),

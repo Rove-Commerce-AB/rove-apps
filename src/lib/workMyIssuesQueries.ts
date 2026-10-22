@@ -16,9 +16,11 @@ export type WorkMyIssueRow = {
   customer_name: string;
   work_show_estimates_to_customer_users: boolean;
   work_show_reported_time_to_customer_users: boolean;
+  billing_currency: string;
   project_id: string;
   project_title: string;
   project_prefix: string;
+  estimate_unit: string;
   sprint_number: number | null;
   sprint_title: string | null;
   estimate_hours: string | number | null;
@@ -61,9 +63,11 @@ export async function fetchMyWorkIssues(
        c.name AS customer_name,
        c.work_show_estimates_to_customer_users,
        c.work_show_reported_time_to_customer_users,
+       c.billing_currency,
        p.id AS project_id,
        p.title AS project_title,
        p.prefix AS project_prefix,
+       COALESCE(p.estimate_unit, 'hours') AS estimate_unit,
        sp.number AS sprint_number,
        sp.title AS sprint_title,
        i.estimate_hours,

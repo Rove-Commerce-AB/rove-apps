@@ -34,6 +34,7 @@ export type WorkIssueRow = {
   sprint_id: string | null;
   start_date: Date | string | null;
   due_date: Date | string | null;
+  hidden_from_board_at: Date | string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -220,6 +221,7 @@ export async function fetchWorkIssuesForBoard(
        i.sprint_id,
        i.start_date,
        i.due_date,
+       i.hidden_from_board_at,
        i.created_at,
        i.updated_at
      FROM work_issues i
@@ -1240,6 +1242,10 @@ export async function moveWorkIssue(input: {
   sortOrder?: number;
   actorAppUserId: string;
   statusName: string;
+  /** When moving to a non-done column, clear board-hide. */
+  clearHiddenFromBoard?: boolean;
+  /** When sortOrder is omitted, place above visible (non-hidden) cards. */
+  prependIfNoOrder?: boolean;
 }): Promise<number | null> {
   return withCloudSqlTransaction("work-move-issue", async (client) => {
     // Serialize appends with issue creation so concurrent moves get distinct positions.
@@ -1251,15 +1257,43 @@ export async function moveWorkIssue(input: {
 
     if (!previous[0]) return null;
 
+    // Default append at end; when sortOrder is omitted and prependIfNoOrder is set
+    // (Done columns), place above all currently visible (non-hidden) cards.
     const { rows } = await client.query<{ sort_order: number }>(
       `UPDATE work_issues
-       SET status = $3, sort_order = COALESCE($4::int, (
-         SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_issues
-         WHERE project_id = $1 AND status = $3 AND id <> $2
-       ))
+       SET status = $3,
+           sort_order = COALESCE(
+             $4::int,
+             CASE
+               WHEN $6::boolean THEN (
+                 SELECT COALESCE(MIN(sort_order), 0) - 1
+                 FROM work_issues
+                 WHERE project_id = $1
+                   AND status = $3
+                   AND id <> $2
+                   AND hidden_from_board_at IS NULL
+               )
+               ELSE (
+                 SELECT COALESCE(MAX(sort_order), -1) + 1
+                 FROM work_issues
+                 WHERE project_id = $1 AND status = $3 AND id <> $2
+               )
+             END
+           ),
+           hidden_from_board_at = CASE
+             WHEN $5::boolean THEN NULL
+             ELSE hidden_from_board_at
+           END
        WHERE project_id = $1 AND id = $2
        RETURNING sort_order`,
-      [input.boardId, input.issueId, input.status, input.sortOrder ?? null]
+      [
+        input.boardId,
+        input.issueId,
+        input.status,
+        input.sortOrder ?? null,
+        Boolean(input.clearHiddenFromBoard),
+        Boolean(input.prependIfNoOrder),
+      ]
     );
 
     if (previous[0].status !== input.status) {
@@ -1272,6 +1306,38 @@ export async function moveWorkIssue(input: {
 
     return rows[0].sort_order;
   });
+}
+
+/** Hide all currently visible (non-hidden) issues in Done columns. */
+export async function hideDoneIssuesOnBoard(
+  boardId: string
+): Promise<number> {
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE work_issues i
+     SET hidden_from_board_at = now()
+     FROM work_project_statuses s
+     WHERE i.project_id = $1
+       AND i.status = s.id
+       AND s.project_id = $1
+       AND s.is_done = true
+       AND i.hidden_from_board_at IS NULL`,
+    [boardId]
+  );
+  return rowCount ?? 0;
+}
+
+/** Unhide all board-hidden issues on the project. */
+export async function unhideHiddenIssuesOnBoard(
+  boardId: string
+): Promise<number> {
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE work_issues
+     SET hidden_from_board_at = NULL
+     WHERE project_id = $1
+       AND hidden_from_board_at IS NOT NULL`,
+    [boardId]
+  );
+  return rowCount ?? 0;
 }
 
 export async function fetchWorkIssueStatus(

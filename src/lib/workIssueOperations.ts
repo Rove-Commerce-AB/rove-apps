@@ -11,7 +11,12 @@ import { WorkInputError } from "@/lib/workErrors";
 import { workPersonFromUser } from "@/lib/workIssueKey";
 import { fetchWorkBoardMembers, fetchWorkIssueFileForDownload, insertWorkIssueEvent, type WorkUserRow } from "@/lib/workIssuesQueries";
 import { fetchWorkSprintsForBoard, mapWorkSprintRow, type WorkSprintRow } from "@/lib/workSprintsQueries";
-import { WORK_ESTIMATE_HOURS_MAX } from "@/lib/workTime";
+import {
+  formatWorkEstimate,
+  parseWorkEstimateUnit,
+  parseWorkEstimateValue,
+} from "@/lib/workEstimate";
+import { parseBillingCurrency } from "@/lib/currency";
 import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
 
 async function requireProject(actor: WorkActor, projectId: string) {
@@ -169,9 +174,15 @@ export async function setWorkIssuePlanning(
     );
   }
 
-  if (changes.estimateHours != null &&
-      (!Number.isFinite(changes.estimateHours) || changes.estimateHours < 0 || changes.estimateHours > WORK_ESTIMATE_HOURS_MAX)) {
-    throw new WorkInputError(`Estimate must be between 0 and ${WORK_ESTIMATE_HOURS_MAX} hours.`);
+  const estimateUnit = parseWorkEstimateUnit(board.estimate_unit);
+  const billingCurrency = parseBillingCurrency(board.billing_currency);
+
+  if (changes.estimateHours !== undefined && changes.estimateHours !== null) {
+    const check = parseWorkEstimateValue(
+      String(changes.estimateHours),
+      estimateUnit
+    );
+    if (!check.ok) throw new WorkInputError(check.message);
   }
 
   validateScheduleDate(changes.startDate, "Start date");
@@ -202,8 +213,19 @@ export async function setWorkIssuePlanning(
     const oldEstimate = issue.estimate_hours == null ? null : Number(issue.estimate_hours);
     const oldStart = pgDateToDateOnlyOrNull(issue.start_date);
     const oldDue = pgDateToDateOnlyOrNull(issue.due_date);
-    const estimateHours = changes.estimateHours === undefined ? oldEstimate
-      : changes.estimateHours === null ? null : Math.round(changes.estimateHours * 100) / 100;
+    let estimateHours = oldEstimate;
+    if (changes.estimateHours !== undefined) {
+      if (changes.estimateHours === null) {
+        estimateHours = null;
+      } else {
+        const normalized = parseWorkEstimateValue(
+          String(changes.estimateHours),
+          estimateUnit
+        );
+        if (!normalized.ok) throw new WorkInputError(normalized.message);
+        estimateHours = normalized.value;
+      }
+    }
     const sprintId = changes.sprintId === undefined ? issue.sprint_id : changes.sprintId;
     let startDate = changes.startDate === undefined ? oldStart : changes.startDate;
     let dueDate = changes.dueDate === undefined ? oldDue : changes.dueDate;
@@ -228,7 +250,13 @@ export async function setWorkIssuePlanning(
       );
       const parts: string[] = [];
 
-      if (estimateHours !== oldEstimate) parts.push(estimateHours == null ? "cleared estimate" : `set estimate to ${estimateHours}h`);
+      if (estimateHours !== oldEstimate) {
+        parts.push(
+          estimateHours == null
+            ? "cleared estimate"
+            : `set estimate to ${formatWorkEstimate(estimateHours, estimateUnit, billingCurrency)}`
+        );
+      }
       if (sprintId !== issue.sprint_id) parts.push(sprint ? `moved to sprint ${sprint.number}` : "removed from sprint");
       if (startDate !== oldStart || dueDate !== oldDue) parts.push(`set dates to ${startDate ?? "unset"} / ${dueDate ?? "unset"}`);
 

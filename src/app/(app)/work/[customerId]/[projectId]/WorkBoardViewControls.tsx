@@ -16,7 +16,11 @@ import {
   type WorkBoardPriorityFilterId,
   type WorkColumnGroup,
 } from "@/lib/workBoardView";
-import { formatVisibleWorkHours } from "@/lib/workTime";
+import type { BillingCurrency } from "@/lib/currency";
+import {
+  formatVisibleWorkEstimate,
+  type WorkEstimateUnit,
+} from "@/lib/workEstimate";
 import type {
   WorkIssueType,
   WorkLabel,
@@ -244,6 +248,8 @@ export function WorkColumnGroupHeader({
   group,
   showEstimates = true,
   showReportedTime = true,
+  estimateUnit = "hours",
+  billingCurrency = "SEK",
   className = "",
   actions,
 }: {
@@ -251,6 +257,8 @@ export function WorkColumnGroupHeader({
   group: WorkColumnGroup;
   showEstimates?: boolean;
   showReportedTime?: boolean;
+  estimateUnit?: WorkEstimateUnit;
+  billingCurrency?: BillingCurrency;
   className?: string;
   actions?: ReactNode;
 }) {
@@ -266,10 +274,15 @@ export function WorkColumnGroupHeader({
   const hasEstimate = group.issues.some(
     (issue) => issue.estimateHours != null
   );
-  const timeLabel = formatVisibleWorkHours(
+  const timeLabel = formatVisibleWorkEstimate(
     loggedSum,
     hasEstimate ? estimateSum : null,
-    { showEstimates, showReportedTime }
+    {
+      showEstimates,
+      showReportedTime,
+      estimateUnit,
+      currency: billingCurrency,
+    }
   );
   return (
     <div className={`flex min-w-0 items-center gap-1.5 px-0.5 ${className}`.trim()}>

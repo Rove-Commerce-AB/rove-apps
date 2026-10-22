@@ -46,6 +46,7 @@ import {
   clampWorkSprintTitle,
   workSprintLabel,
 } from "@/lib/workSprintLabel";
+import { formatWorkEstimate } from "@/lib/workEstimate";
 import { formatWorkHours } from "@/lib/workTime";
 import { WorkAddIssueInline } from "./WorkAddIssueInline";
 import {
@@ -334,15 +335,23 @@ export function WorkSprintView({
     (issue) => !doneStatusIds.has(issue.status)
   );
   const estimateSum = issueEstimateSum(viewingIssuesAll);
+  const estimatesAreHours = board.estimateUnit === "hours";
   const overCapacity =
-    viewing?.capacityHours != null && estimateSum > viewing.capacityHours;
+    estimatesAreHours &&
+    viewing?.capacityHours != null &&
+    estimateSum > viewing.capacityHours;
   const capacityHours = viewing?.capacityHours ?? null;
   const capacityRatio =
-    capacityHours != null && capacityHours > 0
+    estimatesAreHours && capacityHours != null && capacityHours > 0
       ? estimateSum / capacityHours
       : null;
   const capacityFillPct =
     capacityRatio == null ? 0 : Math.min(100, capacityRatio * 100);
+  const estimateSumLabel = formatWorkEstimate(
+    estimateSum,
+    board.estimateUnit,
+    board.billingCurrency
+  );
 
   function parseCapacityInput(rawValue: string): number | null | false {
     const raw = rawValue.trim().replace(",", ".");
@@ -616,16 +625,18 @@ export function WorkSprintView({
                 <div
                   className="flex w-[11rem] flex-col gap-1"
                   title={
-                    capacityHours == null
-                      ? `${formatWorkHours(estimateSum)} planned · set capacity in Edit`
-                      : overCapacity
-                        ? `${formatWorkHours(estimateSum)} of ${formatWorkHours(capacityHours)} · over capacity`
-                        : `${formatWorkHours(estimateSum)} of ${formatWorkHours(capacityHours)}`
+                    !estimatesAreHours
+                      ? `${estimateSumLabel} planned`
+                      : capacityHours == null
+                        ? `${estimateSumLabel} planned · set capacity in Edit`
+                        : overCapacity
+                          ? `${estimateSumLabel} of ${formatWorkHours(capacityHours)} · over capacity`
+                          : `${estimateSumLabel} of ${formatWorkHours(capacityHours)}`
                   }
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-[11px] font-medium text-text-tertiary">
-                      Capacity
+                      {estimatesAreHours ? "Capacity" : "Estimate"}
                     </span>
                     <span
                       className={`text-[12px] tabular-nums ${
@@ -634,33 +645,39 @@ export function WorkSprintView({
                           : "text-text-primary"
                       }`}
                     >
-                      {capacityHours == null
-                        ? `${formatWorkHours(estimateSum)} / —`
-                        : `${formatWorkHours(estimateSum)} / ${formatWorkHours(capacityHours)}`}
+                      {!estimatesAreHours
+                        ? estimateSumLabel
+                        : capacityHours == null
+                          ? `${estimateSumLabel} / —`
+                          : `${estimateSumLabel} / ${formatWorkHours(capacityHours)}`}
                     </span>
                   </div>
-                  <div
-                    className="h-2 w-full overflow-hidden rounded-full bg-bg-muted"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={
-                      capacityHours == null
-                        ? undefined
-                        : Math.round(capacityFillPct)
-                    }
-                    aria-label="Planned hours versus capacity"
-                  >
+                  {estimatesAreHours ? (
                     <div
-                      className={`h-full rounded-full transition-[width] duration-200 ${
-                        overCapacity ? "bg-danger" : "bg-brand-signal"
-                      }`}
-                      style={{
-                        width:
-                          capacityHours == null ? "0%" : `${capacityFillPct}%`,
-                      }}
-                    />
-                  </div>
+                      className="h-2 w-full overflow-hidden rounded-full bg-bg-muted"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={
+                        capacityHours == null
+                          ? undefined
+                          : Math.round(capacityFillPct)
+                      }
+                      aria-label="Planned hours versus capacity"
+                    >
+                      <div
+                        className={`h-full rounded-full transition-[width] duration-200 ${
+                          overCapacity ? "bg-danger" : "bg-brand-signal"
+                        }`}
+                        style={{
+                          width:
+                            capacityHours == null
+                              ? "0%"
+                              : `${capacityFillPct}%`,
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </>
@@ -1386,6 +1403,8 @@ function SprintColumn({
             <div className="flex w-14 shrink-0 justify-end">
               <WorkCardEstimate
                 estimateHours={issue.estimateHours}
+                estimateUnit={board?.estimateUnit ?? "hours"}
+                billingCurrency={board?.billingCurrency ?? "SEK"}
                 disabled={estimateDisabled}
                 onError={onError}
                 onChange={(value) => onEstimateChange(issue.id, value)}
@@ -1488,6 +1507,8 @@ function SprintColumn({
                     group={group}
                     showEstimates={board?.showEstimates}
                     showReportedTime={board?.showReportedTime}
+                    estimateUnit={board?.estimateUnit}
+                    billingCurrency={board?.billingCurrency}
                     className={groupIndex === 0 ? "" : "mt-1"}
                     actions={
                       onMoveGroupToSprint && group.issues.length > 0 ? (

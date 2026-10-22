@@ -7,16 +7,32 @@ import {
   ConfirmModal,
   DrawerItemList,
   Input,
+  OptionSegments,
   SideDrawer,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui";
+import type { BillingCurrency } from "@/lib/currency";
+import {
+  WORK_ESTIMATE_UNIT_LABELS,
+  type WorkEstimateUnit,
+} from "@/lib/workEstimate";
 import { customerHref } from "@/lib/routes";
 import type { WorkComponent, WorkPerson } from "@/lib/workTypes";
-import { listLinkablePlannerProjectsAction, saveWorkProjectInstructionsAction } from "../../actions";
+import {
+  countWorkProjectEstimatesAction,
+  listLinkablePlannerProjectsAction,
+  saveWorkProjectInstructionsAction,
+} from "../../actions";
 import { WorkBoardMembers } from "./WorkBoardMembers";
+
+const ESTIMATE_UNIT_OPTIONS = [
+  { value: "hours", label: WORK_ESTIMATE_UNIT_LABELS.hours },
+  { value: "currency", label: WORK_ESTIMATE_UNIT_LABELS.currency },
+  { value: "points", label: WORK_ESTIMATE_UNIT_LABELS.points },
+] as const;
 
 export type WorkProjectSettingsTab =
   | "details"
@@ -49,6 +65,9 @@ export function WorkProjectSettingsDrawer({
   onDeleteComponent,
   onArchive,
   onImportFromJira,
+  estimateUnit,
+  billingCurrency,
+  onSetEstimateUnit,
   showDangerTab = true,
 }: {
   open: boolean;
@@ -64,6 +83,9 @@ export function WorkProjectSettingsDrawer({
   members: WorkPerson[];
   people: WorkPerson[];
   components: WorkComponent[];
+  estimateUnit: WorkEstimateUnit;
+  billingCurrency: BillingCurrency;
+  onSetEstimateUnit: (unit: WorkEstimateUnit) => Promise<boolean>;
   onRename: (nextTitle: string) => Promise<boolean>;
   onLinkPlannerProject: (
     plannerProjectId: string
@@ -96,15 +118,23 @@ export function WorkProjectSettingsDrawer({
   const [linkDraft, setLinkDraft] = useState("");
   const [linking, setLinking] = useState(false);
   const [loadingLinkable, setLoadingLinkable] = useState(false);
+  const [estimateUnitDraft, setEstimateUnitDraft] =
+    useState<WorkEstimateUnit>(estimateUnit);
+  const [pendingEstimateUnit, setPendingEstimateUnit] =
+    useState<WorkEstimateUnit | null>(null);
+  const [estimateChangeCount, setEstimateChangeCount] = useState(0);
+  const [savingEstimateUnit, setSavingEstimateUnit] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setNameDraft(title);
+    setEstimateUnitDraft(estimateUnit);
+    setPendingEstimateUnit(null);
     setTab(
       !showDangerTab && initialTab === "danger" ? "details" : initialTab
     );
     setNewComponentName("");
-  }, [open, title, initialTab, showDangerTab]);
+  }, [open, title, estimateUnit, initialTab, showDangerTab]);
 
   useEffect(() => {
     if (!showDangerTab && tab === "danger") setTab("details");
@@ -146,6 +176,40 @@ export function WorkProjectSettingsDrawer({
     const ok = await onRename(trimmed);
     setSavingName(false);
     if (!ok) setNameDraft(title);
+  }
+
+  async function requestEstimateUnit(next: string) {
+    const unit = next as WorkEstimateUnit;
+    if (unit === estimateUnitDraft || savingEstimateUnit) return;
+    if (unit === estimateUnit) {
+      setEstimateUnitDraft(unit);
+      return;
+    }
+    setSavingEstimateUnit(true);
+    const counted = await countWorkProjectEstimatesAction(projectId);
+    setSavingEstimateUnit(false);
+    if (!counted.ok) return;
+    if (counted.count > 0) {
+      setEstimateChangeCount(counted.count);
+      setPendingEstimateUnit(unit);
+      return;
+    }
+    setEstimateUnitDraft(unit);
+    setSavingEstimateUnit(true);
+    const ok = await onSetEstimateUnit(unit);
+    setSavingEstimateUnit(false);
+    if (!ok) setEstimateUnitDraft(estimateUnit);
+  }
+
+  async function confirmEstimateUnitChange() {
+    if (!pendingEstimateUnit) return;
+    const unit = pendingEstimateUnit;
+    setPendingEstimateUnit(null);
+    setEstimateUnitDraft(unit);
+    setSavingEstimateUnit(true);
+    const ok = await onSetEstimateUnit(unit);
+    setSavingEstimateUnit(false);
+    if (!ok) setEstimateUnitDraft(estimateUnit);
   }
 
   async function submitNewComponent(name: string) {
@@ -232,6 +296,28 @@ export function WorkProjectSettingsDrawer({
                 disabled={savingName}
                 modalStyle
               />
+
+              <section className="space-y-2">
+                <h2 className="text-sm font-medium text-text-primary">
+                  Estimate unit
+                </h2>
+                <OptionSegments
+                  name="Estimate unit"
+                  value={estimateUnitDraft}
+                  onChange={(value) => {
+                    void requestEstimateUnit(value);
+                  }}
+                  disabled={savingEstimateUnit || showDangerTab === false}
+                  options={[...ESTIMATE_UNIT_OPTIONS]}
+                />
+                <p className="text-sm text-text-secondary">
+                  {estimateUnitDraft === "currency"
+                    ? `Estimates use the customer currency (${billingCurrency}).`
+                    : estimateUnitDraft === "points"
+                      ? "Estimates are story points (whole numbers)."
+                      : "Estimates are in hours."}
+                </p>
+              </section>
 
               <section className="space-y-3">
                 <div className="flex items-baseline justify-between gap-3">
@@ -431,6 +517,25 @@ export function WorkProjectSettingsDrawer({
           const ok = await onDeleteComponent(deletingComponent);
           setDeleting(false);
           if (ok) setDeletingComponent(null);
+        }}
+      />
+
+      <ConfirmModal
+        isOpen={pendingEstimateUnit != null}
+        title="Change estimate unit?"
+        message={
+          pendingEstimateUnit
+            ? `${estimateChangeCount} issue${estimateChangeCount === 1 ? "" : "s"} have estimates. Changing to ${WORK_ESTIMATE_UNIT_LABELS[pendingEstimateUnit].toLowerCase()} will clear those estimates.`
+            : ""
+        }
+        confirmLabel={savingEstimateUnit ? "Changing…" : "Change and clear"}
+        variant="danger"
+        onClose={() => {
+          if (savingEstimateUnit) return;
+          setPendingEstimateUnit(null);
+        }}
+        onConfirm={() => {
+          void confirmEstimateUnitChange();
         }}
       />
     </>

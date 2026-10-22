@@ -7,11 +7,14 @@ import {
   useRef,
   useState,
   useTransition,
+  type CSSProperties,
   type DragEvent,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
+  Eye,
+  EyeOff,
   GripVertical,
   Link2,
   MoreHorizontal,
@@ -63,11 +66,17 @@ import {
   reorderWorkBoardStatusesAction,
   reorderWorkIssuesInStatusAction,
   linkWorkProjectToPlannerProjectAction,
+  setWorkProjectEstimateUnitAction,
+  hideDoneIssuesFromBoardAction,
+  unhideHiddenIssuesFromBoardAction,
   setWorkProjectPreferredViewAction,
   updateWorkIssueEstimateAction,
   updateWorkIssueOwnerAction,
   updateWorkIssueTypeAction,
 } from "../../actions";
+import { formatWorkEstimate } from "@/lib/workEstimate";
+import type { WorkEstimateUnit } from "@/lib/workEstimate";
+import type { BillingCurrency } from "@/lib/currency";
 import {
   collectBoardComponents,
   collectOwnerFilterPeople,
@@ -106,7 +115,6 @@ import { WorkSprintView } from "./WorkSprintView";
 import { WorkTimelineView } from "./WorkTimelineView";
 import { WorkTimeGraph } from "./WorkTimeGraph";
 import { isIssueBlocked } from "@/lib/workIssueRelations";
-import { formatWorkHours } from "@/lib/workTime";
 
 type BoardMode = "board" | "sprint" | "timeline";
 
@@ -175,33 +183,47 @@ function computeMove(
   issueId: string,
   status: WorkIssueStatus,
   beforeIssueId: string | null,
-  visibleIds: Set<string>
+  visibleIds: Set<string>,
+  options?: { prependOnEnter?: boolean }
 ): { issues: WorkIssue[]; orderedIds: string[] } | null {
   const moving = issues.find((issue) => issue.id === issueId);
   if (!moving) return null;
   const rest = issues
     .filter((issue) => issue.id !== issueId)
     .map((issue) => ({ ...issue }));
-  const column = issuesInStatus(rest, status).filter((issue) =>
+  const inStatus = issuesInStatus(rest, status).filter((issue) =>
     visibleIds.has(issue.id)
   );
+  // Hidden Done cards stay in DB but must not affect insert position.
+  const column = inStatus.filter((issue) => !issue.hiddenFromBoard);
+  const hiddenInColumn = inStatus.filter((issue) => issue.hiddenFromBoard);
+  const enteringColumn = moving.status !== status;
   const insertAt = beforeIssueId
     ? Math.max(
         0,
         column.findIndex((issue) => issue.id === beforeIssueId)
       )
-    : column.length;
+    : enteringColumn && options?.prependOnEnter
+      ? 0
+      : column.length;
   const safeIndex = insertAt < 0 ? column.length : insertAt;
-  const moved = { ...moving, status, sortOrder: safeIndex };
+  const moved = {
+    ...moving,
+    status,
+    sortOrder: safeIndex,
+    hiddenFromBoard: false,
+  };
   const orderedIds = [
     ...column.slice(0, safeIndex),
     moved,
     ...column.slice(safeIndex),
+    ...hiddenInColumn,
   ].map((issue) => issue.id);
   if (moving.status === status) {
-    const previousIds = issuesInStatus(issues, status)
-      .filter((issue) => visibleIds.has(issue.id))
-      .map((issue) => issue.id);
+    const previousIds = [
+      ...column.map((issue) => issue.id),
+      ...hiddenInColumn.map((issue) => issue.id),
+    ];
     if (
       previousIds.length === orderedIds.length &&
       previousIds.every((id, index) => id === orderedIds[index])
@@ -213,7 +235,7 @@ function computeMove(
     orderedIds,
     issues: [...rest, moved].map((issue) => {
       const index = orderedIds.indexOf(issue.id);
-      if (issue.id === issueId) return { ...moved, sortOrder: safeIndex };
+      if (issue.id === issueId) return { ...moved, sortOrder: index };
       if (index >= 0) return { ...issue, status, sortOrder: index };
       return issue;
     }),
@@ -352,11 +374,22 @@ export function WorkBoardPageClient({
   const [plannerProjectName, setPlannerProjectName] = useState(
     board.plannerProjectName
   );
+  const [estimateUnit, setEstimateUnit] = useState<WorkEstimateUnit>(
+    board.estimateUnit
+  );
+  const [billingCurrency, setBillingCurrency] = useState<BillingCurrency>(
+    board.billingCurrency
+  );
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] =
     useState<WorkProjectSettingsTab>("details");
   const [jiraImportOpen, setJiraImportOpen] = useState(false);
+  const [doneCardMotion, setDoneCardMotion] = useState<{
+    mode: "hiding" | "showing";
+    ids: string[];
+  } | null>(null);
+  const doneCardMotionTimerRef = useRef<number | null>(null);
   const [renamingStatusId, setRenamingStatusId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [draggingStatusId, setDraggingStatusId] = useState<string | null>(null);
@@ -499,6 +532,11 @@ export function WorkBoardPageClient({
   }, [board.statuses]);
 
   useEffect(() => {
+    setEstimateUnit(board.estimateUnit);
+    setBillingCurrency(board.billingCurrency);
+  }, [board.estimateUnit, board.billingCurrency]);
+
+  useEffect(() => {
     setBoardTitle(board.title);
   }, [board.title]);
 
@@ -557,6 +595,101 @@ export function WorkBoardPageClient({
     ]
   );
 
+  function clearDoneCardMotionTimer() {
+    if (doneCardMotionTimerRef.current != null) {
+      window.clearTimeout(doneCardMotionTimerRef.current);
+      doneCardMotionTimerRef.current = null;
+    }
+  }
+
+  function doneCardMotionDurationMs(
+    mode: "hiding" | "showing",
+    count: number
+  ) {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return 0;
+    }
+    const stagger = mode === "hiding" ? 35 : 40;
+    const base = mode === "hiding" ? 260 : 300;
+    return base + Math.max(0, count - 1) * stagger;
+  }
+
+  function hideDoneIssuesFromBoard(status: WorkIssueStatus) {
+    if (doneCardMotion) return;
+    const ids = issuesRef.current
+      .filter(
+        (issue) =>
+          issue.status === status &&
+          visibleIds.has(issue.id) &&
+          !issue.hiddenFromBoard
+      )
+      .map((issue) => issue.id);
+    if (ids.length === 0) return;
+
+    clearDoneCardMotionTimer();
+    setDoneCardMotion({ mode: "hiding", ids });
+    setError(null);
+    void hideDoneIssuesFromBoardAction(board.id).then((result) => {
+      if (result.ok) return;
+      clearDoneCardMotionTimer();
+      setDoneCardMotion(null);
+      setError(result.error);
+      router.refresh();
+    });
+
+    doneCardMotionTimerRef.current = window.setTimeout(() => {
+      doneCardMotionTimerRef.current = null;
+      setIssues((current) => {
+        const next = current.map((issue) =>
+          ids.includes(issue.id) ? { ...issue, hiddenFromBoard: true } : issue
+        );
+        issuesRef.current = next;
+        return next;
+      });
+      setDoneCardMotion(null);
+      router.refresh();
+    }, doneCardMotionDurationMs("hiding", ids.length));
+  }
+
+  function showHiddenDoneIssuesFromBoard() {
+    if (doneCardMotion) return;
+    const ids = issuesRef.current
+      .filter((issue) => issue.hiddenFromBoard && visibleIds.has(issue.id))
+      .map((issue) => issue.id);
+    if (ids.length === 0) return;
+
+    clearDoneCardMotionTimer();
+    setIssues((current) => {
+      const next = current.map((issue) =>
+        ids.includes(issue.id) ? { ...issue, hiddenFromBoard: false } : issue
+      );
+      issuesRef.current = next;
+      return next;
+    });
+    setDoneCardMotion({ mode: "showing", ids });
+    setError(null);
+    void unhideHiddenIssuesFromBoardAction(board.id).then((result) => {
+      if (result.ok) {
+        router.refresh();
+        return;
+      }
+      setError(result.error);
+      router.refresh();
+    });
+
+    doneCardMotionTimerRef.current = window.setTimeout(() => {
+      doneCardMotionTimerRef.current = null;
+      setDoneCardMotion(null);
+    }, doneCardMotionDurationMs("showing", ids.length));
+  }
+
+  useEffect(() => {
+    return () => clearDoneCardMotionTimer();
+  }, []);
+
   function openIssue(issueId: string, options?: { tab?: string }) {
     router.push(
       workIssueHref(board.customerId, board.id, issueId, options),
@@ -577,16 +710,24 @@ export function WorkBoardPageClient({
     status: WorkIssueStatus,
     beforeIssueId: string | null
   ) {
+    const targetIsDone =
+      statuses.find((column) => column.id === status)?.isDone ?? false;
     const result = computeMove(
       issuesRef.current,
       issueId,
       status,
       beforeIssueId,
-      visibleIds
+      visibleIds,
+      { prependOnEnter: targetIsDone }
     );
     if (!result) return;
-    issuesRef.current = result.issues;
-    setIssues(result.issues);
+    const nextIssues = targetIsDone
+      ? result.issues
+      : result.issues.map((issue) =>
+          issue.id === issueId ? { ...issue, hiddenFromBoard: false } : issue
+        );
+    issuesRef.current = nextIssues;
+    setIssues(nextIssues);
     setError(null);
     void moveWorkIssueAction({
       boardId: board.id,
@@ -1142,7 +1283,13 @@ export function WorkBoardPageClient({
 
       {boardMode === "sprint" ? (
         <WorkSprintView
-          board={{ ...board, issues, sprints }}
+          board={{
+            ...board,
+            issues,
+            sprints,
+            estimateUnit,
+            billingCurrency,
+          }}
           issues={issues}
           sprints={sprints}
           doneStatusIds={new Set(statuses.filter((s) => s.isDone).map((s) => s.id))}
@@ -1164,7 +1311,13 @@ export function WorkBoardPageClient({
         />
       ) : boardMode === "timeline" ? (
         <WorkTimelineView
-          board={{ ...board, issues, sprints }}
+          board={{
+            ...board,
+            issues,
+            sprints,
+            estimateUnit,
+            billingCurrency,
+          }}
           issues={issues}
           sprints={sprints}
           onIssuesChange={(next) => {
@@ -1253,15 +1406,22 @@ export function WorkBoardPageClient({
       >
         {statuses.map((column, columnIndex) => {
           const status = column.id;
-          const columnIssues = issuesInStatus(issues, status).filter((issue) =>
-            visibleIds.has(issue.id)
+          const allColumnIssues = issuesInStatus(issues, status).filter(
+            (issue) => visibleIds.has(issue.id)
           );
+          const isDone = column.isDone;
+          const visibleColumnIssues = isDone
+            ? allColumnIssues.filter((issue) => !issue.hiddenFromBoard)
+            : allColumnIssues;
+          const hiddenDoneCount = isDone
+            ? allColumnIssues.filter((issue) => issue.hiddenFromBoard).length
+            : 0;
+          const columnIssues = visibleColumnIssues;
           const issueGroups = columnIssueGroups(columnIssues, groupBy);
-          const columnEstimateSum = columnIssues.reduce(
+          const columnEstimateSum = visibleColumnIssues.reduce(
             (sum, issue) => sum + (issue.estimateHours ?? 0),
             0
           );
-          const isDone = column.isDone;
           const isDragOver = dragOverStatus === status && !draggingStatusId;
           const isFirstColumn = columnIndex === 0;
           const isLastColumn = columnIndex === statuses.length - 1;
@@ -1400,10 +1560,42 @@ export function WorkBoardPageClient({
                   {board.showEstimates && columnEstimateSum > 0 ? (
                     <span
                       className="tabular-nums text-caption text-current/55"
-                      title={`Total estimate ${formatWorkHours(columnEstimateSum)}`}
+                      title={`Total estimate ${formatWorkEstimate(columnEstimateSum, estimateUnit, billingCurrency)}`}
                     >
-                      {formatWorkHours(columnEstimateSum)}
+                      {formatWorkEstimate(
+                        columnEstimateSum,
+                        estimateUnit,
+                        billingCurrency
+                      )}
                     </span>
+                  ) : null}
+                  {isDone &&
+                  visibleColumnIssues.length > 0 &&
+                  doneCardMotion?.mode !== "hiding" ? (
+                    <button
+                      type="button"
+                      aria-label="Hide all done issues from the board"
+                      title="Hide all in Done"
+                      disabled={doneCardMotion != null}
+                      className="inline-flex shrink-0 items-center rounded-sm p-0.5 text-current/45 hover:bg-current/10 hover:text-current disabled:opacity-40"
+                      onClick={() => hideDoneIssuesFromBoard(status)}
+                    >
+                      <EyeOff className="h-4 w-4" aria-hidden />
+                    </button>
+                  ) : null}
+                  {isDone &&
+                  hiddenDoneCount > 0 &&
+                  doneCardMotion?.mode !== "showing" ? (
+                    <button
+                      type="button"
+                      aria-label={`Show ${hiddenDoneCount} hidden done issues`}
+                      title={`Show ${hiddenDoneCount} hidden`}
+                      disabled={doneCardMotion != null}
+                      className="inline-flex shrink-0 items-center rounded-sm p-0.5 text-current/45 hover:bg-current/10 hover:text-current disabled:opacity-40"
+                      onClick={() => showHiddenDoneIssuesFromBoard()}
+                    >
+                      <Eye className="h-4 w-4" aria-hidden />
+                    </button>
                   ) : null}
                   <button
                     type="button"
@@ -1462,6 +1654,20 @@ export function WorkBoardPageClient({
                 }}
               >
               <ul data-issue-list className="relative flex flex-col gap-2 px-2 pt-2 pb-6">
+                {isDone &&
+                visibleColumnIssues.length === 0 &&
+                hiddenDoneCount > 0 ? (
+                  <li className="work-done-empty-hint px-1 py-6 text-center">
+                    <button
+                      type="button"
+                      disabled={doneCardMotion != null}
+                      className="text-sm text-text-secondary underline-offset-2 hover:text-text-primary hover:underline disabled:opacity-40"
+                      onClick={() => showHiddenDoneIssuesFromBoard()}
+                    >
+                      {hiddenDoneCount} hidden · Show
+                    </button>
+                  </li>
+                ) : null}
                 {issueGroups.map((group, groupIndex) => (
                   <Fragment key={group.key}>
                     {groupBy !== "none" ? (
@@ -1471,6 +1677,8 @@ export function WorkBoardPageClient({
                           group={group}
                           showEstimates={board.showEstimates}
                           showReportedTime={board.showReportedTime}
+                          estimateUnit={estimateUnit}
+                          billingCurrency={billingCurrency}
                           className={groupIndex === 0 ? "" : "mt-1"}
                         />
                       </li>
@@ -1480,11 +1688,30 @@ export function WorkBoardPageClient({
                     issueDropBefore?.status === status &&
                     issueDropBefore.beforeIssueId === issue.id &&
                     dragIssueIdRef.current !== issue.id;
+                  const motionIndex =
+                    isDone && doneCardMotion
+                      ? doneCardMotion.ids.indexOf(issue.id)
+                      : -1;
+                  const isHidingCard =
+                    doneCardMotion?.mode === "hiding" && motionIndex >= 0;
+                  const isShowingCard =
+                    doneCardMotion?.mode === "showing" && motionIndex >= 0;
                   return (
                   <li
                     key={`${group.key}-${issue.id}`}
                     data-issue-id={issue.id}
-                    className="relative"
+                    className={
+                      isDone
+                        ? `work-done-card-motion relative${
+                            isHidingCard ? " is-hiding" : ""
+                          }${isShowingCard ? " is-showing" : ""}`
+                        : "relative"
+                    }
+                    style={
+                      motionIndex >= 0
+                        ? ({ "--done-i": motionIndex } as CSSProperties)
+                        : undefined
+                    }
                     onDragOver={(event) => {
                       if (handleStatusDragOver(event, status)) return;
                       previewIssueDrop(
@@ -1508,6 +1735,7 @@ export function WorkBoardPageClient({
                       );
                     }}
                   >
+                    <div className={isDone ? "work-done-card-motion-inner" : undefined}>
                     {showInsertBefore ? (
                       <span
                         className="pointer-events-none absolute -top-1.5 right-0 left-0 h-0.5 rounded-full bg-brand-signal"
@@ -1699,6 +1927,8 @@ export function WorkBoardPageClient({
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <WorkCardEstimate
                               estimateHours={issue.estimateHours}
+                              estimateUnit={estimateUnit}
+                              billingCurrency={billingCurrency}
                               onError={setError}
                               onChange={(value) => {
                                 noteOptimisticIssuePatch(
@@ -1740,9 +1970,12 @@ export function WorkBoardPageClient({
                             board.showEstimates ? issue.estimateHours : null
                           }
                           loggedHours={issue.loggedHours}
+                          estimateUnit={estimateUnit}
+                          billingCurrency={billingCurrency}
                         />
                       ) : null}
                     </article>
+                    </div>
                   </li>
                   );
                     })}
@@ -1862,7 +2095,33 @@ export function WorkBoardPageClient({
         members={members}
         people={board.people}
         components={components}
+        estimateUnit={estimateUnit}
+        billingCurrency={billingCurrency}
         showDangerTab={board.viewerRole !== "customer"}
+        onSetEstimateUnit={async (unit) => {
+          const previousUnit = estimateUnit;
+          setEstimateUnit(unit);
+          if (unit !== previousUnit) {
+            setIssues((current) => {
+              const next = current.map((issue) => ({
+                ...issue,
+                estimateHours: null,
+              }));
+              issuesRef.current = next;
+              return next;
+            });
+          }
+          const result = await setWorkProjectEstimateUnitAction(board.id, unit);
+          if (!result.ok) {
+            setEstimateUnit(previousUnit);
+            setError(result.error);
+            router.refresh();
+            return false;
+          }
+          setEstimateUnit(result.estimateUnit);
+          router.refresh();
+          return true;
+        }}
         onRename={applyBoardRename}
         onLinkPlannerProject={async (nextPlannerProjectId) => {
           const result = await linkWorkProjectToPlannerProjectAction(
@@ -2180,6 +2439,8 @@ export function WorkBoardPageClient({
               issues,
               plannerProjectId,
               plannerProjectName,
+              estimateUnit,
+              billingCurrency,
             }}
             issue={selected}
             initialTab={selectedIssueTab}

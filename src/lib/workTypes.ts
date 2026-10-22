@@ -1,4 +1,6 @@
+import type { BillingCurrency } from "@/lib/currency";
 import type { AppUserRole } from "@/lib/peopleTypes";
+import type { WorkEstimateUnit } from "@/lib/workEstimate";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkIssueRelations } from "@/lib/workIssueRelations";
 
@@ -206,6 +208,8 @@ export type WorkIssue = {
   sprintId: string | null;
   startDate: string | null;
   dueDate: string | null;
+  /** Soft-hidden from the board (typically after Done review). */
+  hiddenFromBoard: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -220,6 +224,10 @@ export type WorkBoardView = {
   /** Linked Planner `projects.id`, when set. */
   plannerProjectId: string | null;
   plannerProjectName: string | null;
+  /** How estimate values on this project are interpreted. */
+  estimateUnit: WorkEstimateUnit;
+  /** Customer billing currency — used when estimateUnit is currency. */
+  billingCurrency: BillingCurrency;
   /**
    * Whether the current viewer may see estimates.
    * False for customer-role users when the customer setting is off.

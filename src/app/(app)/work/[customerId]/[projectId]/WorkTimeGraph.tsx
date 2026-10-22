@@ -1,5 +1,11 @@
+import { formatWorkHours } from "@/lib/workTime";
 import {
-  formatWorkHoursPair,
+  formatWorkEstimatePair,
+  workEstimateComparesToLogged,
+  type WorkEstimateUnit,
+} from "@/lib/workEstimate";
+import type { BillingCurrency } from "@/lib/currency";
+import {
   hasWorkTimeToShow,
   workTimeBarPercents,
 } from "@/lib/workTime";
@@ -7,44 +13,59 @@ import {
 type Props = {
   estimateHours: number | null;
   loggedHours: number;
+  estimateUnit?: WorkEstimateUnit;
+  billingCurrency?: BillingCurrency;
   size?: "card" | "drawer";
 };
 
 export function WorkTimeGraph({
   estimateHours,
   loggedHours,
+  estimateUnit = "hours",
+  billingCurrency = "SEK",
   size = "card",
 }: Props) {
-  if (!hasWorkTimeToShow(estimateHours, loggedHours) && size === "card") {
+  const compares = workEstimateComparesToLogged(estimateUnit);
+  const estimateForBar = compares ? estimateHours : null;
+  const hasLogged = loggedHours > 0;
+  const hasEstimate =
+    estimateHours != null && estimateHours > 0 && compares;
+
+  if (size === "card") {
+    if (!hasLogged && !hasEstimate) return null;
+  } else if (!hasWorkTimeToShow(estimateForBar, loggedHours)) {
     return null;
   }
 
   const { loggedPct, estimatePct, over } = workTimeBarPercents(
     loggedHours,
-    estimateHours
+    estimateForBar
   );
-  const pair = formatWorkHoursPair(loggedHours, estimateHours);
+  const pair = compares
+    ? formatWorkEstimatePair(
+        loggedHours,
+        estimateHours,
+        estimateUnit,
+        billingCurrency
+      )
+    : formatWorkHours(loggedHours);
   const loggedFill = over ? "bg-warning" : "bg-brand-signal";
 
   if (size === "card") {
     return (
       <div
         className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden"
-        title={`Logged ${pair}`}
-        aria-label={`Logged ${pair}`}
+        title={compares ? `Logged ${pair}` : `Logged ${pair}`}
+        aria-label={compares ? `Logged ${pair}` : `Logged ${pair}`}
       >
         <WorkTimeBar
           estimatePct={estimatePct}
           loggedPct={loggedPct}
           loggedFill={loggedFill}
-          showEstimateTrack={estimateHours != null && estimateHours > 0}
+          showEstimateTrack={hasEstimate}
         />
       </div>
     );
-  }
-
-  if (!hasWorkTimeToShow(estimateHours, loggedHours)) {
-    return null;
   }
 
   return (

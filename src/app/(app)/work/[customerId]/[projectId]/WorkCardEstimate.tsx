@@ -2,18 +2,25 @@
 
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Clock } from "lucide-react";
+import type { BillingCurrency } from "@/lib/currency";
 import {
-  formatWorkHours,
-  parseWorkEstimateHours,
-} from "@/lib/workTime";
+  formatWorkEstimate,
+  parseWorkEstimateValue,
+  workEstimateSuffix,
+  type WorkEstimateUnit,
+} from "@/lib/workEstimate";
 
 export function WorkCardEstimate({
   estimateHours,
+  estimateUnit = "hours",
+  billingCurrency = "SEK",
   disabled = false,
   onChange,
   onError,
 }: {
   estimateHours: number | null;
+  estimateUnit?: WorkEstimateUnit;
+  billingCurrency?: BillingCurrency;
   disabled?: boolean;
   onChange: (value: number | null) => void;
   onError?: (message: string) => void;
@@ -22,6 +29,11 @@ export function WorkCardEstimate({
     estimateHours == null ? "" : String(estimateHours)
   );
   const [editing, setEditing] = useState(false);
+  const suffix = workEstimateSuffix(estimateUnit, billingCurrency);
+  const formatted =
+    estimateHours == null
+      ? null
+      : formatWorkEstimate(estimateHours, estimateUnit, billingCurrency);
 
   useEffect(() => {
     if (editing) return;
@@ -33,11 +45,11 @@ export function WorkCardEstimate({
   }
 
   function commit() {
-    const parsed = parseWorkEstimateHours(draft);
+    const parsed = parseWorkEstimateValue(draft, estimateUnit);
     if (!parsed.ok) {
       setDraft(estimateHours == null ? "" : String(estimateHours));
       setEditing(false);
-      onError?.("Estimate must be a number of hours");
+      onError?.(parsed.message);
       return;
     }
     setDraft(parsed.value == null ? "" : String(parsed.value));
@@ -57,10 +69,10 @@ export function WorkCardEstimate({
         <Clock className="h-3 w-3 shrink-0 text-text-tertiary" aria-hidden />
         <input
           type="text"
-          inputMode="decimal"
+          inputMode={estimateUnit === "points" ? "numeric" : "decimal"}
           autoFocus
           disabled={disabled}
-          aria-label="Estimate in hours"
+          aria-label={`Estimate in ${suffix}`}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
@@ -76,9 +88,9 @@ export function WorkCardEstimate({
               setEditing(false);
             }
           }}
-          className="w-6 border-0 bg-transparent p-0 text-right text-caption tabular-nums text-text-primary focus:outline-none disabled:opacity-50"
+          className="w-10 border-0 bg-transparent p-0 text-right text-caption tabular-nums text-text-primary focus:outline-none disabled:opacity-50"
         />
-        <span className="text-caption text-text-tertiary">h</span>
+        <span className="text-caption text-text-tertiary">{suffix}</span>
       </label>
     );
   }
@@ -88,14 +100,12 @@ export function WorkCardEstimate({
       type="button"
       disabled={disabled}
       title={
-        estimateHours == null
+        formatted == null
           ? "Set estimate"
-          : `Estimate ${formatWorkHours(estimateHours)} · click to edit`
+          : `Estimate ${formatted} · click to edit`
       }
       aria-label={
-        estimateHours == null
-          ? "Set estimate"
-          : `Estimate ${formatWorkHours(estimateHours)}`
+        formatted == null ? "Set estimate" : `Estimate ${formatted}`
       }
       onClick={(event) => {
         stopCard(event);
@@ -110,10 +120,10 @@ export function WorkCardEstimate({
           : "bg-bg-muted text-text-secondary hover:bg-border-subtle hover:text-text-primary"
       }`}
     >
-      {estimateHours == null ? (
+      {formatted == null ? (
         <Clock className="h-3 w-3 shrink-0" aria-hidden />
       ) : (
-        formatWorkHours(estimateHours)
+        formatted
       )}
     </button>
   );

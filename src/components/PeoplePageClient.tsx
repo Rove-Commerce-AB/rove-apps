@@ -21,12 +21,15 @@ import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { ConsultantDetailClient } from "@/components/ConsultantDetailClient";
 import { PersonCustomersTab, type PersonCustomerOption } from "@/components/PersonCustomersTab";
 import { PersonMcpAccessTab } from "@/components/PersonMcpAccessTab";
+import { PersonLoginHistory } from "@/components/PersonLoginHistory";
 import { TemporaryPasswordReveal } from "@/components/TemporaryPasswordReveal";
 import {
   createConsultantProfileForUser,
   createUserPerson,
   deletePerson,
+  listWorkBoardsForCustomerAssignment,
   setPersonApps,
+  type WorkBoardAssignmentOption,
 } from "@/lib/people";
 import { setCustomerTemporaryPassword } from "@/lib/customerPasswords";
 import { updateConsultant } from "@/lib/consultantsClient";
@@ -238,6 +241,9 @@ function UserFormDialog({
     kind === "customer" ? [] : ["planner", "time_report", "insights", "support"]
   );
   const [customerIds, setCustomerIds] = useState<string[]>([]);
+  const [workBoardIds, setWorkBoardIds] = useState<string[]>([]);
+  const [workBoards, setWorkBoards] = useState<WorkBoardAssignmentOption[]>([]);
+  const [workBoardsLoading, setWorkBoardsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [revealed, setRevealed] = useState<{
@@ -247,19 +253,68 @@ function UserFormDialog({
   } | null>(null);
   const isCustomer = kind === "customer";
   const assignableCustomers = customers.filter((customer) => !customer.isInternal);
+  const hasWorkApp = appKeys.includes("work");
+  const boardCustomerIds = isCustomer
+    ? customerIds
+    : customers.map((customer) => customer.id);
+  const canFetchWorkBoards = open && (!isCustomer || customerIds.length > 0);
+  const canAssignWorkBoards = hasWorkApp && canFetchWorkBoards;
+  const boardCustomerIdsKey = boardCustomerIds.join(",");
 
   useEffect(() => {
     if (!open) return;
     setAppKeys(isCustomer ? [] : ["planner", "time_report", "insights"]);
     setCustomerIds([]);
+    setWorkBoardIds([]);
+    setWorkBoards([]);
     setError(null);
     setRevealed(null);
   }, [open, isCustomer]);
+
+  useEffect(() => {
+    if (!canFetchWorkBoards) {
+      setWorkBoards([]);
+      setWorkBoardIds([]);
+      setWorkBoardsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setWorkBoardsLoading(true);
+    void listWorkBoardsForCustomerAssignment(boardCustomerIds)
+      .then((boards) => {
+        if (cancelled) return;
+        setWorkBoards(boards);
+        setWorkBoardIds((prev) =>
+          prev.filter((id) => boards.some((board) => board.id === id))
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWorkBoards([]);
+        setWorkBoardIds([]);
+      })
+      .finally(() => {
+        if (!cancelled) setWorkBoardsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // boardCustomerIdsKey tracks selected/all customers without unstable array identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canFetchWorkBoards, boardCustomerIdsKey]);
 
   function finishCreated(key: string) {
     setRevealed(null);
     onCreated(key);
     onOpenChange(false);
+  }
+
+  function setAppKeysWithWorkGuard(next: AppKey[]) {
+    setAppKeys(next);
+    if (!next.includes("work")) {
+      setWorkBoardIds([]);
+      setWorkBoards([]);
+    }
   }
 
   async function submit() {
@@ -282,6 +337,7 @@ function UserFormDialog({
               role: "customer",
               appKeys,
               customerIds,
+              workBoardIds: canAssignWorkBoards ? workBoardIds : [],
             }
           : {
               name,
@@ -289,6 +345,7 @@ function UserFormDialog({
               role,
               appKeys,
               consultantId,
+              workBoardIds: canAssignWorkBoards ? workBoardIds : [],
             }
       );
       if (result.temporaryPassword) {
@@ -362,7 +419,7 @@ function UserFormDialog({
             <AppAccessList
               idPrefix="add-customer-user-apps"
               value={appKeys}
-              onChange={setAppKeys}
+              onChange={setAppKeysWithWorkGuard}
               allowedKeys={CUSTOMER_APP_KEYS}
             />
             {assignableCustomers.length > 0 ? (
@@ -416,11 +473,69 @@ function UserFormDialog({
             <AppAccessList
               idPrefix="add-user-apps"
               value={appKeys}
-              onChange={setAppKeys}
+              onChange={setAppKeysWithWorkGuard}
               allowedKeys={APP_KEYS}
             />
           </>
         )}
+        <div>
+          <p className="mb-2 block text-sm font-medium text-text-primary">
+            Work projects
+            <span className="ml-1 font-normal text-text-tertiary">
+              (optional)
+            </span>
+          </p>
+          <div
+            className={`h-40 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3 ${
+              hasWorkApp ? "" : "opacity-60"
+            }`}
+          >
+            {!hasWorkApp ? (
+              <p className="text-sm text-text-secondary">
+                Enable Work above to assign projects.
+              </p>
+            ) : isCustomer && customerIds.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                Select at least one customer to choose Work projects.
+              </p>
+            ) : workBoardsLoading ? (
+              <p className="text-sm text-text-secondary">Loading projects…</p>
+            ) : workBoards.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                {isCustomer
+                  ? "No Work projects for the selected customers."
+                  : "No Work projects available."}
+              </p>
+            ) : (
+              workBoards.map((board) => (
+                <label
+                  key={board.id}
+                  htmlFor={`add-person-board-${board.id}`}
+                  className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
+                >
+                  <input
+                    id={`add-person-board-${board.id}`}
+                    type="checkbox"
+                    checked={workBoardIds.includes(board.id)}
+                    onChange={() =>
+                      setWorkBoardIds((prev) =>
+                        prev.includes(board.id)
+                          ? prev.filter((id) => id !== board.id)
+                          : [...prev, board.id]
+                      )
+                    }
+                    disabled={submitting || !hasWorkApp}
+                  />
+                  <span className="min-w-0 truncate">
+                    {!isCustomer || customerIds.length > 1
+                      ? `${board.title} · ${board.customerName}`
+                      : board.title}
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
         {error ? (
           <p className="text-body-m text-danger" role="alert">
             {error}
@@ -664,6 +779,10 @@ function AccountOverview({ person }: { person: PersonListItem }) {
             />
           )}
         </DrawerFieldRow>
+
+        {person.userRole === "customer" && person.appUserId ? (
+          <PersonLoginHistory appUserId={person.appUserId} />
+        ) : null}
       </div>
     </div>
   );

@@ -1148,6 +1148,100 @@ body.time-report-portals-font-12 .time-report-icons-tight {
   animation: sideDrawerOut 180ms ease-in;
 }
 
+/* Work board: Done column hide / show cards */
+@keyframes workDoneCardShow {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes workDoneEmptyHintIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.work-done-card-motion {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 200ms ease,
+    transform 200ms ease,
+    margin-bottom 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.work-done-card-motion-inner {
+  min-height: 0;
+}
+
+.work-done-card-motion.is-hiding .work-done-card-motion-inner {
+  overflow: hidden;
+}
+
+.work-done-card-motion.is-hiding {
+  grid-template-rows: 0fr;
+  margin-bottom: -0.5rem; /* cancel ul gap-2 while collapsing */
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  pointer-events: none;
+  transition-delay: calc(var(--done-i, 0) * 35ms);
+}
+
+.work-done-card-motion.is-showing {
+  animation: workDoneCardShow 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--done-i, 0) * 40ms);
+}
+
+.work-done-empty-hint {
+  animation: workDoneEmptyHintIn 220ms ease-out both;
+}
+
+@keyframes workMyAddPopoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.work-my-add-popover {
+  transform-origin: top right;
+  animation: workMyAddPopoverIn 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-done-card-motion,
+  .work-done-card-motion.is-hiding {
+    transition: none;
+  }
+
+  .work-done-card-motion.is-showing,
+  .work-done-empty-hint {
+    animation: none;
+  }
+
+  .work-my-add-popover {
+    animation: none;
+  }
+}
+
 /* Work issue Markdown (description read view) */
 .work-markdown {
   font-size: 0.875rem;

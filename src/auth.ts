@@ -5,6 +5,10 @@ import {
   cloudSqlPool,
   isTransientCloudSqlConnectError,
 } from "@/lib/cloudSqlPool";
+import {
+  readLoginRequestMeta,
+  recordAppUserLoginEvent,
+} from "@/lib/appUserLoginEvents";
 import { findCustomerForPasswordLogin } from "@/lib/customerPasswordQueries";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
 import {
@@ -68,7 +72,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const user = await findCustomerForPasswordLogin(email);
         if (!user?.password_hash) return null;
-        if (!verifyPassword(password, user.password_hash)) return null;
+
+        const meta = await readLoginRequestMeta();
+        const passwordOk = verifyPassword(password, user.password_hash);
+        await recordAppUserLoginEvent({
+          appUserId: user.id,
+          success: passwordOk,
+          provider: "customer-password",
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+        });
+        if (!passwordOk) return null;
 
         return {
           id: user.id,

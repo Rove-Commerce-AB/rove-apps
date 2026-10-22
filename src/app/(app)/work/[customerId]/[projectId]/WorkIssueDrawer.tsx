@@ -91,7 +91,12 @@ import { WorkIssueRelations } from "./WorkIssueRelations";
 import { WorkTimeGraph } from "./WorkTimeGraph";
 import { canDeleteWorkIssue } from "@/lib/workAccess";
 import { encodeMentions, mentionPlainText } from "@/lib/workMentions";
-import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
+import {
+  formatWorkEstimatePair,
+  parseWorkEstimateValue,
+  workEstimateSuffix,
+} from "@/lib/workEstimate";
+import { formatWorkHours } from "@/lib/workTime";
 import type {
   WorkIssueTimeLogEntry,
   WorkIssueTimeLogRoleOption,
@@ -705,7 +710,7 @@ export function WorkIssueDrawer({
     raw: string = estimateDraftRef.current,
     options?: { revertOnInvalid?: boolean }
   ) {
-    const parsed = parseWorkEstimateHours(raw);
+    const parsed = parseWorkEstimateValue(raw, board.estimateUnit);
     if (!parsed.ok) {
       if (options?.revertOnInvalid !== false) {
         setEstimateDraft(
@@ -713,7 +718,7 @@ export function WorkIssueDrawer({
             ? ""
             : String(lastSubmittedEstimateRef.current)
         );
-        onError("Estimate must be a number of hours");
+        onError(parsed.message);
       }
       return;
     }
@@ -756,7 +761,10 @@ export function WorkIssueDrawer({
         clearTimeout(estimateSaveTimerRef.current);
         estimateSaveTimerRef.current = null;
       }
-      const parsed = parseWorkEstimateHours(estimateDraftRef.current);
+      const parsed = parseWorkEstimateValue(
+        estimateDraftRef.current,
+        board.estimateUnit
+      );
       if (!parsed.ok) return;
       if (parsed.value === lastSubmittedEstimateRef.current) return;
       lastSubmittedEstimateRef.current = parsed.value;
@@ -770,7 +778,7 @@ export function WorkIssueDrawer({
         onErrorRef.current(result.error);
       });
     };
-  }, [board.id, issue.id]);
+  }, [board.id, board.estimateUnit, issue.id]);
 
   useEffect(() => {
     lastSubmittedEstimateRef.current = issue.estimateHours;
@@ -1229,7 +1237,7 @@ export function WorkIssueDrawer({
                 <div>
                   <label
                     className={`${propertyChipClass} cursor-text gap-1`}
-                    title="Estimate in hours"
+                    title={`Estimate (${workEstimateSuffix(board.estimateUnit, board.billingCurrency)})`}
                   >
                     <Clock
                       className="h-3 w-3 shrink-0 text-text-tertiary"
@@ -1237,10 +1245,12 @@ export function WorkIssueDrawer({
                     />
                     <input
                       type="text"
-                      inputMode="decimal"
+                      inputMode={
+                        board.estimateUnit === "points" ? "numeric" : "decimal"
+                      }
                       value={estimateDraft}
                       disabled={pending}
-                      aria-label="Estimate in hours"
+                      aria-label={`Estimate in ${workEstimateSuffix(board.estimateUnit, board.billingCurrency)}`}
                       placeholder="Est"
                       onChange={(event) => {
                         const next = event.target.value;
@@ -1285,7 +1295,12 @@ export function WorkIssueDrawer({
                       }}
                       className="w-10 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
                     />
-                    <span className="text-[13px] text-text-tertiary">h</span>
+                    <span className="text-[13px] text-text-tertiary">
+                      {workEstimateSuffix(
+                        board.estimateUnit,
+                        board.billingCurrency
+                      )}
+                    </span>
                   </label>
                 </div>
               ) : null}
@@ -1621,16 +1636,24 @@ export function WorkIssueDrawer({
           <TabsContent value="time" className="mt-5 space-y-5">
             <div className="flex items-center gap-3">
               <p className="min-w-0 shrink-0 text-sm tabular-nums text-text-primary">
-                {formatWorkHours(issue.loggedHours)}
-                {issue.estimateHours != null
-                  ? ` / ${formatWorkHours(issue.estimateHours)} est`
-                  : ""}
+                {board.showEstimates && issue.estimateHours != null
+                  ? formatWorkEstimatePair(
+                      issue.loggedHours,
+                      issue.estimateHours,
+                      board.estimateUnit,
+                      board.billingCurrency
+                    )
+                  : formatWorkHours(issue.loggedHours)}
               </p>
               <div className="min-w-0 flex-1">
                 <WorkTimeGraph
                   size="drawer"
-                  estimateHours={issue.estimateHours}
+                  estimateHours={
+                    board.showEstimates ? issue.estimateHours : null
+                  }
                   loggedHours={issue.loggedHours}
+                  estimateUnit={board.estimateUnit}
+                  billingCurrency={board.billingCurrency}
                 />
               </div>
               {timeCanLog && !loggingTime && editingTimeId == null ? (

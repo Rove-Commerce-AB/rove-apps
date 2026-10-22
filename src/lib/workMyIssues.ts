@@ -2,6 +2,11 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { parseBillingCurrency, type BillingCurrency } from "@/lib/currency";
+import {
+  parseWorkEstimateUnit,
+  type WorkEstimateUnit,
+} from "@/lib/workEstimate";
 import {
   canSeeWorkEstimates,
   canSeeWorkReportedTime,
@@ -31,6 +36,8 @@ export type WorkMyIssue = {
   sprintLabel: string | null;
   showEstimates: boolean;
   showReportedTime: boolean;
+  estimateUnit: WorkEstimateUnit;
+  billingCurrency: BillingCurrency;
   estimateHours: number | null;
   loggedHours: number;
   dueDate: string | null;
@@ -86,6 +93,8 @@ export async function listMyWorkIssues(): Promise<WorkMyIssue[]> {
             }),
       showEstimates,
       showReportedTime,
+      estimateUnit: parseWorkEstimateUnit(row.estimate_unit),
+      billingCurrency: parseBillingCurrency(row.billing_currency),
       estimateHours: showEstimates
         ? row.estimate_hours == null
           ? null

@@ -14,6 +14,8 @@ export type WorkBoardRow = {
   member_ids: string[];
   /** Present after support migration; treat missing as false. */
   is_support_board?: boolean;
+  /** Present after estimate-unit migration; treat missing as hours. */
+  estimate_unit?: string;
 };
 
 export type WorkCustomerRow = {
@@ -115,6 +117,7 @@ export async function fetchWorkBoardById(
     agents_md: string;
     customer_name: string;
     customer_is_internal: boolean;
+    billing_currency: string;
     work_show_estimates_to_customer_users: boolean;
     work_show_reported_time_to_customer_users: boolean;
     planner_project_name: string | null;
@@ -126,6 +129,7 @@ export async function fetchWorkBoardById(
       member_ids: string[] | null;
       customer_name: string;
       customer_is_internal: boolean;
+      billing_currency: string;
       work_show_estimates_to_customer_users: boolean;
       work_show_reported_time_to_customer_users: boolean;
       planner_project_name: string | null;
@@ -142,8 +146,10 @@ export async function fetchWorkBoardById(
        b.updated_at,
        b.agents_md,
        COALESCE(b.is_support_board, false) AS is_support_board,
+       COALESCE(b.estimate_unit, 'hours') AS estimate_unit,
        c.name AS customer_name,
        c.is_internal AS customer_is_internal,
+       c.billing_currency,
        c.work_show_estimates_to_customer_users,
        c.work_show_reported_time_to_customer_users,
        p.name AS planner_project_name,
@@ -157,7 +163,7 @@ export async function fetchWorkBoardById(
      LEFT JOIN work_project_members m ON m.project_id = b.id
      WHERE b.id = $1
        AND b.archived_at IS NULL
-     GROUP BY b.id, c.name, c.is_internal, c.work_show_estimates_to_customer_users, c.work_show_reported_time_to_customer_users, p.name`,
+     GROUP BY b.id, c.name, c.is_internal, c.billing_currency, c.work_show_estimates_to_customer_users, c.work_show_reported_time_to_customer_users, p.name`,
     [boardId]
   );
   const row = rows[0];
@@ -166,7 +172,42 @@ export async function fetchWorkBoardById(
     ...row,
     member_ids: row.member_ids ?? [],
     is_support_board: row.is_support_board ?? false,
+    estimate_unit: row.estimate_unit ?? "hours",
   };
+}
+
+export async function updateWorkProjectEstimateUnit(
+  boardId: string,
+  unit: string,
+  options?: { clearEstimates?: boolean }
+): Promise<void> {
+  await withCloudSqlTransaction("work-estimate-unit", async (client) => {
+    if (options?.clearEstimates) {
+      await client.query(
+        `UPDATE work_issues SET estimate_hours = NULL WHERE project_id = $1`,
+        [boardId]
+      );
+    }
+    await client.query(
+      `UPDATE work_projects
+       SET estimate_unit = $2, updated_at = now()
+       WHERE id = $1 AND archived_at IS NULL`,
+      [boardId, unit]
+    );
+  });
+}
+
+export async function countWorkIssueEstimates(
+  boardId: string
+): Promise<number> {
+  const { rows } = await cloudSqlPool.query<{ count: string }>(
+    `SELECT count(*)::text AS count
+     FROM work_issues
+     WHERE project_id = $1
+       AND estimate_hours IS NOT NULL`,
+    [boardId]
+  );
+  return Number(rows[0]?.count ?? 0);
 }
 
 export async function linkWorkBoardToPlannerProject(
