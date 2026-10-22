@@ -35,5 +35,6 @@ describe("monitor incident filters", () => {
     expect(incidentUptimePercent(60, 0)).toBe(100);
     expect(incidentUptimePercent(0, 0)).toBeNull();
     expect(incidentUptimePercent(60, 90)).toBe(0);
+    expect(incidentUptimePercent(30 * 24 * 60, 18)).toBeCloseTo(99.9583, 3);
   });
 });
