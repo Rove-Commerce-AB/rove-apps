@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  getCustomerLoginHistoryAction,
-  type CustomerLoginHistoryResult,
-} from "@/lib/appUserLoginHistoryActions";
+import { getCustomerLoginHistoryAction } from "@/lib/appUserLoginHistoryActions";
+import type { AppUserLoginEvent } from "@/lib/appUserLoginEvents";
 import { formatWorkTimestamp } from "@/lib/workTimeAgo";
+
+type LoginHistoryData = {
+  lastLoginAt: string | null;
+  events: AppUserLoginEvent[];
+};
 
 function shortenUserAgent(value: string | null): string | null {
   if (!value) return null;
@@ -15,7 +18,7 @@ function shortenUserAgent(value: string | null): string | null {
 }
 
 export function PersonLoginHistory({ appUserId }: { appUserId: string }) {
-  const [data, setData] = useState<CustomerLoginHistoryResult | null>(null);
+  const [data, setData] = useState<LoginHistoryData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,7 +34,10 @@ export function PersonLoginHistory({ appUserId }: { appUserId: string }) {
           setData(null);
           return;
         }
-        setData(result);
+        setData({
+          lastLoginAt: result.lastLoginAt,
+          events: result.events,
+        });
       })
       .catch(() => {
         if (cancelled) return;
