@@ -1,7 +1,13 @@
 import type { ConsultantListItem } from "@/lib/consultants";
 import type { PersonCustomerLink } from "@/lib/customerAppUsersQueries";
 
-export const APP_KEYS = ["planner", "time_report", "insights", "work"] as const;
+export const APP_KEYS = [
+  "planner",
+  "time_report",
+  "insights",
+  "work",
+  "support",
+] as const;
 export type AppKey = (typeof APP_KEYS)[number];
 
 export const APP_LABELS: Record<AppKey, string> = {
@@ -9,14 +15,15 @@ export const APP_LABELS: Record<AppKey, string> = {
   time_report: "Time report",
   insights: "Insights",
   work: "Work",
+  support: "Support",
 };
 
 export function isAppKey(value: string): value is AppKey {
   return (APP_KEYS as readonly string[]).includes(value);
 }
 
-/** The only Rove app a customer-role user may receive. */
-export const CUSTOMER_APP_KEYS = ["work"] as const satisfies readonly AppKey[];
+/** Rove apps a customer-role user may receive. */
+export const CUSTOMER_APP_KEYS = ["work", "support"] as const satisfies readonly AppKey[];
 
 export function isCustomerAssignableAppKey(value: string): value is AppKey {
   return (CUSTOMER_APP_KEYS as readonly string[]).includes(value);

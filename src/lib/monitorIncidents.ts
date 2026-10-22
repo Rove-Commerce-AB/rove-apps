@@ -1,8 +1,12 @@
 import "server-only";
 
-import { assertAdmin } from "@/lib/accessGuards";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { incidentUptimePercent, resolveIncidentPeriod } from "@/lib/monitorIncidentFilters";
+import { canViewMonitors } from "@/lib/supportAccess";
+import {
+  getSupportActor,
+  linkedSupportCustomerIdsForActor,
+} from "@/lib/supportActor";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const pageSize = 50;
@@ -23,7 +27,13 @@ export type IncidentDateFilters = {
 };
 
 export type IncidentPage = {
-  monitor: { id: string; name: string; customerName: string; url: string };
+  monitor: {
+    id: string;
+    name: string;
+    customerId: string;
+    customerName: string;
+    url: string;
+  };
   incidents: Incident[];
   total: number;
   page: number;
@@ -50,22 +60,32 @@ export async function getMonitorIncidentPage(
   requestedPage: number,
   allIncidents = false
 ): Promise<IncidentPage | null> {
-  await assertAdmin();
   if (!uuidPattern.test(monitorId)) return null;
+
+  const actor = await getSupportActor();
+  if (!actor) throw new Error("Unauthorized");
+  const linked = await linkedSupportCustomerIdsForActor(actor);
 
   const now = new Date();
   const today = stockholmDate(now);
   const { from, to } = resolveIncidentPeriod(rawFilters, today);
 
   const { rows: monitors } = await cloudSqlPool.query<{
-    id: string; name: string; customer_name_snapshot: string; url: string;
+    id: string;
+    name: string;
+    customer_id: string;
+    customer_name_snapshot: string;
+    url: string;
   }>(
-    `SELECT id, name, customer_name_snapshot, url
-       FROM monitoring.monitors WHERE id = $1`,
+    `SELECT id, name, customer_id, customer_name_snapshot, url
+       FROM monitoring.monitors WHERE id = $1 AND deleted_at IS NULL`,
     [monitorId]
   );
   const monitor = monitors[0];
   if (!monitor) return null;
+  if (!canViewMonitors(actor, linked, monitor.customer_id)) {
+    throw new Error("Unauthorized");
+  }
 
   const { rows: bounds } = await cloudSqlPool.query<{ start_at: Date; end_at: Date }>(
     `SELECT ($1::date::timestamp AT TIME ZONE 'Europe/Stockholm') AS start_at,
@@ -114,12 +134,13 @@ export async function getMonitorIncidentPage(
   ) : { rows: [] };
 
   return {
-    monitor: {
-      id: monitor.id,
-      name: monitor.name,
-      customerName: monitor.customer_name_snapshot,
-      url: monitor.url,
-    },
+      monitor: {
+        id: monitor.id,
+        name: monitor.name,
+        customerId: monitor.customer_id,
+        customerName: monitor.customer_name_snapshot,
+        url: monitor.url,
+      },
     incidents: rows.map((row) => ({
       id: row.id,
       startedAt: new Date(row.started_at).toISOString(),

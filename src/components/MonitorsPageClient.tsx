@@ -3,13 +3,32 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import { Button, ConfirmModal, Dialog, Input, PageHeader, Panel } from "@/components/ui";
 import type { Monitor, MonitorInput, SlackNotificationOption } from "@/lib/monitors";
-import { monitorIncidentsHref } from "@/lib/routes";
+import { supportMonitorIncidentsHref } from "@/lib/routes";
 
 type CustomerOption = { id: string; name: string };
-type Props = { monitors: Monitor[]; customers: CustomerOption[]; slackNotifications: SlackNotificationOption[]; loadError?: string };
+type Props = {
+  monitors: Monitor[];
+  customers: CustomerOption[];
+  slackNotifications?: SlackNotificationOption[];
+  loadError?: string;
+  readOnly?: boolean;
+  fixedCustomerId?: string;
+  title?: string;
+  description?: string;
+};
+
+const ACTION_BTN =
+  "inline-flex size-8 items-center justify-center rounded-md text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal disabled:cursor-not-allowed disabled:opacity-50";
 
 const emptyInput: MonitorInput = {
   customerId: "", name: "", url: "", enabled: true,
@@ -47,7 +66,16 @@ async function changeMonitor(path: string, method: string, body?: MonitorInput |
   throw new Error(message);
 }
 
-export function MonitorsPageClient({ monitors, customers, slackNotifications, loadError }: Props) {
+export function MonitorsPageClient({
+  monitors,
+  customers,
+  slackNotifications = [],
+  loadError,
+  readOnly = false,
+  fixedCustomerId,
+  title = "Monitors",
+  description = "Manage HTTP monitors and their check settings.",
+}: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Monitor | "new" | null>(null);
@@ -55,6 +83,7 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
   const [deleteTarget, setDeleteTarget] = useState<Monitor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const canMutate = !readOnly;
 
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
@@ -64,10 +93,11 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
   }, [monitors, search]);
 
   function openForm(target: Monitor | "new") {
+    if (!canMutate) return;
     setEditing(target);
     setForm(target === "new" ? {
       ...emptyInput,
-      customerId: customers[0]?.id ?? "",
+      customerId: fixedCustomerId ?? customers[0]?.id ?? "",
       slackNotificationIds: slackNotifications.filter((channel) => channel.default_enabled).map((channel) => channel.id),
     } : inputFromMonitor(target));
     setError(null);
@@ -75,12 +105,15 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
 
   function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editing || pending) return;
+    if (!editing || pending || !canMutate) return;
     setError(null);
     startTransition(async () => {
       try {
-        if (editing === "new") await changeMonitor("/api/monitors", "POST", form);
-        else await changeMonitor(`/api/monitors/${editing.id}`, "PUT", form);
+        const payload = fixedCustomerId
+          ? { ...form, customerId: fixedCustomerId }
+          : form;
+        if (editing === "new") await changeMonitor("/api/monitors", "POST", payload);
+        else await changeMonitor(`/api/monitors/${editing.id}`, "PUT", payload);
         setEditing(null);
         router.refresh();
       } catch (cause) { setError(errorMessage(cause)); }
@@ -88,6 +121,7 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
   }
 
   function toggle(monitor: Monitor) {
+    if (!canMutate) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -98,7 +132,7 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
   }
 
   function remove() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canMutate) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -122,10 +156,15 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
 
   return (
     <div className="max-w-6xl space-y-6">
-      <PageHeader title="Monitors" description="Manage HTTP monitors and their check settings.">
-        <Button onClick={() => openForm("new")} disabled={!!loadError || customers.length === 0}>
-          <Plus className="h-4 w-4" aria-hidden /> Add monitor
-        </Button>
+      <PageHeader title={title} description={description}>
+        {canMutate ? (
+          <Button
+            onClick={() => openForm("new")}
+            disabled={!!loadError || (!fixedCustomerId && customers.length === 0)}
+          >
+            <Plus className="h-4 w-4" aria-hidden /> Add monitor
+          </Button>
+        ) : null}
       </PageHeader>
       {(loadError || error) && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">{loadError || error}</p>}
       <Input id="monitor-search" label="Search monitors" placeholder="Name, URL or customer" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -153,11 +192,39 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
                     {monitor.last_checked_at ? ` · Last checked ${new Date(monitor.last_checked_at).toLocaleString()}` : " · Not checked yet"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Link href={monitorIncidentsHref(monitor.id)} className="inline-flex h-9 items-center rounded-md border border-form bg-bg-default px-3 text-sm font-medium text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal">Incidents</Link>
-                  <Button size="sm" variant={monitor.enabled ? "warningSecondary" : "successSecondary"} disabled={pending} onClick={() => toggle(monitor)}>{monitor.enabled ? "Pause" : "Enable"}</Button>
-                  <Button size="sm" variant="ghost" aria-label={`Edit ${monitor.name}`} onClick={() => openForm(monitor)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" aria-label={`Delete ${monitor.name}`} onClick={() => setDeleteTarget(monitor)}><Trash2 className="h-4 w-4 text-danger" /></Button>
+                <div className="flex items-center">
+                  <Link
+                    href={supportMonitorIncidentsHref(monitor.customer_id, monitor.id)}
+                    aria-label={`Incidents for ${monitor.name}`}
+                    title="Incidents"
+                    className={ACTION_BTN}
+                  >
+                    <TriangleAlert className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+                  </Link>
+                  {canMutate ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        aria-label={monitor.enabled ? `Pause ${monitor.name}` : `Enable ${monitor.name}`}
+                        title={monitor.enabled ? "Pause" : "Enable"}
+                        onClick={() => toggle(monitor)}
+                        className={ACTION_BTN}
+                      >
+                        {monitor.enabled ? (
+                          <Pause className="size-4 shrink-0 text-status-warning" strokeWidth={1.75} aria-hidden />
+                        ) : (
+                          <Play className="size-4 shrink-0 text-status-success" strokeWidth={1.75} aria-hidden />
+                        )}
+                      </button>
+                      <button type="button" aria-label={`Edit ${monitor.name}`} title="Edit" onClick={() => openForm(monitor)} className={ACTION_BTN}>
+                        <Pencil className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+                      </button>
+                      <button type="button" aria-label={`Delete ${monitor.name}`} title="Delete" onClick={() => setDeleteTarget(monitor)} className={ACTION_BTN}>
+                        <Trash2 className="size-4 shrink-0 text-danger" strokeWidth={1.75} aria-hidden />
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -166,6 +233,9 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
       </Panel>
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open && !pending) setEditing(null); }} title={editing === "new" ? "Add monitor" : "Edit monitor"} contentClassName="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[min(94vw,640px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border-subtle bg-bg-default p-6 shadow-xl">
         <form className="mt-5 space-y-4" onSubmit={save}>
+          {fixedCustomerId ? (
+            <input type="hidden" name="customerId" value={fixedCustomerId} />
+          ) : (
           <div>
             <label htmlFor="monitor-customer" className="mb-1 block text-sm font-medium text-text-primary">Customer</label>
             <select id="monitor-customer" className="h-10 w-full rounded-lg border border-form bg-bg-default px-3 text-sm" value={form.customerId} onChange={(event) => setForm((prev) => ({ ...prev, customerId: event.target.value }))} required>
@@ -173,6 +243,7 @@ export function MonitorsPageClient({ monitors, customers, slackNotifications, lo
               {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
             </select>
           </div>
+          )}
           <Input id="monitor-name" label="Name" value={form.name} maxLength={200} required onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
           <Input id="monitor-url" label="URL" type="url" value={form.url} required onChange={(event) => setForm((prev) => ({ ...prev, url: event.target.value }))} />
           <div className="grid grid-cols-2 gap-4">

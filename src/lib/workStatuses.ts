@@ -17,3 +17,17 @@ export const DEFAULT_WORK_PROJECT_STATUSES: {
   { name: "In review", isDone: false },
   { name: "Done", isDone: true },
 ];
+
+/**
+ * Columns for auto-provisioned Support Work boards (prefix SUP).
+ * Used only by ensureSupportWorkProject — not the default Work project set.
+ */
+export const SUPPORT_WORK_PROJECT_STATUSES: {
+  name: string;
+  isDone: boolean;
+}[] = [
+  { name: "New", isDone: false },
+  { name: "Investigating", isDone: false },
+  { name: "Waiting on customer", isDone: false },
+  { name: "Resolved", isDone: true },
+];

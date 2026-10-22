@@ -1,6 +1,12 @@
 "use client";
 
-import { Briefcase, CalendarCheck, Clock, Sparkles } from "lucide-react";
+import {
+  Briefcase,
+  CalendarCheck,
+  Clock,
+  MessageCircle,
+  Sparkles,
+} from "lucide-react";
 import { Switch } from "@/components/ui";
 import { APP_KEYS, type AppKey } from "@/lib/peopleTypes";
 
@@ -27,6 +33,11 @@ export const APP_ACCESS_ITEMS: Record<
     name: "Rove Work",
     icon: Briefcase,
     tileClass: "bg-[var(--color-purple-100)] text-[var(--color-purple-600)]",
+  },
+  support: {
+    name: "Rove Support",
+    icon: MessageCircle,
+    tileClass: "bg-[var(--color-orange-100)] text-[var(--color-orange-600)]",
   },
 };
 

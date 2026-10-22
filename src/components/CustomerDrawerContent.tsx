@@ -26,6 +26,7 @@ import { CreateProjectAppAvailability } from "@/components/CreateProjectAppAvail
 import { CustomerDrawerOverview } from "@/components/CustomerDrawerOverview";
 import { CustomerProjectGroup } from "@/components/CustomerProjectGroup";
 import { CustomerRatesTab } from "@/components/CustomerRatesTab";
+import { CustomerDrawerSupportTab } from "@/components/CustomerDrawerSupportTab";
 import { ProjectSettingsPanel } from "@/components/ProjectSettingsPanel";
 import {
   deleteCustomerAction,
@@ -52,7 +53,13 @@ import type {
   ProjectWithDetails,
 } from "@/types";
 
-type CustomerTab = "overview" | "projects" | "people" | "rates" | "danger";
+type CustomerTab =
+  | "overview"
+  | "projects"
+  | "people"
+  | "rates"
+  | "support"
+  | "danger";
 
 type Props = {
   customer: CustomerWithDetails;
@@ -484,6 +491,9 @@ export function CustomerDrawerContent({
           <TabsTrigger value="rates" className="px-1 !px-1">
             Rates/Tasks
           </TabsTrigger>
+          <TabsTrigger value="support" className="px-1 !px-1">
+            Support
+          </TabsTrigger>
           {isAdmin ? (
             <TabsTrigger value="danger" className="px-1 !px-1">
               Danger
@@ -731,6 +741,18 @@ export function CustomerDrawerContent({
               }}
             />
           </div>
+        </TabsContent>
+
+        <TabsContent
+          value="support"
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
+          <CustomerDrawerSupportTab
+            key={customer.id}
+            customerId={customer.id}
+            billingCurrency={customer.billingCurrency}
+            canEdit
+          />
         </TabsContent>
 
         {isAdmin ? (

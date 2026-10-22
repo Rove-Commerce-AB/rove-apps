@@ -1,24 +1,9 @@
 import { redirect } from "next/navigation";
-import { getCurrentAppUser } from "@/lib/appUsers";
-import { getMonitorCustomers, getMonitors, getSlackNotifications } from "@/lib/monitors";
-import { MonitorsPageClient } from "@/components/MonitorsPageClient";
+import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
-export default async function MonitorsPage() {
-  const user = await getCurrentAppUser();
-  if (!user || user.role !== "admin") redirect("/access-denied");
-
-  let monitors: Awaited<ReturnType<typeof getMonitors>> = [];
-  let customers: Awaited<ReturnType<typeof getMonitorCustomers>> = [];
-  let slackNotifications: Awaited<ReturnType<typeof getSlackNotifications>> = [];
-  let loadError: string | undefined;
-  try {
-    [monitors, customers, slackNotifications] = await Promise.all([
-      getMonitors(), getMonitorCustomers(), getSlackNotifications(),
-    ]);
-  } catch (error) {
-    loadError = error instanceof Error ? error.message : "Failed to load monitors";
-  }
-  return <MonitorsPageClient monitors={monitors} customers={customers} slackNotifications={slackNotifications} loadError={loadError} />;
+/** Monitors moved to Rove Support. */
+export default function SettingsMonitorsRedirectPage() {
+  redirect(ROUTES.supportOverview);
 }

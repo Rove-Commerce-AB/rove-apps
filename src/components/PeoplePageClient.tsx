@@ -9,6 +9,7 @@ import {
   Handshake,
   Clock,
   IdCard,
+  MessageCircle,
   Plus,
   Search,
   Sparkles,
@@ -154,6 +155,7 @@ const APP_ICONS: Record<AppKey, typeof CalendarCheck> = {
   time_report: Clock,
   insights: Sparkles,
   work: Briefcase,
+  support: MessageCircle,
 };
 
 function PersonTypeCell({ person }: { person: PersonListItem }) {
@@ -233,7 +235,7 @@ function UserFormDialog({
   const [email, setEmail] = useState(initialEmail);
   const [role, setRole] = useState<AppUserRole>("member");
   const [appKeys, setAppKeys] = useState<AppKey[]>(
-    kind === "customer" ? [] : ["planner", "time_report", "insights"]
+    kind === "customer" ? [] : ["planner", "time_report", "insights", "support"]
   );
   const [customerIds, setCustomerIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);

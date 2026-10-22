@@ -2,19 +2,22 @@ import { describe, expect, it } from "vitest";
 import { breadcrumbsForPathname } from "./breadcrumbs";
 
 describe("breadcrumbsForPathname", () => {
-  it("shows Monitors under Settings", () => {
+  it("redirects legacy Settings monitors crumbs to Support", () => {
     expect(breadcrumbsForPathname("/settings/monitors")).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Settings" },
-      { label: "Monitors" },
+      { label: "Rove Support", href: "/support" },
+      { label: "Overview" },
     ]);
   });
 
-  it("shows incidents below Monitors", () => {
-    expect(breadcrumbsForPathname("/settings/monitors/abc/incidents")).toEqual([
+  it("shows Support monitors and incidents", () => {
+    expect(
+      breadcrumbsForPathname("/support/cust/monitors/mon/incidents")
+    ).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Settings" },
-      { label: "Monitors", href: "/settings/monitors" },
+      { label: "Rove Support", href: "/support" },
+      { label: "Customer", href: "/support/cust" },
+      { label: "Monitors", href: "/support/cust/monitors" },
       { label: "Incidents" },
     ]);
   });

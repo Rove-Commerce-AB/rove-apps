@@ -68,10 +68,7 @@ export function breadcrumbsForPathname(
       return [root, settings, { label: "People" }];
     }
     if (pathname.startsWith(ROUTES.monitors)) {
-      if (pathname.startsWith(`${ROUTES.monitors}/`)) {
-        return [root, settings, { label: "Monitors", href: ROUTES.monitors }, { label: "Incidents" }];
-      }
-      return [root, settings, { label: "Monitors" }];
+      return [root, { label: "Rove Support", href: ROUTES.support }, { label: "Overview" }];
     }
     if (pathname.startsWith(ROUTES.consultants)) {
       return [root, settings, { label: "Consultants" }];
@@ -92,6 +89,44 @@ export function breadcrumbsForPathname(
 
   if (pathname.startsWith("/insights")) {
     return [root, { label: "Insights" }];
+  }
+
+  if (pathname.startsWith(ROUTES.support)) {
+    const support: Breadcrumb = { label: "Rove Support", href: ROUTES.support };
+    if (pathname.startsWith(ROUTES.supportOverview)) {
+      return [root, support, { label: "Overview" }];
+    }
+    const remainder = pathname.slice(ROUTES.support.length).replace(/^\//, "");
+    const [customerSeg, section] = remainder.split("/");
+    if (customerSeg && customerSeg !== "overview") {
+      const customerCrumb: Breadcrumb = {
+        label: "Customer",
+        href: `${ROUTES.support}/${customerSeg}`,
+      };
+      if (section === "cases") {
+        return [root, support, customerCrumb, { label: "Cases" }];
+      }
+      if (section === "contact") {
+        return [root, support, customerCrumb, { label: "Contact" }];
+      }
+      if (section === "monitors") {
+        if (remainder.includes("/incidents")) {
+          return [
+            root,
+            support,
+            customerCrumb,
+            {
+              label: "Monitors",
+              href: `${ROUTES.support}/${customerSeg}/monitors`,
+            },
+            { label: "Incidents" },
+          ];
+        }
+        return [root, support, customerCrumb, { label: "Monitors" }];
+      }
+      return [root, support, { label: "Customer" }];
+    }
+    return [root, { label: "Rove Support" }];
   }
 
   if (pathname.startsWith(ROUTES.work)) {

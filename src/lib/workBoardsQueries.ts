@@ -12,6 +12,8 @@ export type WorkBoardRow = {
   created_at: Date;
   updated_at: Date;
   member_ids: string[];
+  /** Present after support migration; treat missing as false. */
+  is_support_board?: boolean;
 };
 
 export type WorkCustomerRow = {
@@ -139,6 +141,7 @@ export async function fetchWorkBoardById(
        b.created_at,
        b.updated_at,
        b.agents_md,
+       COALESCE(b.is_support_board, false) AS is_support_board,
        c.name AS customer_name,
        c.is_internal AS customer_is_internal,
        c.work_show_estimates_to_customer_users,
@@ -162,6 +165,7 @@ export async function fetchWorkBoardById(
   return {
     ...row,
     member_ids: row.member_ids ?? [],
+    is_support_board: row.is_support_board ?? false,
   };
 }
 

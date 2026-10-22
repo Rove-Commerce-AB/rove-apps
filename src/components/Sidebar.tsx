@@ -17,8 +17,18 @@ import {
   Star,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
-import { ROUTES, workCustomerHref, workProjectHref } from "@/lib/routes";
+import {
+  ROUTES,
+  supportCustomerCasesHref,
+  supportCustomerContactHref,
+  supportCustomerHref,
+  supportCustomerMonitorsHref,
+  workCustomerHref,
+  workProjectHref,
+} from "@/lib/routes";
 import type { AppKey } from "@/lib/peopleTypes";
+import { SUPPORT_CONTACT_NAV_ENABLED } from "@/lib/supportFeatures";
+import type { SupportNavCustomer } from "@/lib/supportNav";
 import type { WorkSelectorCustomer } from "@/lib/workTypes";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { useShortcuts } from "@/components/ShortcutsProvider";
@@ -439,12 +449,98 @@ function WorkCustomerNav({
   );
 }
 
+function SupportCustomerNav({
+  customer,
+  pathname,
+  forceOpen,
+}: {
+  customer: SupportNavCustomer;
+  pathname: string;
+  forceOpen: boolean;
+}) {
+  const [open, setOpen] = useState(true);
+  const driftHref = supportCustomerMonitorsHref(customer.id);
+  const hasSections = customer.hasActiveContract;
+
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
+
+  return (
+    <div className="flex flex-col gap-px">
+      <div className="flex min-w-0 items-center">
+        <div className="min-w-0 flex-1">
+          <NavLink
+            href={driftHref}
+            label={customer.name}
+            pathname={pathname}
+            depth={1}
+            active={forceOpen}
+            leading={
+              <CustomerFavicon
+                name={customer.name}
+                url={customer.url}
+                color={customer.color}
+                size="nav"
+              />
+            }
+          />
+        </div>
+        {hasSections ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={`${open ? "Collapse" : "Expand"} ${customer.name} support`}
+            onClick={() => setOpen((current) => !current)}
+            className="flex h-8 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-tertiary hover:bg-nav-active hover:text-text-primary"
+          >
+            <ChevronRight
+              className={`h-3.5 w-3.5 transition-transform duration-120 ${
+                open ? "rotate-90" : ""
+              }`}
+              aria-hidden
+            />
+          </button>
+        ) : null}
+      </div>
+      {open && hasSections ? (
+        <>
+          <NavLink
+            href={driftHref}
+            label="Monitors"
+            pathname={pathname}
+            depth={2}
+            activeMatch="prefix"
+          />
+          <NavLink
+            href={supportCustomerCasesHref(customer.id)}
+            label="Cases"
+            pathname={pathname}
+            depth={2}
+            activeMatch="prefix"
+          />
+          {SUPPORT_CONTACT_NAV_ENABLED ? (
+            <NavLink
+              href={supportCustomerContactHref(customer.id)}
+              label="Contact"
+              pathname={pathname}
+              depth={2}
+              activeMatch="prefix"
+            />
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 type SidebarProps = {
   isAdmin?: boolean;
   canSeeTimeReportProjectManager?: boolean;
   isCustomerUser?: boolean;
   appKeys?: AppKey[];
   workNav?: WorkSelectorCustomer[];
+  supportNav?: SupportNavCustomer[];
   initialCollapsed?: boolean;
 };
 
@@ -454,6 +550,7 @@ export function Sidebar({
   isCustomerUser = false,
   appKeys = [],
   workNav = [],
+  supportNav = [],
   initialCollapsed = false,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -463,15 +560,27 @@ export function Sidebar({
     timeReport: boolean;
     settings: boolean;
     work: boolean;
-  }>({ planner: false, timeReport: false, settings: false, work: false });
+    support: boolean;
+  }>({
+    planner: false,
+    timeReport: false,
+    settings: false,
+    work: false,
+    support: false,
+  });
 
   const plannerActive = pathMatches(pathname, ROUTES.planner, "prefix");
   const timeReportChildActive = pathMatches(pathname, "/time-report", "prefix");
   const settingsChildActive = pathname.startsWith("/settings");
   const workActive = pathMatches(pathname, ROUTES.work, "prefix");
+  const supportActive = pathMatches(pathname, ROUTES.support, "prefix");
   const activeWorkCustomerId = pathname.startsWith(`${ROUTES.work}/`)
     ? pathname.slice(ROUTES.work.length + 1).split("/")[0] ?? null
     : null;
+  const activeSupportCustomerId = pathname.startsWith(`${ROUTES.support}/`)
+    ? pathname.slice(ROUTES.support.length + 1).split("/")[0] ?? null
+    : null;
+  const showSupportOverview = !isCustomerUser && appKeys.includes("support");
 
   useEffect(() => {
     setOpenApps((prev) => ({
@@ -479,6 +588,7 @@ export function Sidebar({
       timeReport: timeReportChildActive ? true : prev.timeReport,
       settings: settingsChildActive ? true : prev.settings,
       work: workActive ? true : prev.work,
+      support: supportActive ? true : prev.support,
     }));
   }, [
     pathname,
@@ -486,6 +596,7 @@ export function Sidebar({
     timeReportChildActive,
     settingsChildActive,
     workActive,
+    supportActive,
   ]);
 
   async function handleSignOut() {
@@ -690,6 +801,7 @@ export function Sidebar({
                 depth={1}
                 leading={<Inbox className="h-3.5 w-3.5 text-text-tertiary" aria-hidden />}
               />
+              <div className="h-1.5" aria-hidden />
               {workNav.length === 0 ? (
                 <p className="px-2 py-1.5 pl-10 text-body-m text-text-tertiary">
                   No customers yet
@@ -706,24 +818,65 @@ export function Sidebar({
               )}
             </AppGroup>
           )}
-          {!isCustomerUser && (
-            <>
-              {appKeys.includes("insights") && (
-                <NavLink
-                  href={ROUTES.insights}
-                  label="Insights"
-                  icon={Sparkles}
-                  pathname={pathname}
-                  activeMatch="prefix"
-                  collapsed={collapsed}
-                />
+          {appKeys.includes("insights") && !isCustomerUser && (
+            <NavLink
+              href={ROUTES.insights}
+              label="Insights"
+              icon={Sparkles}
+              pathname={pathname}
+              activeMatch="prefix"
+              collapsed={collapsed}
+            />
+          )}
+          {appKeys.includes("support") && (
+            <AppGroup
+              label="Rove Support"
+              icon={MessageCircle}
+              href={
+                showSupportOverview
+                  ? ROUTES.supportOverview
+                  : supportNav[0]
+                    ? supportCustomerHref(supportNav[0].id)
+                    : ROUTES.support
+              }
+              pathname={pathname}
+              open={openApps.support}
+              onToggle={() =>
+                setOpenApps((prev) => ({
+                  ...prev,
+                  support: !prev.support,
+                }))
+              }
+              collapsed={collapsed}
+              active={supportActive}
+            >
+              {showSupportOverview ? (
+                <>
+                  <NavLink
+                    href={ROUTES.supportOverview}
+                    label="Overview"
+                    pathname={pathname}
+                    depth={1}
+                    leading={<span className="block h-4 w-4" aria-hidden />}
+                  />
+                  <div className="h-1.5" aria-hidden />
+                </>
+              ) : null}
+              {supportNav.length === 0 ? (
+                <p className="px-2 py-1.5 pl-10 text-body-m text-text-tertiary">
+                  No customers yet
+                </p>
+              ) : (
+                supportNav.map((customer) => (
+                  <SupportCustomerNav
+                    key={customer.id}
+                    customer={customer}
+                    pathname={pathname}
+                    forceOpen={customer.id === activeSupportCustomerId}
+                  />
+                ))
               )}
-              <NavPlaceholder
-                label="Rove Support"
-                icon={MessageCircle}
-                collapsed={collapsed}
-              />
-            </>
+            </AppGroup>
           )}
         </div>
 
@@ -769,15 +922,6 @@ export function Sidebar({
                 indent
                 activeMatch="prefix"
               />
-              {isAdmin && (
-                <NavLink
-                  href={ROUTES.monitors}
-                  label="Monitors"
-                  pathname={pathname}
-                  indent
-                  activeMatch="prefix"
-                />
-              )}
             </AppGroup>
           </div>
         )}

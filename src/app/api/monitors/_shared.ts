@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCurrentAppUser } from "@/lib/appUsers";
+import { getSupportActor, linkedSupportCustomerIdsForActor } from "@/lib/supportActor";
+import { canManageMonitors, canSeeSupportOverview } from "@/lib/supportAccess";
 
 const inputErrors = new Set([
   "Select a customer", "Name is required", "Name is too long", "Enter a valid URL",
@@ -8,12 +9,19 @@ const inputErrors = new Set([
   "Expected HTTP status range must be within 100–599", "Invalid enabled value",
   "Invalid Slack channel selection", "Secret reference is too long", "Invalid monitor ID",
   "Invalid monitor update", "Customer no longer exists", "Monitor no longer exists",
-  "A selected Slack channel no longer exists",
+  "A selected Slack channel no longer exists", "Unauthorized",
 ]);
 
+/** Allow staff with Support Overview, or anyone who can manage at least one customer. */
 export async function requireMonitorAdmin() {
-  const user = await getCurrentAppUser();
-  return user?.role === "admin" ? null : NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  const actor = await getSupportActor();
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+  if (canSeeSupportOverview(actor)) return null;
+  const linked = await linkedSupportCustomerIdsForActor(actor);
+  if (linked.some((id) => canManageMonitors(actor, linked, id))) return null;
+  return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 }
 
 export async function monitorJson(request: Request): Promise<unknown> {

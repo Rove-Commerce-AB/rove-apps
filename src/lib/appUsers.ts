@@ -76,7 +76,7 @@ export async function addAppUser(formData: FormData) {
     );
     const appUserId = rows[0]?.id;
     if (!appUserId) throw new Error("Failed to create user");
-    const appKeys = ["planner", "time_report", "insights"];
+    const appKeys = ["planner", "time_report", "insights", "support"];
     await client.query(
       `INSERT INTO app_user_apps (app_user_id, app_id)
        SELECT $1, id FROM apps WHERE key = ANY($2::text[])`,

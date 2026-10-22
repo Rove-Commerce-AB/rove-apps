@@ -22,7 +22,10 @@ export const ROUTES = {
   insights: "/insights",
   work: "/work",
   workMine: "/work/mine",
+  support: "/support",
+  supportOverview: "/support/overview",
   settings: "/settings/general",
+  /** @deprecated Prefer Support Monitors; kept for redirects. */
   monitors: "/settings/monitors",
   people: "/settings/people",
   consultants: "/settings/consultants",
@@ -46,6 +49,30 @@ export function consultantHref(id: string): string {
   return `${ROUTES.consultants}/${id}`;
 }
 
+export function supportCustomerHref(customerId: string): string {
+  return `${ROUTES.support}/${customerId}`;
+}
+
+export function supportCustomerMonitorsHref(customerId: string): string {
+  return `${ROUTES.support}/${customerId}/monitors`;
+}
+
+export function supportCustomerCasesHref(customerId: string): string {
+  return `${ROUTES.support}/${customerId}/cases`;
+}
+
+export function supportCustomerContactHref(customerId: string): string {
+  return `${ROUTES.support}/${customerId}/contact`;
+}
+
+export function supportMonitorIncidentsHref(
+  customerId: string,
+  monitorId: string
+): string {
+  return `${ROUTES.support}/${customerId}/monitors/${monitorId}/incidents`;
+}
+
+/** @deprecated Use supportMonitorIncidentsHref */
 export function monitorIncidentsHref(id: string): string {
   return `${ROUTES.monitors}/${id}/incidents`;
 }
