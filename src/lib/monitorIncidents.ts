@@ -47,7 +47,8 @@ function stockholmDate(date: Date): string {
 export async function getMonitorIncidentPage(
   monitorId: string,
   rawFilters: IncidentDateFilters,
-  requestedPage: number
+  requestedPage: number,
+  allIncidents = false
 ): Promise<IncidentPage | null> {
   await assertAdmin();
   if (!uuidPattern.test(monitorId)) return null;
@@ -57,9 +58,9 @@ export async function getMonitorIncidentPage(
   const { from, to } = resolveIncidentPeriod(rawFilters, today);
 
   const { rows: monitors } = await cloudSqlPool.query<{
-    id: string; name: string; customer_name_snapshot: string; url: string; created_at: Date;
+    id: string; name: string; customer_name_snapshot: string; url: string;
   }>(
-    `SELECT id, name, customer_name_snapshot, url, created_at
+    `SELECT id, name, customer_name_snapshot, url
        FROM monitoring.monitors WHERE id = $1`,
     [monitorId]
   );
@@ -67,9 +68,9 @@ export async function getMonitorIncidentPage(
   if (!monitor) return null;
 
   const { rows: bounds } = await cloudSqlPool.query<{ start_at: Date; end_at: Date }>(
-    `SELECT GREATEST(($1::date::timestamp AT TIME ZONE 'Europe/Stockholm'), $3::timestamptz) AS start_at,
-            LEAST((($2::date + 1)::timestamp AT TIME ZONE 'Europe/Stockholm'), $4::timestamptz) AS end_at`,
-    [from, to, monitor.created_at, now.toISOString()]
+    `SELECT ($1::date::timestamp AT TIME ZONE 'Europe/Stockholm') AS start_at,
+            LEAST((($2::date + 1)::timestamp AT TIME ZONE 'Europe/Stockholm'), $3::timestamptz) AS end_at`,
+    [from, to, now.toISOString()]
   );
   const startAt = new Date(bounds[0].start_at);
   const endAt = new Date(bounds[0].end_at);
@@ -108,8 +109,8 @@ export async function getMonitorIncidentPage(
        FROM monitoring.incidents
       WHERE ${matching}
       ORDER BY started_at DESC, id DESC
-      LIMIT ${pageSize} OFFSET $5`,
-    [...values, (page - 1) * pageSize]
+      ${allIncidents ? "" : `LIMIT ${pageSize} OFFSET $5`}`,
+    allIncidents ? values : [...values, (page - 1) * pageSize]
   ) : { rows: [] };
 
   return {

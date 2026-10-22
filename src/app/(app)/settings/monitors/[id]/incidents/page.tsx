@@ -40,6 +40,11 @@ function pageHref(data: IncidentPage, page: number): string {
   return `${monitorIncidentsHref(data.monitor.id)}?${search}`;
 }
 
+function exportHref(data: IncidentPage): string {
+  const search = new URLSearchParams(data.filters);
+  return `/api/monitors/${encodeURIComponent(data.monitor.id)}/incidents/export?${search}`;
+}
+
 export default async function MonitorIncidentsPage({ params, searchParams }: Props) {
   const user = await getCurrentAppUser();
   if (!user || user.role !== "admin") redirect("/access-denied");
@@ -83,10 +88,11 @@ export default async function MonitorIncidentsPage({ params, searchParams }: Pro
         </div>
         <Button type="submit">Filter</Button>
         <Link href={monitorIncidentsHref(data.monitor.id)} className="inline-flex h-10 items-center px-2 text-sm text-text-secondary hover:underline">Last 30 days</Link>
+        <a href={exportHref(data)} className="inline-flex h-10 items-center rounded-lg border border-form bg-bg-default px-4 text-sm font-medium text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal">Export to Excel</a>
       </form>
-      <p className="text-xs text-text-tertiary">Shows incidents overlapping the selected dates. Dates and times use Europe/Stockholm. Uptime is based on recorded incidents since this monitor was created.</p>
+      <p className="text-xs text-text-tertiary">Shows incidents overlapping the selected dates. Dates and times use Europe/Stockholm. Apply the date filter before exporting. Estimated uptime = selected period through now minus recorded downtime, divided by that period. Time before this monitor existed or without checks is treated as incident-free.</p>
       <Panel className="max-w-sm p-5">
-        <p className="text-sm text-text-secondary">Uptime during selected period</p>
+        <p className="text-sm text-text-secondary">Estimated uptime during selected period</p>
         <p className="mt-2 text-heading-xl text-text-primary tabular-nums">
           {data.uptimePercent === null ? "—" : `${new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(data.uptimePercent)} %`}
         </p>
