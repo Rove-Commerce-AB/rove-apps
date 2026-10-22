@@ -1428,3 +1428,132 @@ export async function deleteWorkIssueRelation(
     kind: row.kind,
   };
 }
+
+/**
+ * Move an issue to another Work project. Allocates a new number, remaps status,
+ * clears project-scoped fields (sprint, component, labels, relations).
+ */
+export async function moveWorkIssueToProject(input: {
+  issueId: string;
+  fromProjectId: string;
+  toProjectId: string;
+  /** Prefer this status name on the target board (case-insensitive). */
+  preferredStatusName?: string | null;
+  actorAppUserId: string;
+  eventSummary?: string;
+}): Promise<{ number: number; statusId: string }> {
+  if (input.fromProjectId === input.toProjectId) {
+    throw new Error("Issue is already on the target board");
+  }
+
+  return withCloudSqlTransaction("work-move-issue-project", async (client) => {
+    // Lock both projects in stable order to avoid deadlocks.
+    const [first, second] =
+      input.fromProjectId < input.toProjectId
+        ? [input.fromProjectId, input.toProjectId]
+        : [input.toProjectId, input.fromProjectId];
+    await client.query(`SELECT id FROM work_projects WHERE id = $1 FOR UPDATE`, [
+      first,
+    ]);
+    await client.query(`SELECT id FROM work_projects WHERE id = $1 FOR UPDATE`, [
+      second,
+    ]);
+
+    const { rows: issueRows } = await client.query<{
+      id: string;
+      title: string;
+    }>(
+      `SELECT id, title FROM work_issues
+       WHERE id = $1 AND project_id = $2
+       FOR UPDATE`,
+      [input.issueId, input.fromProjectId]
+    );
+    if (!issueRows[0]) throw new Error("Issue not found on source board");
+
+    const { rows: targetOk } = await client.query<{ id: string }>(
+      `SELECT id FROM work_projects
+       WHERE id = $1 AND archived_at IS NULL`,
+      [input.toProjectId]
+    );
+    if (!targetOk[0]) throw new Error("Target board not found or archived");
+
+    const { rows: statusRows } = await client.query<{
+      id: string;
+      name: string;
+      is_done: boolean;
+      sort_order: number;
+    }>(
+      `SELECT id, name, is_done, sort_order
+       FROM work_project_statuses
+       WHERE project_id = $1
+       ORDER BY sort_order, name`,
+      [input.toProjectId]
+    );
+    if (statusRows.length === 0) {
+      throw new Error("Target board has no columns");
+    }
+
+    let statusId = statusRows[0].id;
+    const preferred = input.preferredStatusName?.trim().toLowerCase();
+    if (preferred) {
+      const hit = statusRows.find((s) => s.name.toLowerCase() === preferred);
+      if (hit) statusId = hit.id;
+    }
+
+    const { rows: numberRows } = await client.query<{ next: number }>(
+      `SELECT COALESCE(MAX(number), 0) + 1 AS next
+       FROM work_issues
+       WHERE project_id = $1`,
+      [input.toProjectId]
+    );
+    const nextNumber = numberRows[0]?.next ?? 1;
+
+    const { rows: orderRows } = await client.query<{ next: number }>(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
+       FROM work_issues
+       WHERE project_id = $1 AND status = $2`,
+      [input.toProjectId, statusId]
+    );
+
+    await client.query(
+      `DELETE FROM work_issue_label_links WHERE issue_id = $1`,
+      [input.issueId]
+    );
+    await client.query(
+      `DELETE FROM work_issue_relations
+       WHERE from_issue_id = $1 OR to_issue_id = $1`,
+      [input.issueId]
+    );
+
+    await client.query(
+      `UPDATE work_issues
+       SET project_id = $2,
+           number = $3,
+           status = $4,
+           sort_order = $5,
+           sprint_id = NULL,
+           component_id = NULL,
+           updated_at = now()
+       WHERE id = $1`,
+      [
+        input.issueId,
+        input.toProjectId,
+        nextNumber,
+        statusId,
+        orderRows[0]?.next ?? 0,
+      ]
+    );
+
+    await client.query(
+      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+       VALUES ($1, $2, 'moved', $3)`,
+      [
+        input.issueId,
+        input.actorAppUserId,
+        input.eventSummary?.trim() || "moved the issue to another board",
+      ]
+    );
+
+    return { number: nextNumber, statusId };
+  });
+}

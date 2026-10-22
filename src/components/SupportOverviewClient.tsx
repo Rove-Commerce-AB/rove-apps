@@ -37,6 +37,11 @@ import {
   supportMonitorIncidentsHref,
 } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
+import { SupportOverviewCaseQueues } from "@/components/SupportOverviewCaseQueues";
+import type {
+  SupportOverviewCaseItem,
+  SupportRouteCustomerOption,
+} from "@/lib/supportOverviewCases";
 
 type CustomerOption = { id: string; name: string };
 
@@ -44,6 +49,9 @@ type Props = {
   monitors: Monitor[];
   customers: CustomerOption[];
   slackNotifications?: SlackNotificationOption[];
+  inbox?: SupportOverviewCaseItem[];
+  newCases?: SupportOverviewCaseItem[];
+  routeCustomers?: SupportRouteCustomerOption[];
   loadError?: string;
 };
 
@@ -180,6 +188,9 @@ export function SupportOverviewClient({
   monitors,
   customers,
   slackNotifications = [],
+  inbox = [],
+  newCases = [],
+  routeCustomers = [],
   loadError,
 }: Props) {
   const router = useRouter();
@@ -329,7 +340,7 @@ export function SupportOverviewClient({
     <div className="max-w-6xl space-y-4">
       <PageHeader
         title="Support overview"
-        description="All customer monitors — create, pause, and edit here."
+        description="Inbox routing, new cases, and customer monitors."
       >
         <Button
           onClick={() => openForm("new")}
@@ -347,6 +358,12 @@ export function SupportOverviewClient({
           {loadError || error}
         </p>
       )}
+
+      <SupportOverviewCaseQueues
+        inbox={inbox}
+        newCases={newCases}
+        routeCustomers={routeCustomers}
+      />
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-border-subtle bg-bg-default px-3 py-2 text-sm">
         <span className="text-text-secondary">

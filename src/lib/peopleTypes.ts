@@ -4,18 +4,18 @@ import type { PersonCustomerLink } from "@/lib/customerAppUsersQueries";
 export const APP_KEYS = [
   "planner",
   "time_report",
-  "insights",
   "work",
   "support",
+  "insights",
 ] as const;
 export type AppKey = (typeof APP_KEYS)[number];
 
 export const APP_LABELS: Record<AppKey, string> = {
   planner: "Planner",
   time_report: "Time report",
-  insights: "Insights",
   work: "Work",
   support: "Support",
+  insights: "Insights",
 };
 
 export function isAppKey(value: string): value is AppKey {

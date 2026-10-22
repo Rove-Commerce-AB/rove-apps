@@ -818,16 +818,6 @@ export function Sidebar({
               )}
             </AppGroup>
           )}
-          {appKeys.includes("insights") && !isCustomerUser && (
-            <NavLink
-              href={ROUTES.insights}
-              label="Insights"
-              icon={Sparkles}
-              pathname={pathname}
-              activeMatch="prefix"
-              collapsed={collapsed}
-            />
-          )}
           {appKeys.includes("support") && (
             <AppGroup
               label="Rove Support"
@@ -877,6 +867,16 @@ export function Sidebar({
                 ))
               )}
             </AppGroup>
+          )}
+          {appKeys.includes("insights") && !isCustomerUser && (
+            <NavLink
+              href={ROUTES.insights}
+              label="Insights"
+              icon={Sparkles}
+              pathname={pathname}
+              activeMatch="prefix"
+              collapsed={collapsed}
+            />
           )}
         </div>
 
