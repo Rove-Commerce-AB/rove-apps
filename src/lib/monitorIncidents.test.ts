@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/accessGuards", () => ({ assertAdmin: vi.fn() }));
+vi.mock("@/lib/supportActor", () => ({
+  getSupportActor: vi.fn(async () => ({
+    id: "user-1",
+    role: "admin",
+    appKeys: ["support"],
+  })),
+  linkedSupportCustomerIdsForActor: vi.fn(async () => []),
+}));
+vi.mock("@/lib/supportAccess", () => ({
+  canViewMonitors: vi.fn(() => true),
+}));
 vi.mock("@/lib/cloudSqlPool", () => ({ cloudSqlPool: { query: vi.fn() } }));
 
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
@@ -29,8 +39,11 @@ describe("monitor incident period and export", () => {
     }));
     query
       .mockResolvedValueOnce({ rows: [{
-        id: monitorId, name: "Example", customer_name_snapshot: "Customer",
-        url: "https://example.com", created_at: new Date("2026-10-21T12:00:00.000Z"),
+        id: monitorId,
+        name: "Example",
+        customer_id: "00000000-0000-4000-8000-000000000099",
+        customer_name_snapshot: "Customer",
+        url: "https://example.com",
       }] } as never)
       .mockResolvedValueOnce({ rows: [{
         start_at: new Date("2026-09-22T22:00:00.000Z"),
