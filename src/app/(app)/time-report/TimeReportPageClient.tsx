@@ -68,6 +68,7 @@ import {
   getCalendarDatesInMonth,
   getYearWeekForDateLocal,
   weekSliceKey,
+  displayMonthForWeekNavigation,
 } from "@/lib/timeReportBrowserWeek";
 import {
   buildMergedMonthRows,
@@ -1597,23 +1598,56 @@ export function TimeReportPageClient({
     }
   }, []);
 
-  const goPrevWeek = async () => {
-    const ok = await flushSave();
-    if (!ok) return;
-    const next = addWeeksToYearWeekLocal(year, week, -1);
-    setYear(next.year);
-    setWeek(next.week);
+  const runWeekStripMonthTransition = (direction: "prev" | "next", apply: () => void) => {
+    setIsWeekStripTransitioning(true);
+    setWeekStripAnimClass(
+      direction === "prev" ? "animate-week-strip-out-to-right" : "animate-week-strip-out-to-left"
+    );
+    window.setTimeout(() => {
+      apply();
+      setWeekStripAnimClass(
+        direction === "prev"
+          ? "animate-week-strip-in-from-left"
+          : "animate-week-strip-in-from-right"
+      );
+      window.setTimeout(() => {
+        setWeekStripAnimClass("");
+        setIsWeekStripTransitioning(false);
+      }, 320);
+    }, 280);
   };
 
-  const goNextWeek = async () => {
+  const stepWeek = async (delta: -1 | 1) => {
+    if (isWeekStripTransitioning) return;
     const ok = await flushSave();
     if (!ok) return;
-    const next = addWeeksToYearWeekLocal(year, week, 1);
-    setYear(next.year);
-    setWeek(next.week);
+    const next = addWeeksToYearWeekLocal(year, week, delta);
+    const nextDisplay = displayMonthForWeekNavigation(
+      displayYear,
+      displayMonth,
+      next.year,
+      next.week
+    );
+    const monthChanged =
+      nextDisplay.year !== displayYear || nextDisplay.month !== displayMonth;
+    const apply = () => {
+      setYear(next.year);
+      setWeek(next.week);
+      setDisplayYear(nextDisplay.year);
+      setDisplayMonth(nextDisplay.month);
+    };
+    if (monthChanged) {
+      runWeekStripMonthTransition(delta < 0 ? "prev" : "next", apply);
+    } else {
+      apply();
+    }
   };
 
   const goPrevMonth = async () => {
+    if (viewMode === "week") {
+      await stepWeek(-1);
+      return;
+    }
     if (isWeekStripTransitioning) return;
     const ok = await flushSave();
     if (!ok) return;
@@ -1623,23 +1657,14 @@ export function TimeReportPageClient({
       newMonth = 12;
       newYear -= 1;
     }
-    if (viewMode === "week") {
-      setIsWeekStripTransitioning(true);
-      setWeekStripAnimClass("animate-week-strip-out-to-right");
-      window.setTimeout(() => {
-        applyCalendarMonth(newYear, newMonth);
-        setWeekStripAnimClass("animate-week-strip-in-from-left");
-        window.setTimeout(() => {
-          setWeekStripAnimClass("");
-          setIsWeekStripTransitioning(false);
-        }, 320);
-      }, 280);
-    } else {
-      applyCalendarMonth(newYear, newMonth);
-    }
+    applyCalendarMonth(newYear, newMonth);
   };
 
   const goNextMonth = async () => {
+    if (viewMode === "week") {
+      await stepWeek(1);
+      return;
+    }
     if (isWeekStripTransitioning) return;
     const ok = await flushSave();
     if (!ok) return;
@@ -1649,20 +1674,7 @@ export function TimeReportPageClient({
       newMonth = 1;
       newYear += 1;
     }
-    if (viewMode === "week") {
-      setIsWeekStripTransitioning(true);
-      setWeekStripAnimClass("animate-week-strip-out-to-left");
-      window.setTimeout(() => {
-        applyCalendarMonth(newYear, newMonth);
-        setWeekStripAnimClass("animate-week-strip-in-from-right");
-        window.setTimeout(() => {
-          setWeekStripAnimClass("");
-          setIsWeekStripTransitioning(false);
-        }, 320);
-      }, 280);
-    } else {
-      applyCalendarMonth(newYear, newMonth);
-    }
+    applyCalendarMonth(newYear, newMonth);
   };
 
   const jumpToWeek = useCallback(
@@ -2823,8 +2835,8 @@ export function TimeReportPageClient({
           <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
             <div className="flex w-full min-w-0 items-center justify-start gap-2 px-1">
               <IconButton
-                aria-label="Previous month"
-                title="Previous month"
+                aria-label={viewMode === "week" ? "Previous week" : "Previous month"}
+                title={viewMode === "week" ? "Previous week" : "Previous month"}
                 onClick={() => void goPrevMonth()}
                 disabled={isWeekStripTransitioning}
               >
@@ -2842,8 +2854,8 @@ export function TimeReportPageClient({
                 viewportClassName="max-h-64"
               />
               <IconButton
-                aria-label="Next month"
-                title="Next month"
+                aria-label={viewMode === "week" ? "Next week" : "Next month"}
+                title={viewMode === "week" ? "Next week" : "Next month"}
                 onClick={() => void goNextMonth()}
                 disabled={isWeekStripTransitioning}
               >
