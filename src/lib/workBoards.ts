@@ -8,6 +8,8 @@ import { getCustomersForAppUser } from "@/lib/customerAppUsers";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
 import { parseBillingCurrency } from "@/lib/currency";
+import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+import { resolveWorkCustomerColor } from "@/lib/workStatusColors";
 import {
   isWorkEstimateUnit,
   parseWorkEstimateUnit,
@@ -654,6 +656,9 @@ export async function getWorkBoardView(
     agentsMd: board.agents_md,
     customerId: board.customer_id,
     customerName: board.customer_name,
+    customerColor: resolveWorkCustomerColor(
+      board.customer_color ?? DEFAULT_CUSTOMER_COLOR
+    ),
     plannerProjectId: board.planner_project_id ?? null,
     plannerProjectName: board.planner_project_name ?? null,
     estimateUnit: parseWorkEstimateUnit(board.estimate_unit),

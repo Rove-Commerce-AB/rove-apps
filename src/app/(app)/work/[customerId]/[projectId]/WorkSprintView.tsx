@@ -48,6 +48,15 @@ import {
 } from "@/lib/workSprintLabel";
 import { formatWorkEstimate } from "@/lib/workEstimate";
 import { formatWorkHours } from "@/lib/workTime";
+import {
+  workStatusBorderColor,
+  workStatusToneById,
+} from "@/lib/workStatusColors";
+import {
+  startWorkCardDragGhost,
+  waitForPaint,
+  type WorkCardDragGhost,
+} from "@/lib/workCardDragGhost";
 import { WorkAddIssueInline } from "./WorkAddIssueInline";
 import {
   WorkBoardViewControls,
@@ -60,37 +69,6 @@ import { WorkCardPeople } from "./WorkIssueDrawer";
 import { WorkViewToolbar } from "./WorkViewToolbar";
 
 const DRAG_TYPE = "application/x-work-sprint-issue";
-
-function createTiltedDragImage(event: DragEvent<HTMLElement>): HTMLElement {
-  const source = event.currentTarget;
-  const rect = source.getBoundingClientRect();
-  const pad = 28;
-  const offsetX = event.clientX - rect.left;
-  const offsetY = event.clientY - rect.top;
-
-  const wrap = document.createElement("div");
-  wrap.style.position = "fixed";
-  wrap.style.top = "0";
-  wrap.style.left = "-4000px";
-  wrap.style.padding = `${pad}px`;
-  wrap.style.pointerEvents = "none";
-
-  const ghost = source.cloneNode(true) as HTMLElement;
-  ghost.removeAttribute("draggable");
-  ghost.style.width = `${rect.width}px`;
-  ghost.style.margin = "0";
-  ghost.style.boxSizing = "border-box";
-  ghost.style.opacity = "1";
-  ghost.style.background = "var(--color-bg-default, #fff)";
-  ghost.style.transformOrigin = `${offsetX}px ${offsetY}px`;
-  ghost.style.transform = "rotate(2deg) scale(1.02)";
-  ghost.style.boxShadow = "0 12px 28px rgba(0,0,0,0.18)";
-  ghost.style.borderRadius = "0.5rem";
-  wrap.appendChild(ghost);
-  document.body.appendChild(wrap);
-  event.dataTransfer.setDragImage(wrap, offsetX + pad, offsetY + pad);
-  return wrap;
-}
 
 function sortSprints(sprints: WorkSprint[]) {
   return sprints.slice().sort((a, b) => a.number - b.number);
@@ -195,11 +173,38 @@ export function WorkSprintView({
   const [sprintGroupBy, setSprintGroupBy] = useState<WorkBoardGroupBy>("none");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const draggingIdRef = useRef<string | null>(null);
-  const dragGhostRef = useRef<HTMLElement | null>(null);
+  const dragGhostRef = useRef<WorkCardDragGhost | null>(null);
+  const dropIssueIdRef = useRef<string | null>(null);
 
   function clearDragGhost() {
     dragGhostRef.current?.remove();
     dragGhostRef.current = null;
+  }
+
+  async function finishSprintDragGhost() {
+    const ghost = dragGhostRef.current;
+    dragGhostRef.current = null;
+    const issueId = dropIssueIdRef.current;
+    dropIssueIdRef.current = null;
+    if (!ghost) return;
+    if (issueId) {
+      await waitForPaint(2);
+      const landed = document.querySelector<HTMLElement>(
+        `[data-sprint-issue-id="${CSS.escape(issueId)}"]`
+      );
+      if (landed) {
+        landed.style.opacity = "0";
+        const rect = landed.getBoundingClientRect();
+        await ghost.landAt({
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+        });
+        landed.style.opacity = "";
+        return;
+      }
+    }
+    await ghost.dispose();
   }
 
   const orderedSprints = useMemo(() => sortSprints(sprints), [sprints]);
@@ -517,17 +522,20 @@ export function WorkSprintView({
     draggingIdRef.current = issueId;
     setDraggingId(issueId);
     clearDragGhost();
-    dragGhostRef.current = createTiltedDragImage(event);
     event.dataTransfer.setData(DRAG_TYPE, issueId);
     event.dataTransfer.setData("text/plain", issueId);
     event.dataTransfer.effectAllowed = "move";
+    dragGhostRef.current = startWorkCardDragGhost(event, {
+      rotateDeg: 2,
+      scale: 1.02,
+    });
   }
 
   function onDragEnd() {
     draggingIdRef.current = null;
     setDraggingId(null);
     setDragOverTarget(null);
-    clearDragGhost();
+    void finishSprintDragGhost();
   }
 
   function acceptDrop(event: DragEvent, target: "backlog" | "sprint") {
@@ -552,10 +560,17 @@ export function WorkSprintView({
     setDragOverTarget(null);
     draggingIdRef.current = null;
     setDraggingId(null);
-    clearDragGhost();
-    if (!issueId) return;
+    if (!issueId) {
+      clearDragGhost();
+      return;
+    }
+    dropIssueIdRef.current = issueId;
     if (target === "sprint") {
-      if (!viewing) return;
+      if (!viewing) {
+        dropIssueIdRef.current = null;
+        clearDragGhost();
+        return;
+      }
       moveIssue(issueId, viewing.id);
       return;
     }
@@ -1281,6 +1296,13 @@ function SprintColumn({
 }) {
   const [adding, setAdding] = useState(false);
   const skipRowClickRef = useRef(false);
+  const statusTones = useMemo(
+    () =>
+      board
+        ? workStatusToneById(board.customerColor, board.statuses)
+        : {},
+    [board]
+  );
   const blockedIds = useMemo(() => {
     if (!warnBlocked || !board) return new Set<string>();
     const ids = new Set<string>();
@@ -1311,14 +1333,21 @@ function SprintColumn({
   function renderIssue(issue: WorkIssue, key: string) {
     const canDrag = draggableCards && !pending;
     const isDragging = draggingIssueId === issue.id;
+    const tone = statusTones[issue.status];
     return (
       <li
         key={key}
+        data-sprint-issue-id={issue.id}
         draggable={canDrag}
         role="button"
         tabIndex={0}
         aria-label={`Open ${issue.key}`}
-        className={`flex cursor-pointer items-stretch gap-0.5 rounded-lg border border-border-subtle bg-bg-default transition-opacity ${
+        style={
+          tone
+            ? { borderLeftColor: workStatusBorderColor(tone) }
+            : undefined
+        }
+        className={`flex cursor-pointer items-stretch gap-0.5 rounded-lg border border-l-4 border-border-subtle bg-bg-default transition-opacity ${
           canDrag ? "select-none" : ""
         } ${isDragging ? "opacity-35" : ""}`}
         onKeyDown={(event) => {

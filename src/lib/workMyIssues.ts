@@ -14,10 +14,12 @@ import {
 import { fetchLoggedHoursByIssueIds } from "@/lib/workIssuesQueries";
 import { workIssueKey } from "@/lib/workIssueKey";
 import { workSprintLabel } from "@/lib/workSprintLabel";
+import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import {
   fetchMemberWorkProjectIds,
   fetchMyWorkIssues,
 } from "@/lib/workMyIssuesQueries";
+import { resolveWorkCustomerColor } from "@/lib/workStatusColors";
 import type { WorkIssuePriority, WorkIssueType } from "@/lib/workTypes";
 
 export type WorkMyIssue = {
@@ -31,8 +33,12 @@ export type WorkMyIssue = {
   isDone: boolean;
   customerId: string;
   customerName: string;
+  customerColor: string;
   projectId: string;
   projectTitle: string;
+  /** 0-based index of status in the project column order. */
+  statusIndex: number;
+  statusCount: number;
   sprintLabel: string | null;
   showEstimates: boolean;
   showReportedTime: boolean;
@@ -82,8 +88,13 @@ export async function listMyWorkIssues(): Promise<WorkMyIssue[]> {
       isDone: row.is_done,
       customerId: row.customer_id,
       customerName: row.customer_name,
+      customerColor: resolveWorkCustomerColor(
+        row.customer_color ?? DEFAULT_CUSTOMER_COLOR
+      ),
       projectId: row.project_id,
       projectTitle: row.project_title,
+      statusIndex: Number(row.status_index) || 0,
+      statusCount: Math.max(1, Number(row.status_count) || 1),
       sprintLabel:
         row.sprint_number == null
           ? null

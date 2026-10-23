@@ -10,6 +10,10 @@ import type { WorkMyIssue } from "@/lib/workMyIssues";
 import { formatVisibleWorkEstimate } from "@/lib/workEstimate";
 import { compareTextSv } from "@/lib/sort";
 import { workCustomerHref, workProjectHref } from "@/lib/routes";
+import {
+  workStatusBorderColor,
+  workStatusToneAtIndex,
+} from "@/lib/workStatusColors";
 import { createWorkIssueAction } from "../actions";
 import { WorkIssueTypeIcon } from "../[customerId]/[projectId]/WorkIssueTypeIcon";
 import { WorkAddIssueInline } from "../[customerId]/[projectId]/WorkAddIssueInline";
@@ -361,7 +365,16 @@ export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
                             issueId: issue.id,
                           })
                         }
-                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg-muted ${
+                        style={{
+                          borderLeftColor: workStatusBorderColor(
+                            workStatusToneAtIndex(
+                              issue.customerColor,
+                              issue.statusIndex,
+                              issue.statusCount
+                            )
+                          ),
+                        }}
+                        className={`flex w-full items-center gap-3 border-l-4 px-3 py-2.5 text-left transition-colors hover:bg-bg-muted ${
                           selected ? "bg-bg-muted" : ""
                         }`}
                       >

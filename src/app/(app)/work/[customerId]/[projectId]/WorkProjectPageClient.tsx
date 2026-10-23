@@ -13,8 +13,6 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
-  Eye,
-  EyeOff,
   GripVertical,
   Link2,
   MoreHorizontal,
@@ -77,6 +75,16 @@ import {
 import { formatWorkEstimate } from "@/lib/workEstimate";
 import type { WorkEstimateUnit } from "@/lib/workEstimate";
 import type { BillingCurrency } from "@/lib/currency";
+import {
+  workStatusAccent,
+  workStatusColumnBackground,
+  workStatusToneById,
+} from "@/lib/workStatusColors";
+import {
+  startWorkCardDragGhost,
+  waitForPaint,
+  type WorkCardDragGhost,
+} from "@/lib/workCardDragGhost";
 import {
   collectBoardComponents,
   collectOwnerFilterPeople,
@@ -243,32 +251,6 @@ function computeMove(
 }
 
 
-function createTiltedDragImage(event: DragEvent<HTMLElement>): HTMLElement {
-  const source = event.currentTarget;
-  const rect = source.getBoundingClientRect();
-  const pad = 28;
-  const offsetX = event.clientX - rect.left;
-  const offsetY = event.clientY - rect.top;
-
-  const wrap = document.createElement("div");
-  wrap.style.position = "fixed";
-  wrap.style.top = "0";
-  wrap.style.left = "-4000px";
-  wrap.style.padding = `${pad}px`;
-  wrap.style.pointerEvents = "none";
-
-  const ghost = source.cloneNode(true) as HTMLElement;
-  ghost.style.width = `${rect.width}px`;
-  ghost.style.margin = "0";
-  ghost.style.boxSizing = "border-box";
-  ghost.style.transformOrigin = `${offsetX}px ${offsetY}px`;
-  ghost.style.transform = "rotate(3deg)";
-  ghost.style.boxShadow = "var(--shadow-lg)";
-  wrap.appendChild(ghost);
-  document.body.appendChild(wrap);
-  event.dataTransfer.setDragImage(wrap, offsetX + pad, offsetY + pad);
-  return wrap;
-}
 
 export function WorkBoardPageClient({
   board,
@@ -300,8 +282,9 @@ export function WorkBoardPageClient({
     status: WorkIssueStatus;
     beforeIssueId: string | null;
   } | null>(null);
+  const [landingIssueId, setLandingIssueId] = useState<string | null>(null);
   const dragIssueIdRef = useRef<string | null>(null);
-  const dragGhostRef = useRef<HTMLElement | null>(null);
+  const dragGhostRef = useRef<WorkCardDragGhost | null>(null);
   const dragSourceRef = useRef<HTMLElement | null>(null);
   const dragSourceStatusRef = useRef<WorkIssueStatus | null>(null);
   const skipCardClickRef = useRef(false);
@@ -593,6 +576,11 @@ export function WorkBoardPageClient({
       priorityFilterIds,
       sprintFilterIds,
     ]
+  );
+
+  const statusTones = useMemo(
+    () => workStatusToneById(board.customerColor, statuses),
+    [board.customerColor, statuses]
   );
 
   function clearDoneCardMotionTimer() {
@@ -1107,18 +1095,54 @@ export function WorkBoardPageClient({
   function finishDrag() {
     const target = dropTargetRef.current;
     const source = dragSourceRef.current;
+    const ghost = dragGhostRef.current;
+    const issueId = dragIssueIdRef.current;
     dropTargetRef.current = null;
     dragIssueIdRef.current = null;
     dragSourceRef.current = null;
     dragSourceStatusRef.current = null;
-    dragGhostRef.current?.remove();
     dragGhostRef.current = null;
     stopDragAutoScroll();
     setDragOverStatus(null);
     setIssueDropBefore(null);
-    if (source) source.style.opacity = "";
-    if (!target) return;
-    moveIssue(target.issueId, target.status, target.beforeIssueId);
+
+    void (async () => {
+      if (target && issueId) {
+        setLandingIssueId(issueId);
+        moveIssue(target.issueId, target.status, target.beforeIssueId);
+        await waitForPaint(2);
+        const landed = document.querySelector<HTMLElement>(
+          `[data-issue-id="${CSS.escape(issueId)}"] [data-issue-card]`
+        );
+        if (ghost && landed) {
+          const rect = landed.getBoundingClientRect();
+          await ghost.landAt({
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+          });
+        } else if (ghost) {
+          await ghost.dispose();
+        }
+        setLandingIssueId(null);
+        if (source) source.style.opacity = "";
+        return;
+      }
+
+      if (ghost && source?.isConnected) {
+        const rect = source.getBoundingClientRect();
+        await ghost.landAt({
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+        });
+        source.style.opacity = "";
+        return;
+      }
+
+      if (ghost) await ghost.dispose();
+      if (source) source.style.opacity = "";
+    })();
   }
 
   async function submitNewIssue(status: WorkIssueStatus, title: string) {
@@ -1332,6 +1356,11 @@ export function WorkBoardPageClient({
       <div
         ref={boardScrollRef}
         data-work-board-scroll
+        style={
+          {
+            "--work-customer-color": board.customerColor,
+          } as CSSProperties
+        }
         className={`flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden ${
           spacePanCursor === "grabbing"
             ? "cursor-grabbing select-none [&_*]:!cursor-grabbing"
@@ -1433,15 +1462,30 @@ export function WorkBoardPageClient({
             draggingStatusId != null &&
             statusInsertBeforeId === null &&
             isLastColumn;
+          const statusTone = statusTones[status] ?? {
+            color: board.customerColor,
+            mix: 14,
+          };
+          const statusAccent = workStatusAccent(statusTone);
           return (
             <section
               key={status}
+              data-work-status-id={status}
+              style={
+                {
+                  "--work-status-color": statusTone.color,
+                  "--work-status-mix": String(statusTone.mix),
+                  background: isDragOver
+                    ? undefined
+                    : workStatusColumnBackground(statusTone),
+                } as CSSProperties
+              }
               className={`relative flex h-full min-h-0 w-72 shrink-0 flex-col rounded-xl transition-colors ${
                 draggingStatusId === status ? "opacity-40" : ""
               } ${
                 isDragOver
                   ? "bg-brand-signal/10 ring-2 ring-inset ring-brand-signal"
-                  : "bg-surface-subtle"
+                  : ""
               }`}
               onDragOver={(event) => {
                 if (handleStatusDragOver(event, status)) return;
@@ -1491,8 +1535,24 @@ export function WorkBoardPageClient({
                       ? "text-brand-signal"
                       : "text-text-primary"
                 }`}
+                style={
+                  isDone
+                    ? {
+                        boxShadow: `inset 0 -2px 0 ${statusAccent}`,
+                      }
+                    : {
+                        borderBottom: `2px solid ${statusAccent}`,
+                      }
+                }
               >
                 <span className="flex min-w-0 items-center gap-1.5">
+                  {!isDone ? (
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: statusAccent }}
+                      aria-hidden
+                    />
+                  ) : null}
                   <span
                     draggable
                     tabIndex={0}
@@ -1568,34 +1628,6 @@ export function WorkBoardPageClient({
                         billingCurrency
                       )}
                     </span>
-                  ) : null}
-                  {isDone &&
-                  visibleColumnIssues.length > 0 &&
-                  doneCardMotion?.mode !== "hiding" ? (
-                    <button
-                      type="button"
-                      aria-label="Hide all done issues from the board"
-                      title="Hide all in Done"
-                      disabled={doneCardMotion != null}
-                      className="inline-flex shrink-0 items-center rounded-sm p-0.5 text-current/45 hover:bg-current/10 hover:text-current disabled:opacity-40"
-                      onClick={() => hideDoneIssuesFromBoard(status)}
-                    >
-                      <EyeOff className="h-4 w-4" aria-hidden />
-                    </button>
-                  ) : null}
-                  {isDone &&
-                  hiddenDoneCount > 0 &&
-                  doneCardMotion?.mode !== "showing" ? (
-                    <button
-                      type="button"
-                      aria-label={`Show ${hiddenDoneCount} hidden done issues`}
-                      title={`Show ${hiddenDoneCount} hidden`}
-                      disabled={doneCardMotion != null}
-                      className="inline-flex shrink-0 items-center rounded-sm p-0.5 text-current/45 hover:bg-current/10 hover:text-current disabled:opacity-40"
-                      onClick={() => showHiddenDoneIssuesFromBoard()}
-                    >
-                      <Eye className="h-4 w-4" aria-hidden />
-                    </button>
                   ) : null}
                   <button
                     type="button"
@@ -1761,7 +1793,9 @@ export function WorkBoardPageClient({
                         event.dataTransfer.setData("text/plain", issue.id);
                         event.dataTransfer.effectAllowed = "move";
                         dragGhostRef.current?.remove();
-                        dragGhostRef.current = createTiltedDragImage(event);
+                        dragGhostRef.current = startWorkCardDragGhost(event, {
+                          rotateDeg: 3,
+                        });
                         dragIssueIdRef.current = issue.id;
                         dragSourceStatusRef.current = status;
                         const source = event.currentTarget;
@@ -1787,11 +1821,12 @@ export function WorkBoardPageClient({
                           skipCardClickRef.current = false;
                         }, 0);
                       }}
+                      data-issue-card
                       className={`relative cursor-pointer select-none overflow-hidden rounded-lg border bg-bg-default p-3 shadow-sm ${
                         selectedIssueId === issue.id
                           ? "border-accent-primary"
                           : "border-border-subtle hover:border-border-default"
-                      }`}
+                      } ${landingIssueId === issue.id ? "opacity-0" : ""}`}
                     >
                       <div className="text-left">
                         <div className="flex items-center justify-between gap-2">
@@ -2285,6 +2320,30 @@ export function WorkBoardPageClient({
 
       {statusMenu
         ? createPortal(
+            (() => {
+              const menuColumn = statuses.find(
+                (status) => status.id === statusMenu.id
+              );
+              const menuDoneIssues = menuColumn?.isDone
+                ? issuesInStatus(issues, statusMenu.id).filter((issue) =>
+                    visibleIds.has(issue.id)
+                  )
+                : [];
+              const menuVisibleDone = menuDoneIssues.filter(
+                (issue) => !issue.hiddenFromBoard
+              ).length;
+              const menuHiddenDone = menuDoneIssues.filter(
+                (issue) => issue.hiddenFromBoard
+              ).length;
+              const canHideDone =
+                Boolean(menuColumn?.isDone) &&
+                menuVisibleDone > 0 &&
+                doneCardMotion?.mode !== "hiding";
+              const canShowDone =
+                Boolean(menuColumn?.isDone) &&
+                menuHiddenDone > 0 &&
+                doneCardMotion?.mode !== "showing";
+              return (
             <div
               data-status-menu
               role="menu"
@@ -2296,14 +2355,47 @@ export function WorkBoardPageClient({
                 role="menuitem"
                 className="flex w-full px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
                 onClick={() => {
-                  const column = statuses.find(
-                    (status) => status.id === statusMenu.id
-                  );
-                  if (column) startRenameStatus(column);
+                  if (menuColumn) startRenameStatus(menuColumn);
                 }}
               >
                 Rename
               </button>
+              {canHideDone || canShowDone ? (
+                <>
+                  <div
+                    className="my-1 border-t border-border-subtle"
+                    role="separator"
+                  />
+                  {canHideDone ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={doneCardMotion != null}
+                      className="flex w-full px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted disabled:opacity-40"
+                      onClick={() => {
+                        setStatusMenu(null);
+                        hideDoneIssuesFromBoard(statusMenu.id);
+                      }}
+                    >
+                      Hide all in Done
+                    </button>
+                  ) : null}
+                  {canShowDone ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={doneCardMotion != null}
+                      className="flex w-full px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted disabled:opacity-40"
+                      onClick={() => {
+                        setStatusMenu(null);
+                        showHiddenDoneIssuesFromBoard();
+                      }}
+                    >
+                      Show {menuHiddenDone} hidden
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
               <div
                 className="my-1 border-t border-border-subtle"
                 role="separator"
@@ -2353,7 +2445,9 @@ export function WorkBoardPageClient({
                   </button>
                 </>
               ) : null}
-            </div>,
+            </div>
+              );
+            })(),
             document.body
           )
         : null}

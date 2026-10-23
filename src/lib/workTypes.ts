@@ -221,6 +221,8 @@ export type WorkBoardView = {
   agentsMd: string;
   customerId: string;
   customerName: string;
+  /** Customer master-data color — base for Work status palette. */
+  customerColor: string;
   /** Linked Planner `projects.id`, when set. */
   plannerProjectId: string | null;
   plannerProjectName: string | null;

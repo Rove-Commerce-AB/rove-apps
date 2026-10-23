@@ -30,6 +30,10 @@ import type {
   WorkSprint,
 } from "@/lib/workTypes";
 import { workSprintLabel } from "@/lib/workSprintLabel";
+import {
+  workStatusBorderColor,
+  workStatusToneById,
+} from "@/lib/workStatusColors";
 import { WorkAddIssueInline } from "./WorkAddIssueInline";
 import {
   WorkCardTypeBadge,
@@ -198,6 +202,10 @@ export function WorkTimelineView({
     };
   }, []);
 
+  const statusTones = useMemo(
+    () => workStatusToneById(board.customerColor, board.statuses),
+    [board.customerColor, board.statuses]
+  );
   const orderedSprints = useMemo(() => sortSprints(sprints), [sprints]);
   const current = sprints.find((sprint) => sprint.status === "current") ?? null;
   const focusedSprint =
@@ -873,6 +881,10 @@ export function WorkTimelineView({
               (parseDay(bar.start) < parseDay(sprint.startsOn) ||
                 parseDay(bar.end) > parseDay(sprint.endsOn));
             const canCreate = !explicit && !pending;
+            const tone = statusTones[issue.status] ?? {
+              color: board.customerColor,
+              mix: 14,
+            };
             return (
               <div
                 key={row.key}
@@ -880,8 +892,12 @@ export function WorkTimelineView({
                 style={{ height: ROW_H }}
               >
                 <div
-                  className="sticky left-0 z-10 flex shrink-0 items-center gap-1.5 truncate border-r border-border-subtle bg-bg-default px-2"
-                  style={{ width: LABEL_W, paddingLeft: 8 + depth * 12 }}
+                  className="sticky left-0 z-10 flex shrink-0 items-center gap-1.5 truncate border-r border-l-4 border-border-subtle bg-bg-default px-2"
+                  style={{
+                    width: LABEL_W,
+                    paddingLeft: 8 + depth * 12,
+                    borderLeftColor: workStatusBorderColor(tone),
+                  }}
                 >
                   <WorkCardTypeBadge
                     issueType={issue.issueType}
