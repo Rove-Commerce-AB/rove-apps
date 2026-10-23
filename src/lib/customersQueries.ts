@@ -8,6 +8,7 @@ import {
 } from "./currency";
 import { parseLitiumVersionInput, parseSubscriptionIdInput } from "./litiumVersion";
 import { fetchProjectsByCustomerIds } from "./projectsLookupQueries";
+import { fetchCustomerIdsWithActiveSupportContract } from "./supportContractsQueries";
 import type { CustomerWithDetails, ProjectType } from "@/types";
 
 export type Customer = {
@@ -199,7 +200,8 @@ function toCustomerWithDetails(
   customer: Customer,
   accountManagerNames: Map<string, string>,
   contactUsers: Map<string, { name: string; email: string }>,
-  customerProjects: CustomerProjectRow[]
+  customerProjects: CustomerProjectRow[],
+  hasActiveSupportContract = false
 ): CustomerWithDetails {
   const contact = customer.contact_app_user_id
     ? contactUsers.get(customer.contact_app_user_id)
@@ -231,6 +233,7 @@ function toCustomerWithDetails(
     initials: getInitials(customer.name),
     isActive: customer.is_active ?? true,
     activeProjectCount: activeProjects.length,
+    hasActiveSupportContract,
     primaryProject: primaryProject
       ? { name: primaryProject.name, isActive: primaryProject.is_active }
       : null,
@@ -283,11 +286,21 @@ export async function fetchCustomerById(
   }
 
   const customerProjects = projectsByCustomer.get(data.id) ?? [];
+  let hasActiveSupportContract = false;
+  try {
+    const activeSupport = await fetchCustomerIdsWithActiveSupportContract([
+      data.id,
+    ]);
+    hasActiveSupportContract = activeSupport.has(data.id);
+  } catch {
+    // support_contracts may not exist yet
+  }
   return toCustomerWithDetails(
     data,
     accountManagerNames,
     contactUsers,
-    customerProjects
+    customerProjects,
+    hasActiveSupportContract
   );
 }
 
@@ -592,6 +605,7 @@ export async function fetchCustomersWithDetails(): Promise<
   ]);
 
   const projectsByCustomer = new Map<string, CustomerProjectRow[]>();
+  let activeSupportCustomerIds = new Set<string>();
   try {
     const projects = await fetchProjectsByCustomerIds(
       customers.map((c) => c.id)
@@ -613,12 +627,21 @@ export async function fetchCustomersWithDetails(): Promise<
     // Projects table may not exist yet
   }
 
+  try {
+    activeSupportCustomerIds = await fetchCustomerIdsWithActiveSupportContract(
+      customers.map((c) => c.id)
+    );
+  } catch {
+    // support_contracts may not exist yet
+  }
+
   return customers.map((c) =>
     toCustomerWithDetails(
       c,
       accountManagerNames,
       contactUsers,
-      projectsByCustomer.get(c.id) ?? []
+      projectsByCustomer.get(c.id) ?? [],
+      activeSupportCustomerIds.has(c.id)
     )
   );
 }

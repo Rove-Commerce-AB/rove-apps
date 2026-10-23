@@ -83,6 +83,28 @@ export async function customerHasActiveSupportContract(
   return row != null;
 }
 
+/** Customer IDs that currently have an active (non-ended) support contract. */
+export async function fetchCustomerIdsWithActiveSupportContract(
+  customerIds?: string[]
+): Promise<Set<string>> {
+  if (customerIds && customerIds.length === 0) return new Set();
+
+  const { rows } = await cloudSqlPool.query<{ customer_id: string }>(
+    customerIds
+      ? `SELECT customer_id
+         FROM support_contracts
+         WHERE customer_id = ANY($1::uuid[])
+           AND active
+           AND (ends_on IS NULL OR ends_on >= CURRENT_DATE)`
+      : `SELECT customer_id
+         FROM support_contracts
+         WHERE active
+           AND (ends_on IS NULL OR ends_on >= CURRENT_DATE)`,
+    customerIds ? [customerIds] : []
+  );
+  return new Set(rows.map((row) => row.customer_id));
+}
+
 export type UpsertSupportContractInput = {
   customerId: string;
   tierCode: string;

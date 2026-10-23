@@ -131,6 +131,8 @@ export type CustomerWithDetails = {
   initials: string;
   isActive: boolean;
   activeProjectCount: number;
+  /** True when customer has an active support contract that has not ended. */
+  hasActiveSupportContract: boolean;
   primaryProject: { name: string; isActive: boolean } | null;
   /** All projects for this customer (detail page) */
   projects: CustomerProjectSummary[];

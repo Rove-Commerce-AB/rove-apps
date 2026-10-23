@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { MessageCircle, Plus, Search } from "lucide-react";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
 import { CustomerDrawerContent } from "@/components/CustomerDrawerContent";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
@@ -34,7 +34,8 @@ type SortKey =
   | "accountManager"
   | "subscriptionId"
   | "litiumVersion"
-  | "activeProjects";
+  | "activeProjects"
+  | "support";
 type SortDirection = "asc" | "desc";
 
 function sortCustomers(
@@ -68,6 +69,13 @@ function sortCustomers(
       case "activeProjects":
         return (
           direction * (a.activeProjectCount - b.activeProjectCount) ||
+          compareTextSv(a.name, b.name)
+        );
+      case "support":
+        return (
+          direction *
+            (Number(a.hasActiveSupportContract) -
+              Number(b.hasActiveSupportContract)) ||
           compareTextSv(a.name, b.name)
         );
       default:
@@ -258,6 +266,23 @@ export function CustomersPageClient({
       cell: (customer) => (
         <span className="tabular-nums">{customer.activeProjectCount}</span>
       ),
+    },
+    {
+      id: "support",
+      header: "Support",
+      sortable: true,
+      align: "center",
+      width: "5.5rem",
+      cell: (customer) =>
+        customer.hasActiveSupportContract ? (
+          <span
+            className="inline-flex text-text-secondary"
+            title="Active support contract"
+            aria-label="Active support contract"
+          >
+            <MessageCircle className="h-4 w-4" aria-hidden />
+          </span>
+        ) : null,
     },
     {
       id: "spacer",
