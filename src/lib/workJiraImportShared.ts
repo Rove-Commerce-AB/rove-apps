@@ -1,5 +1,6 @@
 import {
   normalizePersonName,
+  normalizePersonNameLoose,
   type JiraRelationEdge,
   type ParsedJiraComment,
   type ParsedJiraIssueLink,
@@ -38,7 +39,10 @@ export type JiraImportMappings = {
   statusMap: Record<string, string>;
   typeMap: Record<string, WorkIssueType>;
   priorityMap: Record<string, WorkIssuePriority | null>;
-  /** Jira assignee display name → board member app_user id */
+  /**
+   * Jira person display name → board member app_user id.
+   * Used for assignees (owner) and comment authors.
+   */
   peopleMap: Record<string, string>;
   /** Import Epic issues as Work cards and link children via parent relations. */
   createEpicCards: boolean;
@@ -74,16 +78,31 @@ export function matchPeopleByName(
   members: WorkPerson[]
 ): Record<string, string> {
   const byNorm = new Map<string, string>();
+  const byLoose = new Map<string, string>();
   for (const member of members) {
     if (!member?.name || !member.id) continue;
     const key = normalizePersonName(member.name);
+    const loose = normalizePersonNameLoose(member.name);
     if (key && !byNorm.has(key)) byNorm.set(key, member.id);
+    if (loose && !byLoose.has(loose)) byLoose.set(loose, member.id);
   }
   const out: Record<string, string> = {};
   for (const name of jiraNames) {
     if (!name) continue;
-    const id = byNorm.get(normalizePersonName(name));
+    const id =
+      byNorm.get(normalizePersonName(name)) ??
+      byLoose.get(normalizePersonNameLoose(name));
     if (id) out[name] = id;
   }
   return out;
+}
+
+/** Assignees + comment authors for the import people mapper. */
+export function uniqueJiraPeopleNames(parsed: {
+  uniqueAssignees: string[];
+  uniqueCommentAuthors: string[];
+}): string[] {
+  return [
+    ...new Set([...parsed.uniqueAssignees, ...parsed.uniqueCommentAuthors]),
+  ].sort((a, b) => a.localeCompare(b));
 }

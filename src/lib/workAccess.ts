@@ -107,6 +107,11 @@ export function canArchiveWorkProject(actor: WorkActor): boolean {
   return actor.role !== "customer";
 }
 
+/** Customer-role users cannot add/remove project members. */
+export function canManageWorkBoardAccess(actor: WorkActor): boolean {
+  return actor.role !== "customer";
+}
+
 /**
  * Customer-role users may only delete issues they created (reporter).
  * Admin/member can delete any issue on a board they can access (other rules apply).

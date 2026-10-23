@@ -45,7 +45,7 @@ export function SupportCasesClient({
         setOpenIssueId(issueId);
       } catch (cause) {
         setError(
-          cause instanceof Error ? cause.message : "Failed to create case"
+          cause instanceof Error ? cause.message : "Failed to create incident"
         );
       }
     });
@@ -54,11 +54,11 @@ export function SupportCasesClient({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Cases"
+        title="Incidents"
         description={
           customerName
-            ? `Support cases for ${customerName}.`
-            : "Support cases for this customer."
+            ? `Support incidents for ${customerName}.`
+            : "Support incidents for this customer."
         }
       />
       {(loadError || error) && (
@@ -73,7 +73,7 @@ export function SupportCasesClient({
         <form className="space-y-3" onSubmit={submit}>
           <Input
             id="case-title"
-            label="New case"
+            label="New incident"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             required
@@ -89,13 +89,13 @@ export function SupportCasesClient({
             />
           </label>
           <Button type="submit" disabled={pending || !title.trim()}>
-            {pending ? "Creating…" : "Create case"}
+            {pending ? "Creating…" : "Create incident"}
           </Button>
         </form>
       </Panel>
       <Panel>
         {cases.length === 0 ? (
-          <p className="p-6 text-sm text-text-secondary">No cases yet.</p>
+          <p className="p-6 text-sm text-text-secondary">No incidents yet.</p>
         ) : (
           <ul className="divide-y divide-border-subtle">
             {cases.map((item) => (

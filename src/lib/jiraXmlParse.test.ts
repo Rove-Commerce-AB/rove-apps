@@ -10,10 +10,12 @@ import {
   htmlToPlainText,
   mapJiraIssueLinkToEdge,
   parseJiraRfc822Date,
+  parseJiraRfc822DateTime,
   parseJiraRssXml,
   suggestPriorityMapping,
   suggestTypeMapping,
 } from "./jiraXmlParse";
+import { matchPeopleByName } from "./workJiraImportShared";
 
 const SAMPLE = `<?xml version="1.0"?>
 <rss version="0.92">
@@ -137,6 +139,7 @@ describe("jiraXmlParse", () => {
     expect(story.descriptionText.toLowerCase()).not.toContain("pre deploy");
     expect(story.comments[0]?.authorName).toBe("Ada Lovelace");
     expect(story.comments[0]?.bodyText).toBe("Looks good");
+    expect(parsed.uniqueCommentAuthors).toEqual(["Ada Lovelace"]);
     expect(story.links).toEqual([
       { typeName: "Blocks", direction: "outward", otherKey: "GOH-9" },
       { typeName: "Relates", direction: "inward", otherKey: "GOH-8" },
@@ -213,6 +216,32 @@ describe("jiraXmlParse", () => {
         bodyText: "Hi",
       })
     ).toBe("[Ada, Wed, 3 Dec 2025]\nHi");
+    expect(
+      formatImportedComment(
+        {
+          authorAccountId: "x",
+          authorName: "Ada",
+          created: "Wed, 3 Dec 2025",
+          bodyText: "Hi",
+        },
+        { authorMapped: true }
+      )
+    ).toBe("Hi");
+    expect(parseJiraRfc822DateTime("Wed, 3 Dec 2025 10:00:00 +0100")).toBe(
+      new Date("Wed, 3 Dec 2025 10:00:00 +0100").toISOString()
+    );
+    expect(
+      matchPeopleByName(
+        ["marie.ahdel-franzen", "Ada Lovelace"],
+        [
+          { id: "1", name: "Marie Ahdel-Franzen", initials: "MA" },
+          { id: "2", name: "Ada Lovelace", initials: "AL" },
+        ]
+      )
+    ).toEqual({
+      "marie.ahdel-franzen": "1",
+      "Ada Lovelace": "2",
+    });
   });
 
   it("rejects non-Jira XML", () => {

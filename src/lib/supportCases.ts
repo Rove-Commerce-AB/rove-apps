@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCustomerById } from "@/lib/customers";
-import { supportCustomerCasesHref } from "@/lib/routes";
+import { supportCustomerIncidentsHref } from "@/lib/routes";
 import { canUseSupportCases } from "@/lib/supportAccess";
 import {
   getSupportActor,
@@ -32,7 +32,7 @@ async function requireCasesContext(customerId: string) {
   const hasContract = await customerHasActiveSupportContract(customerId);
   if (!canUseSupportCases(actor, linked, customerId, hasContract)) {
     throw new WorkInputError(
-      "Support cases are not available for this customer."
+      "Support incidents are not available for this customer."
     );
   }
   const contract = await fetchSupportContractForCustomer(customerId);
@@ -153,7 +153,7 @@ export async function createSupportCase(
     });
   }
 
-  revalidatePath(supportCustomerCasesHref(customerId));
+  revalidatePath(supportCustomerIncidentsHref(customerId));
   scheduleSupportCaseSlackNotify({
     customerId,
     customerName,
@@ -258,5 +258,5 @@ export async function addSupportCaseComment(
   });
   if (!commentId) throw new WorkInputError("Case not found.");
 
-  revalidatePath(supportCustomerCasesHref(customerId));
+  revalidatePath(supportCustomerIncidentsHref(customerId));
 }

@@ -1,10 +1,11 @@
 import type { BillingCurrency } from "@/lib/currency";
 import type { AppUserRole } from "@/lib/peopleTypes";
 import type { WorkEstimateUnit } from "@/lib/workEstimate";
+import type { WorkProcess, WorkProcessStep } from "@/lib/workProcess";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkIssueRelations } from "@/lib/workIssueRelations";
 
-export type { WorkIssueRelations };
+export type { WorkIssueRelations, WorkProcess, WorkProcessStep };
 
 export type { WorkBoardStatus, WorkIssueStatus };
 
@@ -219,6 +220,8 @@ export type WorkBoardView = {
   title: string;
   prefix: string;
   agentsMd: string;
+  /** Human-facing board process (steps + notes). */
+  process: WorkProcess;
   customerId: string;
   customerName: string;
   /** Customer master-data color — base for Work status palette. */

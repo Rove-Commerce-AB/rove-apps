@@ -4,7 +4,10 @@ export type WorkCardDragGhost = {
   move: (clientX: number, clientY: number) => void;
   /** Animate tilt back to flat in place, then remove. */
   dispose: () => Promise<void>;
-  /** Fly to a screen rect (untilt + translate), then remove. */
+  /**
+   * Fly to a screen rect (untilt + translate) and stay there.
+   * Caller should reveal the real card, then call remove().
+   */
   landAt: (target: {
     left: number;
     top: number;
@@ -114,10 +117,9 @@ export function startWorkCardDragGhost(
   }
 
   function remove() {
-    if (disposed) return;
     disposed = true;
     cleanupListeners();
-    wrap.remove();
+    if (wrap.isConnected) wrap.remove();
   }
 
   async function dispose(): Promise<void> {
@@ -146,17 +148,19 @@ export function startWorkCardDragGhost(
     // Enable fly transition after freezing current transform.
     void wrap.getBoundingClientRect();
     wrap.style.transition = `transform ${landDurationMs}ms ${ease}`;
-    ghost.style.transition = `transform ${landDurationMs}ms ${ease}`;
+    ghost.style.transition = `transform ${landDurationMs}ms ${ease}, box-shadow ${landDurationMs}ms ${ease}`;
     void wrap.getBoundingClientRect();
 
     wrap.style.transform = `translate(${target.left}px, ${target.top}px)`;
     ghost.style.transform = "rotate(0deg) scale(1)";
+    ghost.style.boxShadow = "none";
 
     await Promise.all([
       waitTransition(wrap, "transform", landDurationMs + 80),
       waitTransition(ghost, "transform", landDurationMs + 80),
     ]);
-    wrap.remove();
+    // Leave the ghost in place so the caller can reveal the real card
+    // underneath before removing — avoids a one-frame blank flash.
   }
 
   return { move: place, dispose, landAt, remove };

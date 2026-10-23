@@ -15,6 +15,7 @@ import {
 import {
   JIRA_STATUS_CREATE,
   matchPeopleByName,
+  uniqueJiraPeopleNames,
   type JiraImportIssuePayload,
   type JiraImportMappings,
   type JiraImportRelationSkip,
@@ -280,7 +281,9 @@ export function WorkJiraImportDialog({
       setStatusMap(defaultStatusMap(result.uniqueStatuses, columns));
       setTypeMap(defaultTypeMap(result.uniqueTypes));
       setPriorityMap(defaultPriorityMap(result.uniquePriorities));
-      setPeopleMap(matchPeopleByName(result.uniqueAssignees, members));
+      setPeopleMap(
+        matchPeopleByName(uniqueJiraPeopleNames(result), members)
+      );
       setStep("map");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not parse file");
@@ -815,16 +818,18 @@ export function WorkJiraImportDialog({
               </div>
             </section>
 
-            {parsed.uniqueAssignees.length > 0 && (
+            {uniqueJiraPeopleNames(parsed).length > 0 && (
               <section className="space-y-2">
                 <h3 className="text-sm font-medium text-text-primary">
-                  People (owner)
+                  People (owner & comments)
                 </h3>
                 <p className="text-xs text-text-tertiary">
-                  Matched by name to project members. Unmatched stay empty.
+                  Matched by name to project members. Used for card owners and
+                  comment authors. Unmatched comments stay attributed to you
+                  with a name prefix in the text.
                 </p>
                 <div className="max-h-48 space-y-2 overflow-y-auto">
-                  {parsed.uniqueAssignees.map((name) => (
+                  {uniqueJiraPeopleNames(parsed).map((name) => (
                     <label
                       key={name}
                       className="grid grid-cols-[1fr_minmax(12rem,1fr)] items-center gap-2 text-sm"
@@ -843,7 +848,7 @@ export function WorkJiraImportDialog({
                           });
                         }}
                       >
-                        <option value="">Unassigned</option>
+                        <option value="">Unmapped</option>
                         {members.map((member) => (
                           <option key={member.id} value={member.id}>
                             {member.name}

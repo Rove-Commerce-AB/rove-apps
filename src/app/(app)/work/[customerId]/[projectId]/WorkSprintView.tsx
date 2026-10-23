@@ -201,6 +201,8 @@ export function WorkSprintView({
           width: rect.width,
         });
         landed.style.opacity = "";
+        await waitForPaint(2);
+        ghost.remove();
         return;
       }
     }

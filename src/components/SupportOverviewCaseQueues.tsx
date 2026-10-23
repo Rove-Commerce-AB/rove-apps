@@ -134,7 +134,7 @@ export function SupportOverviewCaseQueues({
         <Panel>
           <div className="flex items-center justify-between border-b border-border-subtle bg-bg-muted/50 px-3 py-2">
             <h2 className="text-sm font-semibold text-text-primary">
-              New cases
+              New incidents
             </h2>
             <span className="text-xs text-text-secondary">
               {newOnly.length} in New
@@ -142,7 +142,7 @@ export function SupportOverviewCaseQueues({
           </div>
           {newOnly.length === 0 ? (
             <p className="px-3 py-5 text-sm text-text-secondary">
-              No cases in New.
+              No incidents in New.
             </p>
           ) : (
             <ul className="grid gap-2 p-2 sm:grid-cols-2">

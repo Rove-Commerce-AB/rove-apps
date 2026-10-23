@@ -1162,11 +1162,23 @@ export async function insertWorkIssueComment(input: {
 export async function insertWorkIssueCommentsBatch(input: {
   boardId: string;
   issueId: string;
-  authorAppUserId: string;
-  bodies: string[];
+  /** Activity-feed actor (the person running the import). */
+  eventActorAppUserId: string;
+  comments: Array<{
+    body: string;
+    authorAppUserId: string;
+    /** ISO timestamptz from Jira; null → DB default now(). */
+    createdAt: string | null;
+  }>;
 }): Promise<number> {
-  const bodies = input.bodies.map((b) => b.trim()).filter(Boolean);
-  if (bodies.length === 0) return 0;
+  const comments = input.comments
+    .map((comment) => ({
+      body: comment.body.trim(),
+      authorAppUserId: comment.authorAppUserId,
+      createdAt: comment.createdAt,
+    }))
+    .filter((comment) => comment.body);
+  if (comments.length === 0) return 0;
 
   return withCloudSqlTransaction("work-add-comments-batch", async (client) => {
     const { rows: owned } = await client.query<{ id: string }>(
@@ -1175,11 +1187,16 @@ export async function insertWorkIssueCommentsBatch(input: {
     );
     if (!owned[0]) return 0;
 
-    for (const body of bodies) {
+    for (const comment of comments) {
       await client.query(
-        `INSERT INTO work_issue_comments (issue_id, author_app_user_id, body)
-         VALUES ($1, $2, $3)`,
-        [input.issueId, input.authorAppUserId, body]
+        `INSERT INTO work_issue_comments (issue_id, author_app_user_id, body, created_at)
+         VALUES ($1, $2, $3, COALESCE($4::timestamptz, now()))`,
+        [
+          input.issueId,
+          comment.authorAppUserId,
+          comment.body,
+          comment.createdAt,
+        ]
       );
     }
 
@@ -1188,14 +1205,14 @@ export async function insertWorkIssueCommentsBatch(input: {
        VALUES ($1, $2, 'comment', $3)`,
       [
         input.issueId,
-        input.authorAppUserId,
-        bodies.length === 1
+        input.eventActorAppUserId,
+        comments.length === 1
           ? "added a comment"
-          : `added ${bodies.length} comments`,
+          : `added ${comments.length} comments`,
       ]
     );
 
-    return bodies.length;
+    return comments.length;
   });
 }
 

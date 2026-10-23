@@ -16,10 +16,18 @@ import {
   type WorkEstimateUnit,
 } from "@/lib/workEstimate";
 import { WorkInputError } from "@/lib/workErrors";
+import {
+  emptyWorkProcess,
+  parseWorkProcessSteps,
+  serializeWorkProcessSteps,
+  type WorkProcess,
+  type WorkProcessStep,
+} from "@/lib/workProcess";
 import { compareTextSv } from "@/lib/sort";
 import {
   canArchiveWorkProject,
   canCreateWorkProject,
+  canManageWorkBoardAccess,
   canSeeWorkBoard,
   canSeeWorkCustomer,
   canSeeWorkEstimates,
@@ -654,6 +662,10 @@ export async function getWorkBoardView(
     title: board.title,
     prefix: board.prefix,
     agentsMd: board.agents_md,
+    process: {
+      notesMd: board.process_notes_md ?? "",
+      steps: parseWorkProcessSteps(board.process_steps),
+    },
     customerId: board.customer_id,
     customerName: board.customer_name,
     customerColor: resolveWorkCustomerColor(
@@ -763,6 +775,9 @@ export async function addWorkBoardMember(
 ): Promise<void> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
+  if (!canManageWorkBoardAccess(visible.actor)) {
+    throw new WorkInputError("Customer users cannot change project access");
+  }
   const allowedStaff = await fetchWorkUserById(appUserId);
   if (!allowedStaff) {
     const customerPeople = await fetchWorkPeopleForCustomer(
@@ -781,6 +796,9 @@ export async function removeWorkBoardMember(
 ): Promise<void> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
+  if (!canManageWorkBoardAccess(visible.actor)) {
+    throw new WorkInputError("Customer users cannot change project access");
+  }
   if (visible.board.member_ids.length <= 1) {
     throw new Error("A board needs at least one person");
   }
@@ -859,6 +877,38 @@ export async function saveWorkProjectInstructions(projectId: string, agentsMd: s
 
   return q.updateWorkProjectInstructions(projectId, agentsMd);
 }
+
+export async function saveWorkProjectProcess(
+  projectId: string,
+  input: { notesMd: string; steps: WorkProcessStep[] }
+): Promise<WorkProcess> {
+  const visible = await requireVisibleWorkBoard(projectId);
+  if (!visible) throw new Error("Project not found");
+  if (typeof input.notesMd !== "string") {
+    throw new Error("Process notes must be text");
+  }
+  const steps = serializeWorkProcessSteps(input.steps);
+  const saved = await q.updateWorkProjectProcess(projectId, {
+    notesMd: input.notesMd,
+    steps,
+  });
+  return {
+    notesMd: saved.process_notes_md ?? "",
+    steps: parseWorkProcessSteps(saved.process_steps),
+  };
+}
+
+export function defaultProcessStepsFromStatuses(
+  statuses: ReadonlyArray<{ id: string; name: string }>
+): WorkProcessStep[] {
+  return statuses.map((status) => ({
+    statusId: status.id,
+    title: status.name,
+    body: "",
+  }));
+}
+
+export { emptyWorkProcess };
 
 export async function archiveWorkBoard(boardId: string): Promise<string> {
   const visible = await requireVisibleWorkBoard(boardId);

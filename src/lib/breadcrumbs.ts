@@ -103,8 +103,8 @@ export function breadcrumbsForPathname(
         label: "Customer",
         href: `${ROUTES.support}/${customerSeg}`,
       };
-      if (section === "cases") {
-        return [root, support, customerCrumb, { label: "Cases" }];
+      if (section === "incidents" || section === "cases") {
+        return [root, support, customerCrumb, { label: "Incidents" }];
       }
       if (section === "contact") {
         return [root, support, customerCrumb, { label: "Contact" }];

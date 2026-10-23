@@ -60,6 +60,8 @@ export type ParsedJiraExport = {
   uniqueTypes: string[];
   uniquePriorities: string[];
   uniqueAssignees: string[];
+  /** Resolved display names of comment authors (for people mapping). */
+  uniqueCommentAuthors: string[];
 };
 
 const PREDEPLOY_LABEL = "PREDEPLOYACTIONS";
@@ -207,6 +209,26 @@ export function parseJiraRfc822Date(raw: string): string | null {
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+/** Full timestamp (ISO) for comment created_at. */
+export function parseJiraRfc822DateTime(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+/** True for Atlassian account ids that are not useful in the people mapper UI. */
+export function isJiraAccountIdLabel(value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  if (/^\d+:[0-9a-f-]+$/i.test(v)) return true;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) {
+    return true;
+  }
+  return false;
 }
 
 function tagText(block: string, tag: string): string {
@@ -474,6 +496,16 @@ export function parseJiraRssXml(xml: string): ParsedJiraExport {
     ),
   ].sort((a, b) => a.localeCompare(b));
 
+  const uniqueCommentAuthors = [
+    ...new Set(
+      issues.flatMap((issue) =>
+        issue.comments
+          .map((comment) => comment.authorName?.trim() || "")
+          .filter((name) => name && !isJiraAccountIdLabel(name))
+      )
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
   return {
     projectKey,
     projectName,
@@ -484,11 +516,17 @@ export function parseJiraRssXml(xml: string): ParsedJiraExport {
     uniqueTypes,
     uniquePriorities,
     uniqueAssignees,
+    uniqueCommentAuthors,
   };
 }
 
 export function normalizePersonName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Looser form for matching Jira usernames like marie.ahdel-franzen. */
+export function normalizePersonNameLoose(name: string): string {
+  return normalizePersonName(name).replace(/[._\-]+/g, " ").replace(/\s+/g, " ");
 }
 
 export function suggestPriorityMapping(
@@ -509,10 +547,20 @@ export function suggestTypeMapping(jiraType: string): "issue" | "bug" {
   return jiraType.trim().toLowerCase() === "bug" ? "bug" : "issue";
 }
 
-export function formatImportedComment(comment: ParsedJiraComment): string {
-  const author = comment.authorName?.trim() || comment.authorAccountId || "Unknown";
-  const when = comment.created.trim() || "unknown date";
+/**
+ * Format a Jira comment for Work.
+ * When `authorMapped` is true the real app user is the author — body only.
+ * Otherwise keep a `[name, date]` prefix so attribution survives in text.
+ */
+export function formatImportedComment(
+  comment: ParsedJiraComment,
+  options?: { authorMapped?: boolean }
+): string {
   const body = comment.bodyText.trim();
+  if (options?.authorMapped) return body;
+  const author =
+    comment.authorName?.trim() || comment.authorAccountId || "Unknown";
+  const when = comment.created.trim() || "unknown date";
   return `[${author}, ${when}]\n${body}`;
 }
 

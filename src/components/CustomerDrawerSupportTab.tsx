@@ -119,7 +119,7 @@ export function CustomerDrawerSupportTab({
         <p className="mt-1 text-sm text-text-secondary">
           Activating a contract provisions a Support Work board (prefix SUP),
           creates or reuses a customer project named Support (hourly) for time
-          reporting, links them together, and unlocks Cases in Rove Support.
+          reporting, links them together, and unlocks Incidents in Rove Support.
           Monitoring can exist without a contract.
         </p>
       </div>
@@ -143,7 +143,7 @@ export function CustomerDrawerSupportTab({
             </p>
             <p className="mt-1 text-xs text-text-secondary">
               {form.active
-                ? "Contract is on — Work board, Support project, and Cases are provisioned on save."
+                ? "Contract is on — Work board, Support project, and Incidents are provisioned on save."
                 : "Turn on to set package, monthly value, and contact details."}
             </p>
           </div>

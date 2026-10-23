@@ -49,7 +49,7 @@ export function SupportCaseDrawer({
         if (!cancelled) {
           setDetail(null);
           setLoadError(
-            cause instanceof Error ? cause.message : "Failed to load case"
+            cause instanceof Error ? cause.message : "Failed to load incident"
           );
         }
       })
@@ -84,7 +84,7 @@ export function SupportCaseDrawer({
     <SideDrawer
       open={open}
       onOpenChange={onOpenChange}
-      title={detail?.key ?? "Case"}
+      title={detail?.key ?? "Incident"}
       subtitle={
         detail ? (
           <span className="flex flex-wrap items-center gap-2">

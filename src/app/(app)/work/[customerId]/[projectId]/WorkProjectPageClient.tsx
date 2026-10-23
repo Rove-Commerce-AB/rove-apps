@@ -13,6 +13,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
+  BookOpen,
   GripVertical,
   Link2,
   MoreHorizontal,
@@ -117,12 +118,14 @@ import {
   type WorkProjectSettingsTab,
 } from "./WorkProjectSettingsDrawer";
 import { WorkJiraImportDialog } from "./WorkJiraImportDialog";
+import { WorkProcessPanel } from "./WorkProcessPanel";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
 import { WorkTimelineView } from "./WorkTimelineView";
 import { WorkTimeGraph } from "./WorkTimeGraph";
 import { isIssueBlocked } from "@/lib/workIssueRelations";
+import { workProcessHasContent } from "@/lib/workProcess";
 
 type BoardMode = "board" | "sprint" | "timeline";
 
@@ -367,6 +370,8 @@ export function WorkBoardPageClient({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] =
     useState<WorkProjectSettingsTab>("details");
+  const [processOpen, setProcessOpen] = useState(false);
+  const [process, setProcess] = useState(board.process);
   const [jiraImportOpen, setJiraImportOpen] = useState(false);
   const [doneCardMotion, setDoneCardMotion] = useState<{
     mode: "hiding" | "showing";
@@ -488,6 +493,10 @@ export function WorkBoardPageClient({
       return next;
     });
   }, [board.issues]);
+
+  useEffect(() => {
+    setProcess(board.process);
+  }, [board.process]);
 
   useEffect(() => {
     setComponents(board.components);
@@ -1121,11 +1130,19 @@ export function WorkBoardPageClient({
             top: rect.top,
             width: rect.width,
           });
+          // Reveal the real card under the settled ghost, then drop the ghost.
+          setLandingIssueId(null);
+          if (source) source.style.opacity = "";
+          await waitForPaint(2);
+          ghost.remove();
         } else if (ghost) {
           await ghost.dispose();
+          setLandingIssueId(null);
+          if (source) source.style.opacity = "";
+        } else {
+          setLandingIssueId(null);
+          if (source) source.style.opacity = "";
         }
-        setLandingIssueId(null);
-        if (source) source.style.opacity = "";
         return;
       }
 
@@ -1137,6 +1154,8 @@ export function WorkBoardPageClient({
           width: rect.width,
         });
         source.style.opacity = "";
+        await waitForPaint(2);
+        ghost.remove();
         return;
       }
 
@@ -1239,6 +1258,15 @@ export function WorkBoardPageClient({
               </button>
             ))}
           </div>
+          {workProcessHasContent(process) ? (
+            <IconButton
+              aria-label="Board process"
+              title="Board process"
+              onClick={() => setProcessOpen(true)}
+            >
+              <BookOpen className="h-4 w-4" aria-hidden />
+            </IconButton>
+          ) : null}
           <IconButton
             aria-label="Project settings"
             title="Project settings"
@@ -2116,9 +2144,18 @@ export function WorkBoardPageClient({
       </div>
       )}
 
+      <WorkProcessPanel
+        open={processOpen}
+        onOpenChange={setProcessOpen}
+        process={process}
+        statuses={statuses}
+      />
+
       <WorkProjectSettingsDrawer
         projectId={board.id}
         agentsMd={board.agentsMd}
+        process={process}
+        statuses={statuses}
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         initialTab={settingsTab}
@@ -2133,6 +2170,8 @@ export function WorkBoardPageClient({
         estimateUnit={estimateUnit}
         billingCurrency={billingCurrency}
         showDangerTab={board.viewerRole !== "customer"}
+        canEditAccess={board.viewerRole !== "customer"}
+        onProcessSaved={setProcess}
         onSetEstimateUnit={async (unit) => {
           const previousUnit = estimateUnit;
           setEstimateUnit(unit);

@@ -340,7 +340,7 @@ export function SupportOverviewClient({
     <div className="max-w-6xl space-y-4">
       <PageHeader
         title="Support overview"
-        description="Inbox routing, new cases, and customer monitors."
+        description="Inbox routing, new incidents, and customer monitors."
       >
         <Button
           onClick={() => openForm("new")}

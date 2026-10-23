@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import {
   ROUTES,
-  supportCustomerCasesHref,
+  supportCustomerIncidentsHref,
   workProjectHref,
 } from "@/lib/routes";
 import { canSeeSupportOverview } from "@/lib/supportAccess";
@@ -103,13 +103,13 @@ export async function routeInboxToSupportBoard(input: {
   );
 
   revalidatePath(ROUTES.supportOverview);
-  revalidatePath(supportCustomerCasesHref(input.customerId));
+  revalidatePath(supportCustomerIncidentsHref(input.customerId));
 
   return {
     issueId: issue.id,
     targetBoardId,
     customerId: input.customerId,
-    href: supportCustomerCasesHref(input.customerId),
+    href: supportCustomerIncidentsHref(input.customerId),
   };
 }
 

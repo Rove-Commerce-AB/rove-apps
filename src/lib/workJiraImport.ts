@@ -10,6 +10,7 @@ import { WorkInputError } from "@/lib/workErrors";
 import {
   estimateHoursFromSeconds,
   formatImportedComment,
+  parseJiraRfc822DateTime,
   suggestPriorityMapping,
   suggestTypeMapping,
   type JiraRelationEdge,
@@ -309,15 +310,41 @@ export async function importJiraIssueBatch(
         }
       }
 
-      const commentBodies = issue.comments
-        .map((comment) => formatImportedComment(comment).slice(0, 20000))
-        .filter((body) => body.trim());
-      if (commentBodies.length > 0) {
+      const importedComments = issue.comments
+        .map((comment) => {
+          const mappedName = comment.authorName?.trim() || "";
+          const mappedId =
+            mappedName && mappings.peopleMap[mappedName]
+              ? mappings.peopleMap[mappedName]
+              : null;
+          const authorMapped = Boolean(
+            mappedId && memberIds.has(mappedId)
+          );
+          const body = formatImportedComment(comment, {
+            authorMapped,
+          }).slice(0, 20000);
+          if (!body.trim()) return null;
+          return {
+            body,
+            authorAppUserId: authorMapped && mappedId ? mappedId : actorId,
+            createdAt: parseJiraRfc822DateTime(comment.created),
+          };
+        })
+        .filter(
+          (
+            row
+          ): row is {
+            body: string;
+            authorAppUserId: string;
+            createdAt: string | null;
+          } => row != null
+        );
+      if (importedComments.length > 0) {
         await insertWorkIssueCommentsBatch({
           boardId,
           issueId,
-          authorAppUserId: actorId,
-          bodies: commentBodies,
+          eventActorAppUserId: actorId,
+          comments: importedComments,
         });
       }
 

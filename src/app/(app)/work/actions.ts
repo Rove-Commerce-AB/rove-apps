@@ -19,11 +19,13 @@ import {
   reorderWorkBoardStatuses,
   restoreWorkBoard,
   saveWorkProjectInstructions,
+  saveWorkProjectProcess,
   setWorkProjectEstimateUnit,
   setWorkProjectPreferredView,
   countWorkProjectEstimates,
 } from "@/lib/workBoards";
 import type { WorkEstimateUnit } from "@/lib/workEstimate";
+import type { WorkProcessStep } from "@/lib/workProcess";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
 import type {
   WorkAccessPerson,
@@ -32,6 +34,7 @@ import type {
   WorkIssueType,
   WorkPerson,
   WorkRequirementKind,
+  WorkProcess,
 } from "@/lib/workTypes";
 import {
   addIssueAssignee,
@@ -326,6 +329,19 @@ export async function saveWorkProjectInstructionsAction(
     const saved = await saveWorkProjectInstructions(projectId, agentsMd);
     revalidateBoard(projectId);
     return { ok: true, agentsMd: saved };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveWorkProjectProcessAction(
+  projectId: string,
+  input: { notesMd: string; steps: WorkProcessStep[] }
+): Promise<{ ok: true; process: WorkProcess } | Err> {
+  try {
+    const process = await saveWorkProjectProcess(projectId, input);
+    revalidateBoard(projectId);
+    return { ok: true, process };
   } catch (error) {
     return fail(error);
   }

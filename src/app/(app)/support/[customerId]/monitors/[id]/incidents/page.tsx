@@ -51,6 +51,13 @@ function pageHref(
   return `${supportMonitorIncidentsHref(customerId, data.monitor.id)}?${search}`;
 }
 
+function exportHref(data: IncidentPage): string {
+  const search = new URLSearchParams();
+  if (data.filters.from) search.set("from", data.filters.from);
+  if (data.filters.to) search.set("to", data.filters.to);
+  return `/api/monitors/${encodeURIComponent(data.monitor.id)}/incidents/export?${search}`;
+}
+
 export default async function SupportMonitorIncidentsPage({
   params,
   searchParams,
@@ -149,15 +156,25 @@ export default async function SupportMonitorIncidentsPage({
         >
           Last 30 days
         </Link>
+        <a
+          href={exportHref(data)}
+          className="inline-flex h-10 items-center rounded-lg border border-form bg-bg-default px-4 text-sm font-medium text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal"
+        >
+          Export to Excel
+        </a>
       </form>
+      <p className="text-xs text-text-tertiary">
+        Shows incidents overlapping the selected dates. Dates and times use
+        Europe/Stockholm. Apply the date filter before exporting.
+      </p>
       <Panel className="max-w-sm p-5">
         <p className="text-sm text-text-secondary">Uptime during selected period</p>
         <p className="mt-2 text-heading-xl text-text-primary tabular-nums">
           {data.uptimePercent === null
             ? "—"
             : `${new Intl.NumberFormat("sv-SE", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
+                minimumFractionDigits: 3,
+                maximumFractionDigits: 3,
               }).format(data.uptimePercent)} %`}
         </p>
         <p className="mt-1 text-xs text-text-tertiary">

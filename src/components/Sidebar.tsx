@@ -19,7 +19,7 @@ import {
 import { signOut } from "next-auth/react";
 import {
   ROUTES,
-  supportCustomerCasesHref,
+  supportCustomerIncidentsHref,
   supportCustomerContactHref,
   supportCustomerHref,
   supportCustomerMonitorsHref,
@@ -98,11 +98,17 @@ function NavLink({
     badgeCount != null && badgeCount > 99 ? "99+" : String(badgeCount ?? "");
 
   const typeClass = nest ? "text-body-m" : "text-heading-xs";
+  // depth 1 = customer/group (primary); depth 2 = child links (secondary).
+  // plain indent (Planner etc.) stays secondary.
   const toneClass = isActive
     ? "bg-nav-active text-text-primary"
-    : nest
+    : depth >= 2
       ? "text-text-secondary transition-colors hover:bg-nav-active hover:text-text-primary"
-      : "text-text-primary transition-colors hover:bg-nav-active";
+      : depth === 1
+        ? "text-text-primary transition-colors hover:bg-nav-active"
+        : nest
+          ? "text-text-secondary transition-colors hover:bg-nav-active hover:text-text-primary"
+          : "text-text-primary transition-colors hover:bg-nav-active";
 
   return (
     <Link
@@ -125,7 +131,7 @@ function NavLink({
         </span>
       ) : nest && !collapsed ? (
         <span
-          className={`h-8 shrink-0 ${depth >= 2 ? "w-4" : "w-8"}`}
+          className={`h-8 shrink-0 ${depth >= 2 ? "w-6" : "w-8"}`}
           aria-hidden
         />
       ) : null}
@@ -513,8 +519,8 @@ function SupportCustomerNav({
             activeMatch="prefix"
           />
           <NavLink
-            href={supportCustomerCasesHref(customer.id)}
-            label="Cases"
+            href={supportCustomerIncidentsHref(customer.id)}
+            label="Incidents"
             pathname={pathname}
             depth={2}
             activeMatch="prefix"
@@ -807,14 +813,16 @@ export function Sidebar({
                   No customers yet
                 </p>
               ) : (
-                workNav.map((customer) => (
-                  <WorkCustomerNav
-                    key={customer.id}
-                    customer={customer}
-                    pathname={pathname}
-                    forceOpen={customer.id === activeWorkCustomerId}
-                  />
-                ))
+                <div className="flex flex-col gap-1">
+                  {workNav.map((customer) => (
+                    <WorkCustomerNav
+                      key={customer.id}
+                      customer={customer}
+                      pathname={pathname}
+                      forceOpen={customer.id === activeWorkCustomerId}
+                    />
+                  ))}
+                </div>
               )}
             </AppGroup>
           )}
@@ -857,14 +865,16 @@ export function Sidebar({
                   No customers yet
                 </p>
               ) : (
-                supportNav.map((customer) => (
-                  <SupportCustomerNav
-                    key={customer.id}
-                    customer={customer}
-                    pathname={pathname}
-                    forceOpen={customer.id === activeSupportCustomerId}
-                  />
-                ))
+                <div className="flex flex-col gap-1">
+                  {supportNav.map((customer) => (
+                    <SupportCustomerNav
+                      key={customer.id}
+                      customer={customer}
+                      pathname={pathname}
+                      forceOpen={customer.id === activeSupportCustomerId}
+                    />
+                  ))}
+                </div>
               )}
             </AppGroup>
           )}

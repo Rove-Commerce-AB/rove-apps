@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
-import { supportCustomerCasesHref } from "@/lib/routes";
+import { supportCustomerIncidentsHref } from "@/lib/routes";
 import { workIssueKey } from "@/lib/workIssueKey";
 
 /** Matches monitoring.slack_notifications.name in prod (Support Slack Alert). */
@@ -44,7 +44,7 @@ function buildCaseCreatedText(input: {
     `*Created by:* ${input.createdByName}`,
   ];
   if (input.casesUrl) {
-    lines.push(`<${input.casesUrl}|Open cases>`);
+    lines.push(`<${input.casesUrl}|Open incidents>`);
   }
   return lines.join("\n");
 }
@@ -91,7 +91,7 @@ export async function notifySupportCaseCreated(input: {
     }
 
     const origin = appOrigin();
-    const casesPath = supportCustomerCasesHref(input.customerId);
+    const casesPath = supportCustomerIncidentsHref(input.customerId);
     const casesUrl = origin ? `${origin}${casesPath}` : null;
 
     const text = buildCaseCreatedText({

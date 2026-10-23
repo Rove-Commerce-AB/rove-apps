@@ -57,8 +57,13 @@ export function supportCustomerMonitorsHref(customerId: string): string {
   return `${ROUTES.support}/${customerId}/monitors`;
 }
 
+export function supportCustomerIncidentsHref(customerId: string): string {
+  return `${ROUTES.support}/${customerId}/incidents`;
+}
+
+/** @deprecated Use supportCustomerIncidentsHref */
 export function supportCustomerCasesHref(customerId: string): string {
-  return `${ROUTES.support}/${customerId}/cases`;
+  return supportCustomerIncidentsHref(customerId);
 }
 
 export function supportCustomerContactHref(customerId: string): string {

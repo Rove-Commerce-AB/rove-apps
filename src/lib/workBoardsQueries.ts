@@ -115,6 +115,8 @@ export async function fetchWorkBoardById(
 ): Promise<
   (WorkBoardRow & {
     agents_md: string;
+    process_notes_md: string;
+    process_steps: unknown;
     customer_name: string;
     customer_color: string | null;
     customer_is_internal: boolean;
@@ -127,6 +129,8 @@ export async function fetchWorkBoardById(
   const { rows } = await cloudSqlPool.query<
     Omit<WorkBoardRow, "member_ids"> & {
       agents_md: string;
+      process_notes_md: string;
+      process_steps: unknown;
       member_ids: string[] | null;
       customer_name: string;
       customer_color: string | null;
@@ -147,6 +151,8 @@ export async function fetchWorkBoardById(
        b.created_at,
        b.updated_at,
        b.agents_md,
+       COALESCE(b.process_notes_md, '') AS process_notes_md,
+       COALESCE(b.process_steps, '[]'::jsonb) AS process_steps,
        COALESCE(b.is_support_board, false) AS is_support_board,
        COALESCE(b.estimate_unit, 'hours') AS estimate_unit,
        c.name AS customer_name,
@@ -346,6 +352,26 @@ export async function updateWorkProjectInstructions(projectId: string, agentsMd:
   }
 
   return project.agents_md;
+}
+
+export async function updateWorkProjectProcess(
+  projectId: string,
+  input: { notesMd: string; steps: unknown }
+): Promise<{ process_notes_md: string; process_steps: unknown }> {
+  const { rows } = await cloudSqlPool.query<{
+    process_notes_md: string;
+    process_steps: unknown;
+  }>(
+    `UPDATE work_projects
+     SET process_notes_md = $2,
+         process_steps = $3::jsonb
+     WHERE id = $1 AND archived_at IS NULL
+     RETURNING process_notes_md, process_steps`,
+    [projectId, input.notesMd, JSON.stringify(input.steps)]
+  );
+  const project = rows[0];
+  if (!project) throw new Error("Project not found");
+  return project;
 }
 
 export async function archiveWorkBoard(boardId: string): Promise<void> {
