@@ -134,16 +134,42 @@ function toPayload(issue: ParsedJiraIssue): JiraImportIssuePayload {
   };
 }
 
+function normalizeStatusName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Collapse common Jira/Work spelling variants for auto-matching columns. */
+function statusNameKeys(name: string): string[] {
+  const base = normalizeStatusName(name);
+  const keys = new Set<string>([base]);
+  if (base === "to do" || base === "todo") {
+    keys.add("to do");
+    keys.add("todo");
+  }
+  if (base === "in progress" || base === "inprogress") {
+    keys.add("in progress");
+    keys.add("inprogress");
+  }
+  return [...keys];
+}
+
 function defaultStatusMap(
   statuses: string[],
   columns: WorkBoardStatus[]
 ): Record<string, string> {
-  const byName = new Map(
-    columns.map((c) => [c.name.trim().toLowerCase(), c.id])
-  );
+  const byName = new Map<string, string>();
+  for (const column of columns) {
+    for (const key of statusNameKeys(column.name)) {
+      if (!byName.has(key)) byName.set(key, column.id);
+    }
+  }
   const out: Record<string, string> = {};
   for (const status of statuses) {
-    const match = byName.get(status.trim().toLowerCase());
+    let match: string | undefined;
+    for (const key of statusNameKeys(status)) {
+      match = byName.get(key);
+      if (match) break;
+    }
     out[status] = match ?? JIRA_STATUS_CREATE;
   }
   return out;
@@ -334,18 +360,26 @@ export function WorkJiraImportDialog({
       return;
     }
     startTransition(async () => {
-      const result = await prepareJiraImportAction(
-        boardId,
-        statusMap,
-        parsed.issues.map((i) => i.key)
-      );
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      try {
+        const result = await prepareJiraImportAction(
+          boardId,
+          statusMap,
+          parsed.issues.map((i) => i.key)
+        );
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setExistingKeys(new Set(result.existingKeys));
+        setResolvedStatusMap(result.statusMap);
+        setStep("preview");
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not prepare import. Try again."
+        );
       }
-      setExistingKeys(new Set(result.existingKeys));
-      setResolvedStatusMap(result.statusMap);
-      setStep("preview");
     });
   }
 
@@ -431,6 +465,8 @@ export function WorkJiraImportDialog({
       let skipped = plannedSkip;
       const failed: { key: string; error: string }[] = [];
       let msPerItem = DEFAULT_MS_PER_ITEM;
+      let relCreated = 0;
+      let relSkipped: JiraImportRelationSkip[] = [];
 
       function startBatchSimulation(baseProcessed: number, batchLen: number) {
         let stepped = 0;
@@ -455,71 +491,71 @@ export function WorkJiraImportDialog({
         };
       }
 
-      for (let i = 0; i < epicSeedPayloads.length; i += BATCH_SIZE) {
-        const batch = epicSeedPayloads.slice(i, i + BATCH_SIZE);
-        const result = await importJiraIssuesBatchAction(
-          boardId,
-          batch,
-          mappings
-        );
-        if (!result.ok) {
-          setError(result.error);
-          setImportPhase("done");
-          setStep("done");
-          return;
-        }
-        failed.push(...result.failed);
-        setFailedRows([...failed]);
-      }
-
-      for (let i = 0; i < cardPayloads.length; i += BATCH_SIZE) {
-        const batch = cardPayloads.slice(i, i + BATCH_SIZE);
-        const sim = startBatchSimulation(i, batch.length);
-        const startedAt = Date.now();
-        const result = await importJiraIssuesBatchAction(
-          boardId,
-          batch,
-          mappings
-        );
-        sim.stop();
-        const elapsed = Date.now() - startedAt;
-        if (batch.length > 0) {
-          msPerItem = Math.max(
-            80,
-            Math.min(500, Math.round(elapsed / batch.length))
+      try {
+        for (let i = 0; i < epicSeedPayloads.length; i += BATCH_SIZE) {
+          const batch = epicSeedPayloads.slice(i, i + BATCH_SIZE);
+          const result = await importJiraIssuesBatchAction(
+            boardId,
+            batch,
+            mappings
           );
+          if (!result.ok) {
+            setError(result.error);
+            setImportPhase("done");
+            setStep("done");
+            return;
+          }
+          failed.push(...result.failed);
+          setFailedRows([...failed]);
         }
-        if (!result.ok) {
-          setError(result.error);
-          setImportPhase("done");
-          setStep("done");
-          return;
+
+        for (let i = 0; i < cardPayloads.length; i += BATCH_SIZE) {
+          const batch = cardPayloads.slice(i, i + BATCH_SIZE);
+          const sim = startBatchSimulation(i, batch.length);
+          const startedAt = Date.now();
+          const result = await importJiraIssuesBatchAction(
+            boardId,
+            batch,
+            mappings
+          );
+          sim.stop();
+          const elapsed = Date.now() - startedAt;
+          if (batch.length > 0) {
+            msPerItem = Math.max(
+              80,
+              Math.min(500, Math.round(elapsed / batch.length))
+            );
+          }
+          if (!result.ok) {
+            setError(result.error);
+            setImportPhase("done");
+            setStep("done");
+            return;
+          }
+          created += result.created;
+          skipped += result.skipped;
+          failed.push(...result.failed);
+          setProgress({
+            processed: Math.min(i + batch.length, cardCount),
+            total: cardCount,
+            created,
+            skipped,
+            failed: failed.length,
+          });
+          setFailedRows([...failed]);
         }
-        created += result.created;
-        skipped += result.skipped;
-        failed.push(...result.failed);
+
         setProgress({
-          processed: Math.min(i + batch.length, cardCount),
+          processed: cardCount,
           total: cardCount,
           created,
           skipped,
           failed: failed.length,
         });
-        setFailedRows([...failed]);
-      }
+        setFailedRows(failed);
 
-      setProgress({
-        processed: cardCount,
-        total: cardCount,
-        created,
-        skipped,
-        failed: failed.length,
-      });
-      setFailedRows(failed);
-
-      let relCreated = 0;
-      let relSkipped: JiraImportRelationSkip[] = [];
-      if (edges.length > 0) {
+        // Always call relations action (even with no edges) so the board
+        // revalidates once after all batches — not after every batch.
         setImportPhase("relations");
         const relResult = await importJiraRelationsAction(boardId, edges);
         if (!relResult.ok) {
@@ -530,29 +566,56 @@ export function WorkJiraImportDialog({
           setRelationsCreated(relCreated);
           setRelationsSkipped(relSkipped);
         }
-      }
 
-      const report = buildImportReportText({
-        fileName,
-        projectKey: parsed.projectKey,
-        projectName: parsed.projectName,
-        createEpicCards,
-        mapEpicsToComponents,
-        issuesInFile: parsed.issues.length,
-        processed: cardCount,
-        total: cardCount,
-        created,
-        skipped,
-        failed,
-        skippedIssues: skippedIssueRows,
-        relationsPlanned: edges.length,
-        relationsCreated: relCreated,
-        relationsSkipped: relSkipped,
-      });
-      setReportText(report);
-      setImportPhase("done");
-      setStep("done");
-      router.refresh();
+        const report = buildImportReportText({
+          fileName,
+          projectKey: parsed.projectKey,
+          projectName: parsed.projectName,
+          createEpicCards,
+          mapEpicsToComponents,
+          issuesInFile: parsed.issues.length,
+          processed: cardCount,
+          total: cardCount,
+          created,
+          skipped,
+          failed,
+          skippedIssues: skippedIssueRows,
+          relationsPlanned: edges.length,
+          relationsCreated: relCreated,
+          relationsSkipped: relSkipped,
+        });
+        setReportText(report);
+        setImportPhase("done");
+        setStep("done");
+        router.refresh();
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Import failed unexpectedly. Try again with a smaller export."
+        );
+        setImportPhase("done");
+        setStep("done");
+        setReportText(
+          buildImportReportText({
+            fileName,
+            projectKey: parsed.projectKey,
+            projectName: parsed.projectName,
+            createEpicCards,
+            mapEpicsToComponents,
+            issuesInFile: parsed.issues.length,
+            processed: Math.min(created + failed.length, cardCount),
+            total: cardCount,
+            created,
+            skipped,
+            failed,
+            skippedIssues: skippedIssueRows,
+            relationsPlanned: edges.length,
+            relationsCreated: relCreated,
+            relationsSkipped: relSkipped,
+          })
+        );
+      }
     });
   }
 

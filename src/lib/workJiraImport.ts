@@ -17,7 +17,7 @@ import {
 import {
   findOrCreateBoardComponent,
   insertWorkIssue,
-  insertWorkIssueComment,
+  insertWorkIssueCommentsBatch,
   insertWorkIssueEvent,
   insertWorkIssuePreDeployAction,
   insertWorkIssueReference,
@@ -309,14 +309,15 @@ export async function importJiraIssueBatch(
         }
       }
 
-      for (const comment of issue.comments) {
-        const body = formatImportedComment(comment);
-        if (!body.trim()) continue;
-        await insertWorkIssueComment({
+      const commentBodies = issue.comments
+        .map((comment) => formatImportedComment(comment).slice(0, 20000))
+        .filter((body) => body.trim());
+      if (commentBodies.length > 0) {
+        await insertWorkIssueCommentsBatch({
           boardId,
           issueId,
           authorAppUserId: actorId,
-          body: body.slice(0, 20000),
+          bodies: commentBodies,
         });
       }
 

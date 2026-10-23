@@ -1158,6 +1158,47 @@ export async function insertWorkIssueComment(input: {
   });
 }
 
+/** Insert many comments on one issue in a single transaction (Jira import). */
+export async function insertWorkIssueCommentsBatch(input: {
+  boardId: string;
+  issueId: string;
+  authorAppUserId: string;
+  bodies: string[];
+}): Promise<number> {
+  const bodies = input.bodies.map((b) => b.trim()).filter(Boolean);
+  if (bodies.length === 0) return 0;
+
+  return withCloudSqlTransaction("work-add-comments-batch", async (client) => {
+    const { rows: owned } = await client.query<{ id: string }>(
+      `SELECT id FROM work_issues WHERE project_id = $1 AND id = $2`,
+      [input.boardId, input.issueId]
+    );
+    if (!owned[0]) return 0;
+
+    for (const body of bodies) {
+      await client.query(
+        `INSERT INTO work_issue_comments (issue_id, author_app_user_id, body)
+         VALUES ($1, $2, $3)`,
+        [input.issueId, input.authorAppUserId, body]
+      );
+    }
+
+    await client.query(
+      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+       VALUES ($1, $2, 'comment', $3)`,
+      [
+        input.issueId,
+        input.authorAppUserId,
+        bodies.length === 1
+          ? "added a comment"
+          : `added ${bodies.length} comments`,
+      ]
+    );
+
+    return bodies.length;
+  });
+}
+
 export async function updateWorkIssueComment(input: {
   commentId: string;
   issueId: string;

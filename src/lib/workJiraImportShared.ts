@@ -73,11 +73,15 @@ export function matchPeopleByName(
   jiraNames: string[],
   members: WorkPerson[]
 ): Record<string, string> {
-  const byNorm = new Map(
-    members.map((m) => [normalizePersonName(m.name), m.id])
-  );
+  const byNorm = new Map<string, string>();
+  for (const member of members) {
+    if (!member?.name || !member.id) continue;
+    const key = normalizePersonName(member.name);
+    if (key && !byNorm.has(key)) byNorm.set(key, member.id);
+  }
   const out: Record<string, string> = {};
   for (const name of jiraNames) {
+    if (!name) continue;
     const id = byNorm.get(normalizePersonName(name));
     if (id) out[name] = id;
   }

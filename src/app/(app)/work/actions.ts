@@ -1180,8 +1180,9 @@ export async function prepareJiraImportAction(
   | Err
 > {
   try {
+    // Do not revalidate here: refreshing the board mid-wizard remounts the
+    // page under the dialog and can surface as a client-side app crash.
     const result = await prepareJiraImport(boardId, statusMap, allKeys);
-    revalidateBoard(boardId);
     return { ok: true, ...result };
   } catch (error) {
     return fail(error);
@@ -1194,8 +1195,9 @@ export async function importJiraIssuesBatchAction(
   mappings: JiraImportMappings
 ): Promise<(Ok & JiraImportBatchResult) | Err> {
   try {
+    // Skip revalidate per batch — remounting mid-import closes the wizard and
+    // can surface as a full-page client exception. Relations action refreshes once.
     const result = await importJiraIssueBatch(boardId, issues, mappings);
-    revalidateBoard(boardId);
     return { ok: true, ...result };
   } catch (error) {
     return fail(error);

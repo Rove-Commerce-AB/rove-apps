@@ -219,6 +219,16 @@ describe("jiraXmlParse", () => {
     expect(() => parseJiraRssXml("<html></html>")).toThrow(/Jira RSS/);
   });
 
+  it("parses Skansen Jira export when present", () => {
+    const path = resolve(process.cwd(), "docs/_tmp_skansen_jira.xml");
+    if (!existsSync(path)) return;
+    const parsed = parseJiraRssXml(readFileSync(path, "utf8"));
+    expect(parsed.projectKey).toBe("SKANSEN");
+    expect(parsed.issues.length).toBe(48);
+    expect(parsed.uniqueTypes.sort()).toEqual(["Bug", "Story", "Task"]);
+    expect(parsed.uniqueStatuses).toContain("Ready for test");
+  });
+
   it("parses docs/Jira.xml when present", () => {
     const path = resolve(process.cwd(), "docs/Jira.xml");
     if (!existsSync(path)) return;
