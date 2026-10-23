@@ -26,14 +26,19 @@ export type ClickUpItemOption = {
 export async function getJiraIssuesByProjectKey(
   projectKey: string
 ): Promise<JiraIssueOption[]> {
-  if (!projectKey.trim()) return [];
+  const trimmedProjectKey = projectKey.trim();
+  if (!trimmedProjectKey) return [];
   const { rows } = await cloudSqlPool.query<{
     jira_key: string;
     summary: string | null;
     url: string | null;
   }>(
-    `SELECT jira_key, summary, url FROM jira_issues WHERE project_key = $1 ORDER BY jira_key`,
-    [projectKey.trim()]
+    `SELECT jira_key, summary, url
+     FROM jira_issues
+     WHERE project_key = $1
+        OR jira_key LIKE $2
+     ORDER BY jira_key`,
+    [trimmedProjectKey, `${trimmedProjectKey}-%`]
   );
   return rows.map((row) => ({
     value: row.jira_key,
