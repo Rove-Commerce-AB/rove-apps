@@ -10,13 +10,16 @@ import type {
   PayrollAbsenceRow,
   PayrollExportPreview,
 } from "@/lib/paxml/payrollExportQueries";
-import { absenceCodeLabel } from "@/lib/paxml/absenceCodes";
-import { Button, Dialog, Input } from "@/components/ui";
+import { Button, DataTable, Dialog, Input, type DataTableColumn } from "@/components/ui";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
+
+function displayProjectName(name: string): string {
+  return name.replace(/^Absence\s*[-–—]\s*/i, "").trim() || name;
+}
 
 function previousMonthRange(today = new Date()): { from: string; to: string } {
   const year = today.getFullYear();
@@ -123,6 +126,93 @@ export function FortnoxPayrollExportModal({ open, onOpenChange }: Props) {
   const selectedCount = selectedIds.size;
   const blockedCount =
     preview?.absences.filter((row) => !row.includable).length ?? 0;
+  const showIssuesColumn =
+    preview?.absences.some((row) => row.issues.length > 0) ?? false;
+
+  const absenceColumns = useMemo((): DataTableColumn<PayrollAbsenceRow>[] => {
+    const columns: DataTableColumn<PayrollAbsenceRow>[] = [
+      {
+        id: "include",
+        header: "",
+        width: "2.5rem",
+        align: "center",
+        cell: (row) => (
+          <input
+            type="checkbox"
+            checked={selectedIds.has(row.entryId)}
+            disabled={!row.includable}
+            onChange={() => toggleRow(row)}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Include ${row.consultantName} ${row.entryDate}`}
+            className="align-middle"
+          />
+        ),
+      },
+      {
+        id: "person",
+        header: "Person",
+        cell: (row) => (
+          <span className="whitespace-nowrap text-text-primary">
+            {row.consultantName}
+            <span className="ml-2 text-text-tertiary">
+              {row.employmentNumber ?? "—"}
+            </span>
+          </span>
+        ),
+      },
+      {
+        id: "date",
+        header: "Date",
+        width: "7.5rem",
+        cell: (row) => (
+          <span className="whitespace-nowrap tabular-nums">{row.entryDate}</span>
+        ),
+      },
+      {
+        id: "type",
+        header: "Type",
+        cell: (row) => (
+          <span className="whitespace-nowrap">
+            {displayProjectName(row.projectName)}
+          </span>
+        ),
+      },
+      {
+        id: "code",
+        header: "Code",
+        width: "5rem",
+        cell: (row) => (
+          <span className="whitespace-nowrap font-medium tabular-nums">
+            {row.absenceCode ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "hours",
+        header: "Hours",
+        width: "4.5rem",
+        align: "right",
+        cell: (row) => (
+          <span className="whitespace-nowrap tabular-nums">{row.hours}</span>
+        ),
+      },
+    ];
+    if (showIssuesColumn) {
+      columns.push({
+        id: "issues",
+        header: "Issues",
+        cell: (row) =>
+          row.issues.length > 0 ? (
+            <span className="whitespace-nowrap text-status-warning">
+              {row.issues.join("; ")}
+            </span>
+          ) : (
+            "—"
+          ),
+      });
+    }
+    return columns;
+  }, [selectedIds, showIssuesColumn]);
 
   return (
     <Dialog
@@ -130,7 +220,7 @@ export function FortnoxPayrollExportModal({ open, onOpenChange }: Props) {
       onOpenChange={onOpenChange}
       title="Export Fortnox PAXML"
       subtitle="Preview absence for payroll, then download a .pax file"
-      contentClassName="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,840px)] w-full max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-default p-8 shadow-xl focus:outline-none"
+      contentClassName="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,880px)] w-full max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-default p-8 shadow-xl focus:outline-none"
     >
       <div className="mt-6 flex min-h-0 flex-1 flex-col gap-5">
         <div className="flex flex-wrap items-end gap-3">
@@ -174,8 +264,8 @@ export function FortnoxPayrollExportModal({ open, onOpenChange }: Props) {
 
         {preview ? (
           <>
-            <section className="min-h-0 flex-1 overflow-auto rounded-lg border border-border-subtle">
-              <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border-subtle bg-bg-default px-3 py-2">
+            <section className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+              <div className="flex shrink-0 items-center justify-between gap-3">
                 <h3 className="text-label-l text-text-primary">
                   Absence ({preview.absences.length})
                 </h3>
@@ -188,63 +278,28 @@ export function FortnoxPayrollExportModal({ open, onOpenChange }: Props) {
                   </Button>
                 </div>
               </div>
-              {preview.absences.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-text-secondary">
-                  No reported absence in this period.
-                </p>
-              ) : (
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-bg-muted text-text-secondary">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Include</th>
-                      <th className="px-3 py-2 font-medium">Person</th>
-                      <th className="px-3 py-2 font-medium">Date</th>
-                      <th className="px-3 py-2 font-medium">Project</th>
-                      <th className="px-3 py-2 font-medium">Code</th>
-                      <th className="px-3 py-2 font-medium">Hours</th>
-                      <th className="px-3 py-2 font-medium">Issues</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-subtle">
-                    {preview.absences.map((row) => {
-                      const checked = selectedIds.has(row.entryId);
-                      return (
-                        <tr
-                          key={row.entryId}
-                          className={row.includable ? "" : "bg-status-warning-subtle/40"}
-                        >
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={!row.includable}
-                              onChange={() => toggleRow(row)}
-                              aria-label={`Include ${row.consultantName} ${row.entryDate}`}
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-text-primary">
-                            <div>{row.consultantName}</div>
-                            <div className="text-xs text-text-tertiary">
-                              {row.employmentNumber ?? "No employment number"}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 tabular-nums">{row.entryDate}</td>
-                          <td className="px-3 py-2">{row.projectName}</td>
-                          <td className="px-3 py-2">{absenceCodeLabel(row.absenceCode)}</td>
-                          <td className="px-3 py-2 tabular-nums">{row.hours}</td>
-                          <td className="px-3 py-2 text-xs text-status-warning">
-                            {row.issues.join("; ") || "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+              <div className="min-h-0 flex-1 overflow-auto">
+                {preview.absences.length === 0 ? (
+                  <p className="px-1 py-3 text-sm text-text-secondary">
+                    No reported absence in this period.
+                  </p>
+                ) : (
+                  <DataTable
+                    columns={absenceColumns}
+                    rows={preview.absences}
+                    getRowId={(row) => row.entryId}
+                    density="compact"
+                    stickyHeader
+                    getRowClassName={(row) =>
+                      row.includable ? undefined : "bg-status-warning-subtle/40"
+                    }
+                  />
+                )}
+              </div>
             </section>
 
-            <section className="rounded-lg border border-border-subtle">
-              <div className="border-b border-border-subtle px-3 py-2">
+            <section className="shrink-0">
+              <div className="mb-2">
                 <h3 className="text-label-l text-text-primary">
                   Part-time ({preview.partTime.length})
                 </h3>
@@ -253,23 +308,23 @@ export function FortnoxPayrollExportModal({ open, onOpenChange }: Props) {
                 </p>
               </div>
               {preview.partTime.length === 0 ? (
-                <p className="px-3 py-3 text-sm text-text-secondary">
+                <p className="text-sm text-text-secondary">
                   Everyone is at 100% for this period.
                 </p>
               ) : (
-                <ul className="divide-y divide-border-subtle">
+                <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
                   {preview.partTime.map((row) => (
                     <li
                       key={row.consultantId}
                       className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
                     >
-                      <span className="text-text-primary">
+                      <span className="whitespace-nowrap text-text-primary">
                         {row.consultantName}
-                        <span className="ml-2 text-xs text-text-tertiary">
-                          {row.employmentNumber ?? "No employment number"}
+                        <span className="ml-2 text-text-tertiary">
+                          {row.employmentNumber ?? "—"}
                         </span>
                       </span>
-                      <span className="tabular-nums text-text-secondary">
+                      <span className="whitespace-nowrap tabular-nums text-text-secondary">
                         {row.workPercentage}%
                       </span>
                     </li>

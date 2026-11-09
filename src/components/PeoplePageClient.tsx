@@ -1645,7 +1645,7 @@ export function PeoplePageClient({
             defaultValue="overview"
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
-            <TabsList className="shrink-0 !flex-wrap border-border-default px-6 !gap-x-6 !gap-y-0">
+            <TabsList className="shrink-0 overflow-x-auto border-border-default px-6 !gap-6">
               <TabsTrigger value="overview" className="px-1 !px-1">
                 Overview
               </TabsTrigger>
