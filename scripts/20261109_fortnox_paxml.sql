@@ -29,26 +29,33 @@ ALTER TABLE projects
   );
 
 -- Seed PAXml codes for known Rove absence projects (safe to re-run).
+-- Test uses short names; prod uses "Absence - …" prefixes.
 UPDATE projects
 SET absence_code = 'SEM'
 WHERE type = 'absence'
-  AND name = 'Vacation'
+  AND name IN ('Vacation', 'Absence - Vacation')
   AND absence_code IS DISTINCT FROM 'SEM';
+
+UPDATE projects
+SET absence_code = 'SEM_OBE'
+WHERE type = 'absence'
+  AND name IN ('Vacation (unpaid)', 'Absence - Vacation (unpaid)')
+  AND absence_code IS DISTINCT FROM 'SEM_OBE';
 
 UPDATE projects
 SET absence_code = 'SJK'
 WHERE type = 'absence'
-  AND name = 'Sick leave'
+  AND name IN ('Sick leave', 'Absence - Sick leave')
   AND absence_code IS DISTINCT FROM 'SJK';
 
 UPDATE projects
 SET absence_code = 'VAB'
 WHERE type = 'absence'
-  AND name = 'VAB'
+  AND name IN ('VAB', 'Absence - VAB')
   AND absence_code IS DISTINCT FROM 'VAB';
 
 UPDATE projects
 SET absence_code = 'FPE'
 WHERE type = 'absence'
-  AND name = 'Parental leave'
+  AND name IN ('Parental leave', 'Absence - Parental leave')
   AND absence_code IS DISTINCT FROM 'FPE';

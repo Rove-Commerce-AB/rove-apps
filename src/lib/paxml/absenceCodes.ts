@@ -1,6 +1,7 @@
 /** PAXml tidkoder used for absence export (subset of the 1.0 schema). */
 export const ABSENCE_CODE_OPTIONS = [
   { value: "SEM", label: "Vacation (SEM)" },
+  { value: "SEM_OBE", label: "Unpaid vacation (SEM_OBE)" },
   { value: "SJK", label: "Sick leave (SJK)" },
   { value: "VAB", label: "Care of child (VAB)" },
   { value: "FPE", label: "Parental leave (FPE)" },
