@@ -2,6 +2,7 @@ import {
   normalizePersonName,
   normalizePersonNameLoose,
   type JiraRelationEdge,
+  type ParsedJiraAttachment,
   type ParsedJiraComment,
   type ParsedJiraIssueLink,
   type ParsedJiraPreDeployAction,
@@ -32,6 +33,8 @@ export type JiraImportIssuePayload = {
   startDate: string | null;
   comments: ParsedJiraComment[];
   preDeployActions: ParsedJiraPreDeployAction[];
+  attachments: ParsedJiraAttachment[];
+  descriptionImageIds: string[];
 };
 
 export type JiraImportMappings = {
@@ -56,6 +59,9 @@ export type JiraImportBatchResult = {
   created: number;
   skipped: number;
   failed: { key: string; error: string }[];
+  /** Non-fatal attachment/image problems (import continued). */
+  warnings: { key: string; message: string }[];
+  imagesImported: number;
 };
 
 export type JiraImportRelationSkip = {

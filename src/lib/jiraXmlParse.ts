@@ -3,11 +3,19 @@
  * shape for the Work import wizard. Pure functions — safe on client and server.
  */
 
+export type ParsedJiraAttachment = {
+  id: string;
+  name: string;
+  size: number | null;
+};
+
 export type ParsedJiraComment = {
   authorAccountId: string;
   authorName: string | null;
   created: string;
   bodyText: string;
+  /** Attachment ids referenced by <img> in the comment HTML. */
+  imageAttachmentIds: string[];
 };
 
 export type ParsedJiraPreDeployAction = {
@@ -43,6 +51,9 @@ export type ParsedJiraIssue = {
   comments: ParsedJiraComment[];
   preDeployActions: ParsedJiraPreDeployAction[];
   hasPreDeployLabel: boolean;
+  attachments: ParsedJiraAttachment[];
+  /** Attachment ids referenced by <img> in the description HTML. */
+  descriptionImageIds: string[];
 };
 
 export type ParsedJiraEpic = {
@@ -117,6 +128,58 @@ function stripTagsKeepBreaks(html: string): string {
 export function htmlToPlainText(html: string): string {
   if (!html.trim()) return "";
   return stripTagsKeepBreaks(html);
+}
+
+/** Attachment ids referenced in Jira HTML img srcs (Cloud + Server URL shapes). */
+export function extractJiraAttachmentIdsFromHtml(html: string): string[] {
+  if (!html.trim()) return [];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const patterns = [
+    /\/rest\/api\/\d+\/attachment\/content\/(\d+)/gi,
+    /\/secure\/attachment\/(\d+)\//gi,
+    /\/attachment\/content\/(\d+)/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of html.matchAll(pattern)) {
+      const id = match[1];
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function xmlAttr(attrs: string, name: string): string {
+  const match = attrs.match(
+    new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i")
+  );
+  return decodeXmlEntities(match?.[2] ?? match?.[3] ?? "").trim();
+}
+
+function parseAttachmentAttrs(attrs: string): ParsedJiraAttachment | null {
+  const idTrim = xmlAttr(attrs, "id");
+  const nameTrim = xmlAttr(attrs, "name");
+  if (!idTrim || !nameTrim) return null;
+  const sizeNum = Number(xmlAttr(attrs, "size"));
+  return {
+    id: idTrim,
+    name: nameTrim,
+    size: Number.isFinite(sizeNum) && sizeNum >= 0 ? sizeNum : null,
+  };
+}
+
+export function parseJiraAttachmentsXml(block: string): ParsedJiraAttachment[] {
+  const out: ParsedJiraAttachment[] = [];
+  const seen = new Set<string>();
+  for (const match of block.matchAll(/<attachment\b([^>]*?)(?:\/>|>)/gi)) {
+    const parsed = parseAttachmentAttrs(match[1] ?? "");
+    if (!parsed || seen.has(parsed.id)) continue;
+    seen.add(parsed.id);
+    out.push(parsed);
+  }
+  return out;
 }
 
 const PREDEPLOY_HEADING =
@@ -414,8 +477,14 @@ export function parseJiraRssXml(xml: string): ParsedJiraExport {
         authorName: accountNames[authorAccountId] ?? null,
         created,
         bodyText: htmlToPlainText(bodyHtml),
+        imageAttachmentIds: extractJiraAttachmentIdsFromHtml(bodyHtml),
       });
     }
+
+    const attachments = parseJiraAttachmentsXml(block);
+    const descriptionImageIds = extractJiraAttachmentIdsFromHtml(
+      htmlWithoutSection
+    );
 
     // Also harvest mention display names from comment HTML for author resolution
     for (const cm of comments) {
@@ -467,6 +536,8 @@ export function parseJiraRssXml(xml: string): ParsedJiraExport {
       comments,
       preDeployActions,
       hasPreDeployLabel,
+      attachments,
+      descriptionImageIds,
     });
   }
 

@@ -52,6 +52,8 @@ function buildImportReportText(input: {
   skipped: number;
   failed: { key: string; error: string }[];
   skippedIssues: { key: string; reason: string }[];
+  warnings: { key: string; message: string }[];
+  imagesImported: number;
   relationsPlanned: number;
   relationsCreated: number;
   relationsSkipped: JiraImportRelationSkip[];
@@ -72,6 +74,8 @@ function buildImportReportText(input: {
     `  Created: ${input.created}`,
     `  Skipped: ${input.skipped}`,
     `  Failed: ${input.failed.length}`,
+    `  Attachments imported: ${input.imagesImported}`,
+    `  Attachment warnings: ${input.warnings.length}`,
   ].filter((line): line is string => line != null);
 
   if (input.skippedIssues.length > 0) {
@@ -90,6 +94,15 @@ function buildImportReportText(input: {
     }
   } else {
     lines.push("", "Failures: (none)");
+  }
+
+  if (input.warnings.length > 0) {
+    lines.push("", "Attachment warnings:");
+    for (const row of input.warnings) {
+      lines.push(`- ${row.key}: ${row.message}`);
+    }
+  } else {
+    lines.push("", "Attachment warnings: (none)");
   }
 
   lines.push(
@@ -132,6 +145,8 @@ function toPayload(issue: ParsedJiraIssue): JiraImportIssuePayload {
     startDate: issue.startDate,
     comments: issue.comments,
     preDeployActions: issue.preDeployActions,
+    attachments: issue.attachments,
+    descriptionImageIds: issue.descriptionImageIds,
   };
 }
 
@@ -466,7 +481,9 @@ export function WorkJiraImportDialog({
     startTransition(async () => {
       let created = 0;
       let skipped = plannedSkip;
+      let imagesImported = 0;
       const failed: { key: string; error: string }[] = [];
+      const warnings: { key: string; message: string }[] = [];
       let msPerItem = DEFAULT_MS_PER_ITEM;
       let relCreated = 0;
       let relSkipped: JiraImportRelationSkip[] = [];
@@ -509,6 +526,8 @@ export function WorkJiraImportDialog({
             return;
           }
           failed.push(...result.failed);
+          warnings.push(...(result.warnings ?? []));
+          imagesImported += result.imagesImported ?? 0;
           setFailedRows([...failed]);
         }
 
@@ -538,6 +557,8 @@ export function WorkJiraImportDialog({
           created += result.created;
           skipped += result.skipped;
           failed.push(...result.failed);
+          warnings.push(...(result.warnings ?? []));
+          imagesImported += result.imagesImported ?? 0;
           setProgress({
             processed: Math.min(i + batch.length, cardCount),
             total: cardCount,
@@ -583,6 +604,8 @@ export function WorkJiraImportDialog({
           skipped,
           failed,
           skippedIssues: skippedIssueRows,
+          warnings,
+          imagesImported,
           relationsPlanned: edges.length,
           relationsCreated: relCreated,
           relationsSkipped: relSkipped,
@@ -613,6 +636,8 @@ export function WorkJiraImportDialog({
             skipped,
             failed,
             skippedIssues: skippedIssueRows,
+            warnings,
+            imagesImported,
             relationsPlanned: edges.length,
             relationsCreated: relCreated,
             relationsSkipped: relSkipped,

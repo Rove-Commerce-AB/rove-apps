@@ -16,10 +16,16 @@ import {
   type JiraRelationEdge,
 } from "@/lib/jiraXmlParse";
 import {
+  downloadJiraAttachment,
+  credentialForJiraLink,
+} from "@/lib/jiraAttachments";
+import { joinWorkInlineImages } from "@/lib/workInlineImages";
+import {
   findOrCreateBoardComponent,
   insertWorkIssue,
   insertWorkIssueCommentsBatch,
   insertWorkIssueEvent,
+  insertWorkIssueFile,
   insertWorkIssuePreDeployAction,
   insertWorkIssueReference,
   insertWorkIssueRelation,
@@ -175,7 +181,7 @@ export async function importJiraIssueBatch(
   const actorId = visible.actor.id;
 
   if (issues.length === 0) {
-    return { created: 0, skipped: 0, failed: [] };
+    return { created: 0, skipped: 0, failed: [], warnings: [], imagesImported: 0 };
   }
   if (issues.length > 40) {
     throw new WorkInputError("Batch too large (max 40).");
@@ -216,7 +222,9 @@ export async function importJiraIssueBatch(
 
   let created = 0;
   let skipped = 0;
+  let imagesImported = 0;
   const failed: { key: string; error: string }[] = [];
+  const warnings: { key: string; message: string }[] = [];
 
   for (const issue of issues) {
     try {
@@ -310,6 +318,68 @@ export async function importJiraIssueBatch(
         }
       }
 
+      const fileIdByAttachmentId = new Map<string, string>();
+      const attachments = issue.attachments ?? [];
+      const neededIds = new Set<string>([
+        ...attachments.map((a) => a.id),
+        ...(issue.descriptionImageIds ?? []),
+        ...issue.comments.flatMap((c) => c.imageAttachmentIds ?? []),
+      ]);
+
+      for (const attachmentId of neededIds) {
+        const meta =
+          attachments.find((a) => a.id === attachmentId) ?? {
+            id: attachmentId,
+            name: `attachment-${attachmentId}`,
+            size: null,
+          };
+        const downloaded = await downloadJiraAttachment({
+          issueLink: issue.link,
+          attachmentId: meta.id,
+          fileName: meta.name,
+          credentials: credentialForJiraLink(issue.link),
+        });
+        if (!downloaded.ok) {
+          warnings.push({
+            key: issue.key,
+            message: `${meta.name}: ${downloaded.skip.reason}`,
+          });
+          continue;
+        }
+        const fileId = await insertWorkIssueFile({
+          issueId,
+          fileName: downloaded.prepared.fileName,
+          mimeType: downloaded.prepared.mimeType,
+          byteSize: downloaded.prepared.content.byteLength,
+          content: downloaded.prepared.content,
+          uploadedByAppUserId: actorId,
+        });
+        fileIdByAttachmentId.set(attachmentId, fileId);
+        imagesImported += 1;
+        await insertWorkIssueEvent({
+          issueId,
+          actorAppUserId: actorId,
+          kind: "file",
+          summary: `imported ${downloaded.prepared.fileName} from Jira`,
+        });
+      }
+
+      const descriptionFileIds = (issue.descriptionImageIds ?? [])
+        .map((id) => fileIdByAttachmentId.get(id))
+        .filter((id): id is string => Boolean(id));
+      if (descriptionFileIds.length > 0) {
+        const nextDescription = joinWorkInlineImages(
+          issue.descriptionText,
+          descriptionFileIds
+        );
+        await cloudSqlPool.query(
+          `UPDATE work_issues
+           SET description = $2, updated_at = now()
+           WHERE id = $1`,
+          [issueId, nextDescription]
+        );
+      }
+
       const importedComments = issue.comments
         .map((comment) => {
           const mappedName = comment.authorName?.trim() || "";
@@ -320,9 +390,13 @@ export async function importJiraIssueBatch(
           const authorMapped = Boolean(
             mappedId && memberIds.has(mappedId)
           );
-          const body = formatImportedComment(comment, {
-            authorMapped,
-          }).slice(0, 20000);
+          const commentFileIds = (comment.imageAttachmentIds ?? [])
+            .map((id) => fileIdByAttachmentId.get(id))
+            .filter((id): id is string => Boolean(id));
+          const body = joinWorkInlineImages(
+            formatImportedComment(comment, { authorMapped }),
+            commentFileIds
+          ).slice(0, 20000);
           if (!body.trim()) return null;
           return {
             body,
@@ -358,7 +432,7 @@ export async function importJiraIssueBatch(
     }
   }
 
-  return { created, skipped, failed };
+  return { created, skipped, failed, warnings, imagesImported };
 }
 
 /**

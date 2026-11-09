@@ -5,10 +5,12 @@ import {
   buildJiraRelationEdges,
   decodeXmlEntities,
   estimateHoursFromSeconds,
+  extractJiraAttachmentIdsFromHtml,
   extractPreDeployFromHtml,
   formatImportedComment,
   htmlToPlainText,
   mapJiraIssueLinkToEdge,
+  parseJiraAttachmentsXml,
   parseJiraRfc822Date,
   parseJiraRfc822DateTime,
   parseJiraRssXml,
@@ -106,6 +108,25 @@ describe("jiraXmlParse", () => {
   it("decodes entities and HTML to text", () => {
     expect(decodeXmlEntities("S&#246;k &amp; hitta")).toBe("Sök & hitta");
     expect(htmlToPlainText("<p>Hi</p><p>There</p>")).toContain("Hi");
+  });
+
+  it("extracts attachment ids from HTML and XML", () => {
+    expect(
+      extractJiraAttachmentIdsFromHtml(
+        `<img src="https://rovecommerce.atlassian.net/rest/api/3/attachment/content/20894" alt="a.png" />`
+      )
+    ).toEqual(["20894"]);
+    expect(
+      parseJiraAttachmentsXml(`
+        <attachments>
+          <attachment id="20894" name="a.png" size="12"/>
+          <attachment id="20895" name="b.png" size="34"/>
+        </attachments>
+      `)
+    ).toEqual([
+      { id: "20894", name: "a.png", size: 12 },
+      { id: "20895", name: "b.png", size: 34 },
+    ]);
   });
 
   it("extracts pre-deploy checklist and strips section", () => {
@@ -214,6 +235,7 @@ describe("jiraXmlParse", () => {
         authorName: "Ada",
         created: "Wed, 3 Dec 2025",
         bodyText: "Hi",
+        imageAttachmentIds: [],
       })
     ).toBe("[Ada, Wed, 3 Dec 2025]\nHi");
     expect(
@@ -223,6 +245,7 @@ describe("jiraXmlParse", () => {
           authorName: "Ada",
           created: "Wed, 3 Dec 2025",
           bodyText: "Hi",
+          imageAttachmentIds: [],
         },
         { authorMapped: true }
       )

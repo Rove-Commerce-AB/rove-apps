@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
+import { buildContentDisposition } from "@/lib/workFileHttp";
 import { fetchWorkIssueFileForDownload } from "@/lib/workIssuesQueries";
 
 export const dynamic = "force-dynamic";
@@ -23,14 +24,14 @@ export async function GET(
   }
 
   const isImage = file.mime_type.toLowerCase().startsWith("image/");
-  const safeName = file.file_name.replace(/"/g, "");
 
   return new NextResponse(new Uint8Array(file.content), {
     headers: {
       "Content-Type": file.mime_type,
-      "Content-Disposition": isImage
-        ? `inline; filename="${safeName}"`
-        : `attachment; filename="${safeName}"`,
+      "Content-Disposition": buildContentDisposition(
+        isImage ? "inline" : "attachment",
+        file.file_name
+      ),
       "Cache-Control": "private, no-store",
     },
   });
