@@ -28,6 +28,8 @@ export type ConsultantForEdit = {
   startDate: string | null;
   endDate: string | null;
   birthDate: string | null;
+  /** Fortnox anställningsnummer for PAXML payroll export. */
+  employmentNumber: string | null;
 };
 
 export type ConsultantListItem = ConsultantForEdit & {
@@ -49,6 +51,7 @@ export type CreateConsultantInput = {
   start_date?: string | null;
   end_date?: string | null;
   birth_date?: string | null;
+  employment_number?: string | null;
 };
 
 export type UpdateConsultantInput = {
@@ -63,6 +66,7 @@ export type UpdateConsultantInput = {
   start_date?: string | null;
   end_date?: string | null;
   birth_date?: string | null;
+  employment_number?: string | null;
 };
 
 export async function createConsultantQuery(
@@ -144,6 +148,10 @@ export async function updateConsultantQuery(
   if (input.birth_date !== undefined) {
     sets.push(`birth_date = $${i++}`);
     values.push(input.birth_date ?? null);
+  }
+  if (input.employment_number !== undefined) {
+    sets.push(`employment_number = $${i++}`);
+    values.push(input.employment_number?.trim() || null);
   }
   if (sets.length === 0) return false;
   sets.push(`updated_at = now()`);
@@ -239,7 +247,8 @@ export async function fetchConsultantById(
 ): Promise<ConsultantForEdit | null> {
   const { rows } = await cloudSqlPool.query(
     `SELECT id, app_user_id, name, email, role_id, calendar_id, team_id, is_external,
-            work_percentage, overhead_percentage, start_date::text, end_date::text, birth_date::text
+            work_percentage, overhead_percentage, start_date::text, end_date::text, birth_date::text,
+            employment_number
      FROM consultants WHERE id = $1`,
     [id]
   );
@@ -257,6 +266,7 @@ export async function fetchConsultantById(
     start_date: string | null;
     end_date: string | null;
     birth_date: string | null;
+    employment_number: string | null;
   } | undefined;
 
   if (!c) return null;
@@ -286,6 +296,7 @@ export async function fetchConsultantById(
     startDate: c.start_date ?? null,
     endDate: c.end_date ?? null,
     birthDate: c.birth_date ?? null,
+    employmentNumber: c.employment_number?.trim() || null,
   };
 }
 
@@ -323,6 +334,7 @@ export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
     start_date: string | null;
     end_date: string | null;
     birth_date: string | null;
+    employment_number: string | null;
   }>(
     `SELECT
        c.id,
@@ -341,7 +353,8 @@ export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
        c.overhead_percentage,
        c.start_date::text AS start_date,
        c.end_date::text AS end_date,
-       c.birth_date::text AS birth_date
+       c.birth_date::text AS birth_date,
+       c.employment_number
      FROM consultants c
      LEFT JOIN roles r ON r.id = c.role_id
      LEFT JOIN calendars cal ON cal.id = c.calendar_id
@@ -369,6 +382,7 @@ export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
     startDate: r.start_date ?? null,
     endDate: r.end_date ?? null,
     birthDate: r.birth_date ?? null,
+    employmentNumber: r.employment_number?.trim() || null,
     initials: getInitials(r.name),
     isActive: isConsultantActive(r.end_date, today),
     hoursPerWeek: Number(r.hours_per_week) || DEFAULT_HOURS_PER_WEEK,

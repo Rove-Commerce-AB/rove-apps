@@ -10,6 +10,7 @@ import {
   Clock,
   IdCard,
   MessageCircle,
+  FileDown,
   Plus,
   Search,
   Sparkles,
@@ -19,6 +20,7 @@ import { AddConsultantModal } from "@/components/AddConsultantModal";
 import { AppAccessList } from "@/components/AppAccessList";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { ConsultantDetailClient } from "@/components/ConsultantDetailClient";
+import { FortnoxPayrollExportModal } from "@/components/FortnoxPayrollExportModal";
 import { PersonCustomersTab, type PersonCustomerOption } from "@/components/PersonCustomersTab";
 import { PersonMcpAccessTab } from "@/components/PersonMcpAccessTab";
 import { PersonLoginHistory } from "@/components/PersonLoginHistory";
@@ -1341,6 +1343,7 @@ export function PeoplePageClient({
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [chooseTypeOpen, setChooseTypeOpen] = useState(false);
+  const [payrollExportOpen, setPayrollExportOpen] = useState(false);
   const [userForm, setUserForm] = useState<{
     open: boolean;
     kind: "rove" | "customer";
@@ -1514,10 +1517,20 @@ export function PeoplePageClient({
           title="People"
           description="Manage user accounts, app access and consultant profiles."
         >
-          <Button type="button" onClick={() => setChooseTypeOpen(true)}>
-            <Plus className="h-4 w-4" aria-hidden />
-            Add person
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setPayrollExportOpen(true)}
+            >
+              <FileDown className="h-4 w-4" aria-hidden />
+              Export Fortnox PAXML
+            </Button>
+            <Button type="button" onClick={() => setChooseTypeOpen(true)}>
+              <Plus className="h-4 w-4" aria-hidden />
+              Add person
+            </Button>
+          </div>
         </PageHeader>
 
         {error ? (
@@ -1856,6 +1869,11 @@ export function PeoplePageClient({
         isOpen={consultantFormOpen}
         onClose={() => setConsultantFormOpen(false)}
         onSuccess={() => router.refresh()}
+      />
+
+      <FortnoxPayrollExportModal
+        open={payrollExportOpen}
+        onOpenChange={setPayrollExportOpen}
       />
     </>
   );

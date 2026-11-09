@@ -40,8 +40,8 @@ async function hasClickupProjectColumn(): Promise<boolean> {
 
 function projectSelectClause(includeClickupProjectId: boolean): string {
   return includeClickupProjectId
-    ? "id, customer_id, name, is_active, type, billing_type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, clickup_project_id, budget_hours, budget_money"
-    : "id, customer_id, name, is_active, type, billing_type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, NULL::text AS clickup_project_id, budget_hours, budget_money";
+    ? "id, customer_id, name, is_active, type, billing_type, absence_code, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, clickup_project_id, budget_hours, budget_money"
+    : "id, customer_id, name, is_active, type, billing_type, absence_code, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, NULL::text AS clickup_project_id, budget_hours, budget_money";
 }
 
 function getInitials(name: string): string {
@@ -60,6 +60,7 @@ export type ProjectRecord = {
   is_active: boolean;
   type: ProjectType;
   billing_type: ProjectBillingType;
+  absence_code: string | null;
   project_manager_id: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -77,6 +78,7 @@ export type CreateProjectInput = {
   is_active?: boolean;
   type?: ProjectType;
   billing_type?: ProjectBillingType;
+  absence_code?: string | null;
   project_manager_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
@@ -94,6 +96,7 @@ export type UpdateProjectInput = {
   is_active?: boolean;
   type?: ProjectType;
   billing_type?: ProjectBillingType;
+  absence_code?: string | null;
   project_manager_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
@@ -113,6 +116,7 @@ function rowToProjectRecord(r: Record<string, unknown>): ProjectRecord {
     is_active: Boolean(r.is_active),
     type: (r.type as ProjectType) ?? "customer",
     billing_type: parseBillingType(r.billing_type),
+    absence_code: (r.absence_code as string | null)?.trim() || null,
     project_manager_id: (r.project_manager_id as string | null) ?? null,
     start_date: (r.start_date as string | null) ?? null,
     end_date: (r.end_date as string | null) ?? null,
@@ -208,10 +212,17 @@ export async function updateProjectQuery(
   if (input.type !== undefined) {
     sets.push(`type = $${i++}`);
     values.push(input.type);
+    if (input.type !== "absence" && input.absence_code === undefined) {
+      sets.push(`absence_code = NULL`);
+    }
   }
   if (input.billing_type !== undefined) {
     sets.push(`billing_type = $${i++}`);
     values.push(input.billing_type);
+  }
+  if (input.absence_code !== undefined) {
+    sets.push(`absence_code = $${i++}`);
+    values.push(input.absence_code?.trim() || null);
   }
   if (input.project_manager_id !== undefined) {
     sets.push(`project_manager_id = $${i++}`);
@@ -395,6 +406,7 @@ export async function fetchProjectWithDetailsById(
     isActive: Boolean(p.is_active),
     type: projectType,
     billingType: parseBillingType(p.billing_type),
+    absenceCode: (p.absence_code as string | null)?.trim() || null,
     customer_id: (p.customer_id as string) ?? "",
     customerName: cust?.name ?? "Unknown",
     projectManagerId,
@@ -523,6 +535,7 @@ export async function fetchProjectsWithDetails(): Promise<
       isActive: p.is_active,
       type: projectType,
       billingType: p.billing_type,
+      absenceCode: p.absence_code ?? null,
       customer_id: p.customer_id,
       customerName: cust?.name ?? "Unknown",
       projectManagerId,

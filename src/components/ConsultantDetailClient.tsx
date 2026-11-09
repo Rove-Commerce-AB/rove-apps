@@ -52,6 +52,7 @@ type EditField =
   | "startDate"
   | "endDate"
   | "birthDate"
+  | "employmentNumber"
   | null;
 
 type Props = {
@@ -130,6 +131,9 @@ export function ConsultantDetailClient({
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
   const [endDate, setEndDate] = useState(initial.endDate ?? "");
   const [birthDate, setBirthDate] = useState(initial.birthDate ?? "");
+  const [employmentNumber, setEmploymentNumber] = useState(
+    initial.employmentNumber ?? ""
+  );
   const [isExternal, setIsExternal] = useState(initial.isExternal);
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
@@ -159,6 +163,7 @@ export function ConsultantDetailClient({
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
     setBirthDate(initial.birthDate ?? "");
+    setEmploymentNumber(initial.employmentNumber ?? "");
     setIsExternal(initial.isExternal);
   }, [initial]);
 
@@ -219,6 +224,9 @@ export function ConsultantDetailClient({
       case "birthDate":
         setBirthDate(trimmed);
         break;
+      case "employmentNumber":
+        setEmploymentNumber(trimmed);
+        break;
       default:
         break;
     }
@@ -264,6 +272,11 @@ export function ConsultantDetailClient({
         case "birthDate":
           await updateConsultant(initial.id, { birth_date: trimmed || null });
           break;
+        case "employmentNumber":
+          await updateConsultant(initial.id, {
+            employment_number: trimmed || null,
+          });
+          break;
         default:
           break;
       }
@@ -283,6 +296,9 @@ export function ConsultantDetailClient({
         case "startDate": setStartDate(initial.startDate ?? ""); break;
         case "endDate": setEndDate(initial.endDate ?? ""); break;
         case "birthDate": setBirthDate(initial.birthDate ?? ""); break;
+        case "employmentNumber":
+          setEmploymentNumber(initial.employmentNumber ?? "");
+          break;
         default: break;
       }
     } finally {
@@ -806,6 +822,51 @@ export function ConsultantDetailClient({
     </ConsultantField>
   );
 
+  const employmentNumberField = (
+    <ConsultantField embedded={embedded} label="Employment number">
+      <InlineEditFieldContainer
+        isEditing={editingField === "employmentNumber"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={
+          showSaved && lastSavedFieldRef.current === "employmentNumber"
+        }
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            className={employmentNumber ? "" : "text-text-primary opacity-70"}
+            onClick={() => startEdit("employmentNumber", employmentNumber)}
+          >
+            <ConsultantValue embedded={embedded}>
+              {employmentNumber || "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <input
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => commitEdit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className={editInputClass}
+            autoFocus
+            placeholder="Fortnox anställningsnr"
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
   const calendarField = (
     <ConsultantField embedded={embedded} label="Calendar">
       {embedded ? (
@@ -900,6 +961,7 @@ export function ConsultantDetailClient({
             {startDateField}
             {endDateField}
             {isAdmin ? birthDateField : null}
+            {isAdmin ? employmentNumberField : null}
           </div>
           <div className="border-t border-border-subtle px-6">
             {calendarTimeField}
@@ -934,6 +996,7 @@ export function ConsultantDetailClient({
             {startDateField}
             {endDateField}
             {isAdmin ? birthDateField : null}
+            {isAdmin ? employmentNumberField : null}
             {calendarField}
             {typeField}
           </div>

@@ -274,16 +274,20 @@ Allocatable person; default role, calendar, optional team, optional login.
 | start_date | date | nullable; first available day |
 | end_date | date | nullable; last available day |
 | birth_date | date | nullable; admin-only in UI |
+| employment_number | text | nullable; Fortnox anställningsnummer for PAXML payroll export; unique when set |
 | utilization_target_pct | numeric(5,2) | nullable; target billable utilization for Reports |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
-Indexes: unique `(app_user_id) WHERE app_user_id IS NOT NULL`; `(team_id)`.
+Indexes: unique `(app_user_id) WHERE app_user_id IS NOT NULL`; `(team_id)`;
+unique `(employment_number) WHERE employment_number IS NOT NULL AND btrim(employment_number) <> ''`.
 
 Triggers: `consultants_customer_user_enforce` → `enforce_customer_user_rules()`;
 `trg_consultants_updated_at` → `set_updated_at()`.
 
 A person is either a consultant or a customer user, never both.
+
+DDL for `employment_number`: [`scripts/20261109_fortnox_paxml.sql`](../scripts/20261109_fortnox_paxml.sql).
 
 ---
 
@@ -340,6 +344,7 @@ Belongs to one customer. Optional Jira / DevOps integration fields, PM, budgets.
 | end_date | date | nullable |
 | is_active | boolean | NOT NULL, default true |
 | type | `project_type` | NOT NULL, default `customer` |
+| absence_code | text | nullable; PAXml tidkod (SEM, SJK, VAB, …) when `type = absence` |
 | probability | integer | NOT NULL, default 100; check 1–100 |
 | jira_project_key | text | nullable; joins `jira_issues.project_key` |
 | devops_project | text | nullable; joins `devops_work_items.project` |
@@ -350,9 +355,12 @@ Belongs to one customer. Optional Jira / DevOps integration fields, PM, budgets.
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
-Checks: `end_date >= start_date` when both are set; probability 1–100; `billing_type` in (`hourly`, `fixed`).
+Checks: `end_date >= start_date` when both are set; probability 1–100; `billing_type` in (`hourly`, `fixed`);
+`absence_code` only allowed when `type = absence`.
 
 `billing_type = fixed`: time is still reported; Looker/`v_time_report_looker` **Income** is **0** (hours × rate is not used). Contract value is `budget_money`. DDL: [`scripts/20261008_project_billing_type.sql`](../scripts/20261008_project_billing_type.sql).
+
+DDL for `absence_code`: [`scripts/20261109_fortnox_paxml.sql`](../scripts/20261109_fortnox_paxml.sql).
 
 Trigger `trg_projects_updated_at` → `set_updated_at()`.
 

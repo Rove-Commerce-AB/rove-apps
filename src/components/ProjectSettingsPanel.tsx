@@ -38,6 +38,10 @@ import {
 import { ProjectRatesTab } from "./ProjectRatesTab";
 import { AddProjectRateModal } from "./AddProjectRateModal";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
+import {
+  ABSENCE_CODE_OPTIONS,
+  absenceCodeLabel,
+} from "@/lib/paxml/absenceCodes";
 
 const PROBABILITY_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 
@@ -88,6 +92,7 @@ export function ProjectSettingsPanel({
   );
   const [isActive, setIsActive] = useState(initial.isActive);
   const [type, setType] = useState<ProjectType>(initial.type);
+  const [absenceCode, setAbsenceCode] = useState(initial.absenceCode ?? "");
   const [billingType, setBillingType] = useState<ProjectBillingType>(
     initial.billingType ?? "hourly"
   );
@@ -134,6 +139,7 @@ export function ProjectSettingsPanel({
     setIntegrationValue(integrationValueFromProject(initial));
     setIsActive(initial.isActive);
     setType(initial.type);
+    setAbsenceCode(initial.absenceCode ?? "");
     setBillingType(initial.billingType ?? "hourly");
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
@@ -382,15 +388,40 @@ export function ProjectSettingsPanel({
     setError(null);
     setSubmitting(true);
     try {
-      const patch: { type: ProjectType; billing_type?: ProjectBillingType } = {
+      const patch: {
+        type: ProjectType;
+        billing_type?: ProjectBillingType;
+        absence_code?: string | null;
+      } = {
         type: next,
       };
       if (next !== "customer" && billingType !== "hourly") {
         patch.billing_type = "hourly";
       }
+      if (next !== "absence") {
+        patch.absence_code = null;
+      }
       await updateProject(initial.id, patch);
       setType(next);
       if (patch.billing_type) setBillingType(patch.billing_type);
+      if (next !== "absence") setAbsenceCode("");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function setProjectAbsenceCode(next: string) {
+    if (next === absenceCode) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateProject(initial.id, {
+        absence_code: next || null,
+      });
+      setAbsenceCode(next);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -672,6 +703,23 @@ export function ProjectSettingsPanel({
                   ]}
                 />
               </DrawerFieldRow>
+              {type === "absence" ? (
+                <DrawerFieldRow label="Absence code">
+                  <DrawerSelectField
+                    value={absenceCode}
+                    onValueChange={(value) => void setProjectAbsenceCode(value)}
+                    options={[
+                      { value: "", label: "Select code…" },
+                      ...ABSENCE_CODE_OPTIONS.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                      })),
+                    ]}
+                    placeholder={absenceCodeLabel(absenceCode) || "Select code…"}
+                    disabled={submitting}
+                  />
+                </DrawerFieldRow>
+              ) : null}
               <DrawerFieldRow label="Billing">
                 <OptionSegments
                   name="Billing"

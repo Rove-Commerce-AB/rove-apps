@@ -42,6 +42,8 @@ export type ProjectWithDetails = {
   type: ProjectType;
   /** hourly (T&M) or fixed price. */
   billingType: ProjectBillingType;
+  /** PAXml tidkod when type is absence (SEM, SJK, VAB, …). */
+  absenceCode: string | null;
   customer_id: string;
   customerName: string;
   /** Optional dedicated project manager (consultant). */
