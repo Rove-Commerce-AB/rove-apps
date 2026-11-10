@@ -66,7 +66,7 @@ export function HomeDashboard({ data }: Props) {
         {timeReport ? (
           <HomeAppSurface
             title="Time report"
-            href={ROUTES.timeReportHome}
+            href={ROUTES.timeReportOverview}
             icon={Clock}
             description={`ISO week ${timeReport.week}`}
           >
@@ -129,7 +129,7 @@ export function HomeDashboard({ data }: Props) {
         {work ? (
           <HomeAppSurface
             title="Rove Work"
-            href={ROUTES.work}
+            href={ROUTES.workOverview}
             icon={Briefcase}
             description={
               work.issues.length > 0

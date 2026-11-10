@@ -91,8 +91,9 @@ export async function notifySupportCaseCreated(input: {
     }
 
     const origin = appOrigin();
-    const casesPath = supportCustomerIncidentsHref(input.customerId);
-    const casesUrl = origin ? `${origin}${casesPath}` : null;
+    const base = supportCustomerIncidentsHref(input.customerId);
+    const withCase = `${base}${base.includes("?") ? "&" : "?"}case=${encodeURIComponent(input.issueId)}`;
+    const casesUrl = origin ? `${origin}${withCase}` : null;
 
     const text = buildCaseCreatedText({
       customerName: input.customerName,

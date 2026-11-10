@@ -1,5 +1,9 @@
 import "server-only";
 
+/**
+ * @deprecated Flat Support nav no longer uses a customer tree.
+ * Prefer `listSupportFilterCustomers` from `supportCustomerFilter.ts`.
+ */
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { compareTextSv } from "@/lib/sort";
 import type { SupportActor } from "@/lib/supportAccess";
@@ -46,6 +50,7 @@ export async function listSupportNavCustomers(
        FROM support_contracts
        WHERE customer_id = ANY($1::uuid[])
          AND active
+         AND (starts_on IS NULL OR starts_on <= CURRENT_DATE)
          AND (ends_on IS NULL OR ends_on >= CURRENT_DATE)`,
       [linked]
     ),

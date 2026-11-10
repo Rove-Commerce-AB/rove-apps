@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { syncSupportMail } from "@/lib/supportMailSync";
 
@@ -5,6 +6,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 /** Gmail + case create can take a while on a full inbox pass. */
 export const maxDuration = 120;
+
+function secretsEqual(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 function requireSyncSecret(request: NextRequest): NextResponse | null {
   const expected = process.env.SUPPORT_MAIL_SYNC_SECRET?.trim();
@@ -24,7 +32,10 @@ function requireSyncSecret(request: NextRequest): NextResponse | null {
     : null;
   const headerToken = request.headers.get("x-support-mail-token")?.trim();
 
-  if (bearer === expected || headerToken === expected) {
+  if (
+    (bearer != null && secretsEqual(bearer, expected)) ||
+    (headerToken != null && secretsEqual(headerToken, expected))
+  ) {
     return null;
   }
 

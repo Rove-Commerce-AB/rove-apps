@@ -13,8 +13,6 @@ import {
 } from "@/lib/layoutShell";
 import { listShortcutsForCurrentUser } from "@/lib/shortcuts";
 import { listWorkNavCustomers } from "@/lib/workBoards";
-import { getSupportActor } from "@/lib/supportActor";
-import { listSupportNavCustomers } from "@/lib/supportNav";
 import { cookies } from "next/headers";
 
 /** Auth and app_users gatekeeping run in src/proxy.ts. */
@@ -47,17 +45,6 @@ export default async function AppLayout({
       : 0;
   const workNav =
     user?.appKeys.includes("work") ? await listWorkNavCustomers() : [];
-  let supportNav: Awaited<ReturnType<typeof listSupportNavCustomers>> = [];
-  if (user?.appKeys.includes("support")) {
-    const supportActor = await getSupportActor();
-    if (supportActor) {
-      try {
-        supportNav = await listSupportNavCustomers(supportActor);
-      } catch {
-        supportNav = [];
-      }
-    }
-  }
   const shortcuts = await listShortcutsForCurrentUser();
   const sidebarCollapsed =
     (await cookies()).get(SIDEBAR_COLLAPSED_COOKIE)?.value === "1";
@@ -72,7 +59,6 @@ export default async function AppLayout({
           isCustomerUser={user?.role === "customer"}
           appKeys={user?.appKeys ?? []}
           workNav={workNav}
-          supportNav={supportNav}
           initialCollapsed={sidebarCollapsed}
         />
         <WorkTrailProvider>

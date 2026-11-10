@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getCustomersForAppUser } from "@/lib/customerAppUsers";
 import { fetchConsultantByAppUserId } from "@/lib/consultantsQueries";
@@ -25,22 +26,24 @@ export async function requireSupportActor(): Promise<SupportActor> {
 }
 
 /** Same linkage rules as Work: customer_app_users + consultant customers. */
-export async function linkedSupportCustomerIdsForActor(
-  actor: SupportActor
-): Promise<string[]> {
-  if (actor.role === "customer") {
-    const customers = await getCustomersForAppUser(actor.id);
-    return customers.map((customer) => customer.id);
-  }
-  const ids = new Set<string>();
-  for (const customer of await getCustomersForAppUser(actor.id)) {
-    ids.add(customer.id);
-  }
-  const consultant = await fetchConsultantByAppUserId(actor.id);
-  if (consultant?.id) {
-    for (const id of await getCustomerIdsForConsultant(consultant.id)) {
-      ids.add(id);
+export const linkedSupportCustomerIdsForActor = cache(
+  async function linkedSupportCustomerIdsForActor(
+    actor: SupportActor
+  ): Promise<string[]> {
+    if (actor.role === "customer") {
+      const customers = await getCustomersForAppUser(actor.id);
+      return customers.map((customer) => customer.id);
     }
+    const ids = new Set<string>();
+    for (const customer of await getCustomersForAppUser(actor.id)) {
+      ids.add(customer.id);
+    }
+    const consultant = await fetchConsultantByAppUserId(actor.id);
+    if (consultant?.id) {
+      for (const id of await getCustomerIdsForConsultant(consultant.id)) {
+        ids.add(id);
+      }
+    }
+    return [...ids];
   }
-  return [...ids];
-}
+);

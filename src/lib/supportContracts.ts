@@ -1,9 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { ROUTES, supportCustomerHref } from "@/lib/routes";
+import { ROUTES } from "@/lib/routes";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { canEditSupportContract } from "@/lib/supportAccess";
+import {
+  canAccessSupportCustomer,
+  canEditSupportContract,
+  canSeeSupportOverview,
+} from "@/lib/supportAccess";
+import {
+  getSupportActor,
+  linkedSupportCustomerIdsForActor,
+} from "@/lib/supportActor";
 import { ensureSupportWorkProject } from "@/lib/supportBoard";
 import * as q from "@/lib/supportContractsQueries";
 
@@ -57,13 +65,30 @@ function mapRow(
   };
 }
 
+async function requireContractReader(customerId: string) {
+  const actor = await getSupportActor();
+  if (!actor) throw new Error("Unauthorized");
+  const linked = await linkedSupportCustomerIdsForActor(actor);
+  // Staff with Overview may read any; others need access to the customer.
+  if (
+    !canAccessSupportCustomer(actor, linked, customerId) &&
+    !canSeeSupportOverview(actor)
+  ) {
+    throw new Error("Unauthorized");
+  }
+  return actor;
+}
+
 export async function listSupportContractTiers(): Promise<q.SupportContractTier[]> {
+  const actor = await getSupportActor();
+  if (!actor) throw new Error("Unauthorized");
   return q.fetchSupportContractTiers();
 }
 
 export async function getSupportContractForCustomer(
   customerId: string
 ): Promise<SupportContractView | null> {
+  await requireContractReader(customerId);
   const [row, tiers] = await Promise.all([
     q.fetchSupportContractForCustomer(customerId),
     q.fetchSupportContractTiers(),
@@ -75,6 +100,7 @@ export async function getSupportContractForCustomer(
 export async function customerHasActiveSupportContract(
   customerId: string
 ): Promise<boolean> {
+  await requireContractReader(customerId);
   return q.customerHasActiveSupportContract(customerId);
 }
 
@@ -137,8 +163,10 @@ export async function saveSupportContract(
   if (!refreshed) throw new Error("Failed to save support contract");
 
   revalidatePath(ROUTES.customers);
-  revalidatePath(supportCustomerHref(customerId));
   revalidatePath(ROUTES.support);
+  revalidatePath(ROUTES.supportMonitors);
+  revalidatePath(ROUTES.supportIncidents);
+  revalidatePath(ROUTES.supportOverview);
 
   return mapRow(refreshed, tiers);
 }

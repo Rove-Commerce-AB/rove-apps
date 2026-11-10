@@ -1,8 +1,15 @@
 # Rove Support — architecture & product brief
 
-Status: **MVP implemented in app** (apply `scripts/20261021_rove_support.sql` to each environment).  
-Date: 2026-10-21 (updated same day with first implementation)  
+Status: **MVP implemented in app** (apply `scripts/20261021_rove_support.sql` + later support/mail scripts; `scripts/20261110_work_issue_comments_internal.sql` for internal case notes).  
+Date: 2026-10-21 (updated 2026-11-10: flat IA, shared monitor groups, security/hardening pass)  
 Scope: product IA, access model, data model, Work integration, monitoring placement, phased delivery.
+
+### Recent delivery notes (2026-11-10)
+- Flat nav Overview / Monitors / Incidents; shared customer filter (cookie + `?customer=`).
+- Overview is dashboard-only; monitor CRUD lives on Monitors.
+- Shared `MonitorGroupList` + `monitorStatus` helpers; downtime vocabulary for HTTP outages; nav “Incidents” = support cases.
+- Contract reads require actor access; customer monitor payloads strip secrets; mail sync uses timing-safe secret compare + advisory lock.
+- Case deep-links (`?case=`), open/done filter, internal comments (`is_internal`), active contracts respect `starts_on`.
 
 This document captures agreed decisions from product design discussion. Implementation lives under `/support`, customer drawer Support tab, and related `src/lib/support*.ts` modules.
 
@@ -29,10 +36,10 @@ This document captures agreed decisions from product design discussion. Implemen
 | D2 | Support contract | Master data on the customer (`support_contracts` + tiers Bas / Utökad / future). Unlocks Support modules beyond monitoring. Includes **contract value**. Edited in **Customer drawer → Support** tab. |
 | D3 | Monitoring without contract | Allowed. Monitors may exist for customers with no active support contract. |
 | D4 | Monitor UX | **A (customer):** read-only status / uptime / incidents. **B (staff):** full CRUD + config. |
-| D5 | Navigation | Work-like **customer tree** + staff **Overview**. |
-| D6 | Customer tree visibility | Only customers the person is linked to (`customer_app_users`). |
-| D7 | Overview visibility | Staff only; shows **all** customers/monitors (jour radar). Customer-role users **never** see Overview. |
-| D8 | Monitor CRUD location | Under **customer → Drift**; Overview is status + deep-links. Move out of Settings in the same delivery sweep. |
+| D5 | Navigation | Flat nav: **Overview** (staff) · **Monitors** · **Incidents**. Shared customer filter on Monitors/Incidents (`?customer=` + cookie). Work may adopt the same pattern later. |
+| D6 | Filter customer list | Staff: **all** active customers. Customer role: linked only; hide filter when exactly one customer. |
+| D7 | Overview visibility | Staff only; shows **all** customers/monitors (jour radar), **no** customer filter. Customer-role users **never** see Overview. |
+| D8 | Monitor CRUD location | Under **Monitors** (flat). Overview is status + deep-links only (no CRUD). |
 | D9 | Cases vs Work | Cases **are** Work issues on an auto-provisioned support project per customer. |
 | D10 | Auto board | Activating a support contract ensures a linked Work project (prefix `SUP`, unique per customer). |
 | D11 | Board members | At creation: all **staff** linked to the customer; **exclude** `role = customer`. Sync = **at creation only** (not continuous). |
@@ -47,23 +54,24 @@ This document captures agreed decisions from product design discussion. Implemen
 ```
 Rove Support
 ├── Overview                          [staff only]
-│     Cross-customer monitor status, open incidents, filters
-│     Deep-link → customer Drift (staff CRUD)
+│     Inbox routing, new cases, cross-customer monitor status
+│     Deep-link → Monitors (?customer=) / downtime history
 │
-└── [Customer]                        [if actor linked to customer]
-      ├── Drift / Monitors            [always if monitors exist OR staff creating]
-      │     Customer role → view A (read-only)
-      │     Staff → view B (CRUD)
-      ├── Cases (Ärenden)             [only if active support contract]
-      │     Work issues on support project
-      └── Contact                     [only if active support contract]
-            Schedule, channels, how to reach us
+├── Monitors                          [flat; customer filter]
+│     Customer role → view A (read-only)
+│     Staff → view B (CRUD)
+│
+└── Incidents                         [flat; customer filter; support cases]
+      Create/list Work issues on support projects
+      No-contract customer → empty/disabled explanation
+      Contact remains feature-flagged off (not in nav)
 ```
 
 ### Sidebar
 
-- Replace `NavPlaceholder` “Rove Support” with a real `AppGroup` (same pattern as Work).
-- Remove **Settings → Monitors** (or redirect to Support Overview / first customer).
+- Flat AppGroup: Overview (staff) · Monitors · Incidents.
+- Customer filter lives on Monitors/Incidents pages (shared cookie), not in the nav tree.
+- Settings → Monitors redirects to Support Monitors.
 - Customer drawer gains tab **Support** (contract master data) — this is *Settings → Customers*, not the Support app.
 
 ### Module visibility matrix

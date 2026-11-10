@@ -64,21 +64,30 @@ function getJwt(): JWT {
     scopes: [
       "https://www.googleapis.com/auth/gmail.readonly",
       "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/gmail.send",
     ],
     subject: impersonateEmail(),
   });
   return cachedJwt;
 }
 
+export function supportMailboxAddress(): string {
+  return impersonateEmail();
+}
+
 async function gmailFetch<T>(
   path: string,
-  init?: RequestInit & { query?: Record<string, string> }
+  init?: RequestInit & { query?: Record<string, string | string[]> }
 ): Promise<T> {
   const client = getJwt();
   const url = new URL(`${GMAIL_API}${path}`);
   if (init?.query) {
     for (const [k, v] of Object.entries(init.query)) {
-      url.searchParams.set(k, v);
+      if (Array.isArray(v)) {
+        for (const item of v) url.searchParams.append(k, item);
+      } else {
+        url.searchParams.set(k, v);
+      }
     }
   }
   const res = await client.request<T>({
@@ -151,8 +160,9 @@ export async function listUnprocessedInboxMessages(input?: {
   maxResults?: number;
 }): Promise<GmailListedMessage[]> {
   const label = supportMailLabelName();
-  // Only new/unread mail; already-read inbox noise must not become cases.
-  const q = `in:inbox is:unread -label:"${label}"`;
+  // Inbox without the processed label. Read state must not block ingest
+  // (staff often open mail in Gmail before sync runs).
+  const q = `in:inbox -label:"${label}"`;
   const data = await gmailFetch<{
     messages?: { id: string; threadId: string }[];
   }>("/messages", {
@@ -241,4 +251,101 @@ export async function applySupportMailLabel(
     }),
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function encodeBase64Url(value: string): string {
+  return Buffer.from(value, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function encodeHeaderWord(value: string): string {
+  // Keep ASCII subjects plain; encode the rest as RFC 2047 UTF-8.
+  if (/^[\x20-\x7E]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
+/** Fetch RFC Message-ID (and friends) for threading a reply. */
+export async function getGmailMessageHeaders(messageId: string): Promise<{
+  messageIdHeader: string | null;
+  subject: string;
+  fromEmail: string;
+  references: string | null;
+}> {
+  const data = await gmailFetch<{
+    payload?: { headers?: { name?: string; value?: string }[] };
+  }>(`/messages/${encodeURIComponent(messageId)}`, {
+    query: {
+      format: "metadata",
+      metadataHeaders: [
+        "Message-ID",
+        "Subject",
+        "From",
+        "References",
+        "In-Reply-To",
+      ],
+    },
+  });
+  const headers = data.payload?.headers;
+  const messageIdHeader = headerValue(headers, "Message-ID") || null;
+  const subject = headerValue(headers, "Subject") || "(no subject)";
+  const fromRaw = headerValue(headers, "From");
+  const { email } = parseFromHeader(fromRaw);
+  const references = headerValue(headers, "References") || null;
+  return { messageIdHeader, subject, fromEmail: email, references };
+}
+
+/**
+ * Send a plain-text reply into an existing Gmail thread as support@.
+ * Requires domain-wide delegation scope `gmail.send` for the impersonated mailbox.
+ */
+export async function sendGmailThreadReply(input: {
+  threadId: string;
+  toEmail: string;
+  subject: string;
+  bodyText: string;
+  inReplyToMessageId?: string | null;
+  references?: string | null;
+}): Promise<{ id: string; threadId: string }> {
+  const from = impersonateEmail();
+  const to = input.toEmail.trim().toLowerCase();
+  if (!to.includes("@")) throw new Error("Invalid reply recipient");
+
+  const subject = input.subject.trim() || "(no subject)";
+  const replySubject = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+  const body = input.bodyText.replace(/\r\n/g, "\n").trim();
+  if (!body) throw new Error("Reply body is required");
+
+  const headers = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${encodeHeaderWord(replySubject)}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+  ];
+  if (input.inReplyToMessageId) {
+    headers.push(`In-Reply-To: ${input.inReplyToMessageId}`);
+    const refs = [input.references, input.inReplyToMessageId]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (refs) headers.push(`References: ${refs}`);
+  }
+
+  const raw = `${headers.join("\r\n")}\r\n\r\n${body}\r\n`;
+  const encoded = encodeBase64Url(raw);
+
+  const sent = await gmailFetch<{ id: string; threadId: string }>("/messages/send", {
+    method: "POST",
+    body: JSON.stringify({
+      raw: encoded,
+      threadId: input.threadId,
+    }),
+    headers: { "Content-Type": "application/json" },
+  });
+
+  return { id: sent.id, threadId: sent.threadId || input.threadId };
 }

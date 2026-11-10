@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Mail, Route } from "lucide-react";
 import { Panel } from "@/components/ui";
-import { SupportOverviewIssueDrawer } from "@/components/SupportOverviewIssueDrawer";
+import { SupportCaseDrawer } from "@/components/SupportCaseDrawer";
 import { SupportOverviewRouteDialog } from "@/components/SupportOverviewRouteDialog";
 import type {
   SupportOverviewCaseItem,
@@ -88,9 +89,10 @@ export function SupportOverviewCaseQueues({
   newCases,
   routeCustomers,
 }: Props) {
+  const router = useRouter();
   const [routing, setRouting] = useState<SupportOverviewCaseItem | null>(null);
   const [drawer, setDrawer] = useState<{
-    boardId: string;
+    customerId: string;
     issueId: string;
   } | null>(null);
 
@@ -122,7 +124,10 @@ export function SupportOverviewCaseQueues({
                   key={item.id}
                   item={item}
                   onOpen={() =>
-                    setDrawer({ boardId: item.boardId, issueId: item.id })
+                    setDrawer({
+                      customerId: item.customerId,
+                      issueId: item.id,
+                    })
                   }
                   onRoute={() => setRouting(item)}
                 />
@@ -134,7 +139,7 @@ export function SupportOverviewCaseQueues({
         <Panel>
           <div className="flex items-center justify-between border-b border-border-subtle bg-bg-muted/50 px-3 py-2">
             <h2 className="text-sm font-semibold text-text-primary">
-              New incidents
+              New cases
             </h2>
             <span className="text-xs text-text-secondary">
               {newOnly.length} in New
@@ -151,7 +156,10 @@ export function SupportOverviewCaseQueues({
                   key={item.id}
                   item={item}
                   onOpen={() =>
-                    setDrawer({ boardId: item.boardId, issueId: item.id })
+                    setDrawer({
+                      customerId: item.customerId,
+                      issueId: item.id,
+                    })
                   }
                 />
               ))}
@@ -160,11 +168,15 @@ export function SupportOverviewCaseQueues({
         </Panel>
       </div>
 
-      <SupportOverviewIssueDrawer
-        selection={drawer}
+      <SupportCaseDrawer
+        customerId={drawer?.customerId ?? ""}
+        issueId={drawer?.issueId ?? null}
+        open={drawer != null}
         onOpenChange={(open) => {
           if (!open) setDrawer(null);
         }}
+        onCommented={() => router.refresh()}
+        allowInternalComments
       />
 
       <SupportOverviewRouteDialog

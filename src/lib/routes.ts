@@ -17,13 +17,19 @@ export const ROUTES = {
   /** Default planner allocation view (consultant). */
   allocation: "/planner/consultant",
   timeReport: "/time-report/time-report",
+  /** App index; redirects to timeReportOverview. */
   timeReportHome: "/time-report",
+  timeReportOverview: "/time-report/overview",
   timeApproval: "/time-report/approval",
   insights: "/insights",
+  insightsOverview: "/insights/overview",
   work: "/work",
+  workOverview: "/work/overview",
   workMine: "/work/mine",
   support: "/support",
   supportOverview: "/support/overview",
+  supportMonitors: "/support/monitors",
+  supportIncidents: "/support/incidents",
   settings: "/settings/general",
   /** @deprecated Prefer Support Monitors; kept for redirects. */
   monitors: "/settings/monitors",
@@ -50,20 +56,42 @@ export function consultantHref(id: string): string {
 }
 
 export function supportCustomerHref(customerId: string): string {
-  return `${ROUTES.support}/${customerId}`;
+  return supportMonitorsHref(customerId);
 }
 
+/** Flat Support Monitors list; optional customer scopes via ?customer=. */
+export function supportMonitorsHref(customerId?: string | null): string {
+  if (!customerId) return ROUTES.supportMonitors;
+  return `${ROUTES.supportMonitors}?customer=${encodeURIComponent(customerId)}`;
+}
+
+/**
+ * Monitors list with filter explicitly cleared (`?customer=all`).
+ * Use for back-navigation so a persisted cookie does not keep a customer selected.
+ */
+export function supportMonitorsAllHref(): string {
+  return `${ROUTES.supportMonitors}?customer=all`;
+}
+
+/** Flat Support Incidents (cases) list; optional customer scopes via ?customer=. */
+export function supportIncidentsHref(customerId?: string | null): string {
+  if (!customerId) return ROUTES.supportIncidents;
+  return `${ROUTES.supportIncidents}?customer=${encodeURIComponent(customerId)}`;
+}
+
+/** @deprecated Prefer supportMonitorsHref — kept for call-site compatibility. */
 export function supportCustomerMonitorsHref(customerId: string): string {
-  return `${ROUTES.support}/${customerId}/monitors`;
+  return supportMonitorsHref(customerId);
 }
 
+/** @deprecated Prefer supportIncidentsHref — kept for call-site compatibility. */
 export function supportCustomerIncidentsHref(customerId: string): string {
-  return `${ROUTES.support}/${customerId}/incidents`;
+  return supportIncidentsHref(customerId);
 }
 
-/** @deprecated Use supportCustomerIncidentsHref */
+/** @deprecated Use supportIncidentsHref */
 export function supportCustomerCasesHref(customerId: string): string {
-  return supportCustomerIncidentsHref(customerId);
+  return supportIncidentsHref(customerId);
 }
 
 export function supportCustomerContactHref(customerId: string): string {

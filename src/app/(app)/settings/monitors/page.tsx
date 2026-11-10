@@ -5,5 +5,5 @@ export const dynamic = "force-dynamic";
 
 /** Monitors moved to Rove Support. */
 export default function SettingsMonitorsRedirectPage() {
-  redirect(ROUTES.supportOverview);
+  redirect(ROUTES.supportMonitors);
 }

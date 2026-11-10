@@ -30,6 +30,11 @@ const nextConfig = {
       { source: "/allocation", destination: "/planner/consultant", permanent: false },
       { source: "/planner", destination: "/planner/consultant", permanent: false },
       {
+        source: "/planner/overview",
+        destination: "/planner/consultant",
+        permanent: false,
+      },
+      {
         source: "/planner/allocation",
         destination: "/planner/consultant",
         permanent: false,

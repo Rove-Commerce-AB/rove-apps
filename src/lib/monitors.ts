@@ -2,10 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import {
-  ROUTES,
-  supportCustomerMonitorsHref,
-} from "@/lib/routes";
+import { ROUTES } from "@/lib/routes";
 import type { PoolClient } from "pg";
 import { compareTextSv } from "@/lib/sort";
 import {
@@ -18,6 +15,7 @@ import {
   getSupportActor,
   linkedSupportCustomerIdsForActor,
 } from "@/lib/supportActor";
+import { toPublicMonitor } from "@/lib/monitorStatus";
 
 export type Monitor = {
   id: string;
@@ -233,9 +231,9 @@ async function saveSlackNotifications(
   }
 }
 
-function revalidateMonitorPaths(customerId: string) {
+function revalidateMonitorPaths(_customerId: string) {
   revalidatePath(ROUTES.supportOverview);
-  revalidatePath(supportCustomerMonitorsHref(customerId));
+  revalidatePath(ROUTES.supportMonitors);
   revalidatePath(ROUTES.monitors);
 }
 
@@ -251,6 +249,16 @@ export async function getMonitorsOverview(): Promise<Monitor[]> {
   return mapMonitorRows(rows);
 }
 
+function projectMonitorsForActor(
+  actor: SupportActor,
+  monitors: Monitor[]
+): Monitor[] {
+  if (actor.role === "customer") {
+    return monitors.map(toPublicMonitor);
+  }
+  return monitors;
+}
+
 export async function getMonitorsForCustomer(
   customerId: string
 ): Promise<Monitor[]> {
@@ -264,7 +272,42 @@ export async function getMonitorsForCustomer(
       ORDER BY lower(m.name), m.id`,
     [customerId]
   );
-  return mapMonitorRows(rows);
+  return projectMonitorsForActor(actor, mapMonitorRows(rows));
+}
+
+/** Single monitor by id (for detail/edit). */
+export async function getMonitorById(monitorId: string): Promise<Monitor | null> {
+  if (!uuidPattern.test(monitorId)) return null;
+  const { actor, linked } = await requireSupportActorOrThrow();
+  const { rows } = await cloudSqlPool.query<Monitor>(
+    `${MONITOR_SELECT}
+      WHERE m.id = $1 AND m.deleted_at IS NULL`,
+    [monitorId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  if (!canViewMonitors(actor, linked, row.customer_id)) {
+    throw new Error("Unauthorized");
+  }
+  return projectMonitorsForActor(actor, mapMonitorRows([row]))[0] ?? null;
+}
+
+/** Monitors for multiple customers (e.g. customer-role “All” filter). */
+export async function getMonitorsForCustomers(
+  customerIds: string[]
+): Promise<Monitor[]> {
+  const { actor, linked } = await requireSupportActorOrThrow();
+  const allowed = customerIds.filter((id) =>
+    canViewMonitors(actor, linked, id)
+  );
+  if (allowed.length === 0) return [];
+  const { rows } = await cloudSqlPool.query<Monitor>(
+    `${MONITOR_SELECT}
+      WHERE m.customer_id = ANY($1::uuid[]) AND m.deleted_at IS NULL
+      ORDER BY lower(m.customer_name_snapshot), lower(m.name), m.id`,
+    [allowed]
+  );
+  return projectMonitorsForActor(actor, mapMonitorRows(rows));
 }
 
 /** @deprecated Prefer getMonitorsOverview / getMonitorsForCustomer */

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { cloudSqlPool, withCloudSqlClient } from "@/lib/cloudSqlPool";
 import { getCustomerById } from "@/lib/customers";
 import { ensureSupportWorkProject } from "@/lib/supportBoard";
 import { notifySupportCaseCreated } from "@/lib/supportCaseSlack";
@@ -248,55 +248,91 @@ export async function syncSupportMail(input?: {
     details: [],
   };
 
-  const listed = await listUnprocessedInboxMessages({
-    maxResults: input?.maxResults ?? 25,
-  });
-  result.scanned = listed.length;
+  const run = async (): Promise<SupportMailSyncResult> => {
+    const listed = await listUnprocessedInboxMessages({
+      maxResults: input?.maxResults ?? 25,
+    });
+    result.scanned = listed.length;
 
-  let labelId: string | null = null;
-  if (!dryRun) {
-    labelId = await ensureSupportMailLabelId();
-  }
+    let labelId: string | null = null;
+    if (!dryRun) {
+      labelId = await ensureSupportMailLabelId();
+    }
 
-  for (const item of listed) {
-    try {
-      if (await messageAlreadyProcessed(item.id)) {
-        result.skipped += 1;
-        result.details.push({
-          messageId: item.id,
-          action: "already_processed",
-        });
-        if (!dryRun && labelId) {
-          await applySupportMailLabel(item.id, labelId);
-          result.labeled += 1;
+    for (const item of listed) {
+      try {
+        if (await messageAlreadyProcessed(item.id)) {
+          result.skipped += 1;
+          result.details.push({
+            messageId: item.id,
+            action: "already_processed",
+          });
+          if (!dryRun && labelId) {
+            await applySupportMailLabel(item.id, labelId);
+            result.labeled += 1;
+          }
+          continue;
         }
-        continue;
-      }
 
-      const message = await getGmailMessage(item.id);
+        const message = await getGmailMessage(item.id);
 
-      if (shouldSkipSender(message.fromEmail)) {
-        result.skipped += 1;
-        result.details.push({
-          messageId: item.id,
-          action: "skip_sender",
-          fromEmail: message.fromEmail,
-          subject: message.subject,
-        });
-        if (!dryRun && labelId) {
-          await applySupportMailLabel(item.id, labelId);
-          result.labeled += 1;
+        if (shouldSkipSender(message.fromEmail)) {
+          result.skipped += 1;
+          result.details.push({
+            messageId: item.id,
+            action: "skip_sender",
+            fromEmail: message.fromEmail,
+            subject: message.subject,
+          });
+          if (!dryRun && labelId) {
+            await applySupportMailLabel(item.id, labelId);
+            result.labeled += 1;
+          }
+          continue;
         }
-        continue;
-      }
 
-      const existingThread = await findIssueForThread(message.threadId);
-      if (existingThread) {
-        if (dryRun) {
+        const existingThread = await findIssueForThread(message.threadId);
+        if (existingThread) {
+          if (dryRun) {
+            result.threaded += 1;
+            result.details.push({
+              messageId: item.id,
+              action: "would_append_thread",
+              fromEmail: message.fromEmail,
+              subject: message.subject,
+              issueId: existingThread.issueId,
+              matchKind: "thread",
+            });
+            continue;
+          }
+
+          const commentBody = [
+            `Follow-up email from ${message.fromEmail}`,
+            `Subject: ${message.subject}`,
+            "",
+            message.bodyText || message.snippet || "",
+          ].join("\n");
+
+          await insertWorkIssueComment({
+            boardId: existingThread.boardId,
+            issueId: existingThread.issueId,
+            authorAppUserId: actorAppUserId,
+            body: commentBody.slice(0, 20_000),
+          });
+          await recordMailMessage({
+            message,
+            customerId: null,
+            matchKind: "thread",
+            workIssueId: existingThread.issueId,
+          });
+          if (labelId) {
+            await applySupportMailLabel(item.id, labelId);
+            result.labeled += 1;
+          }
           result.threaded += 1;
           result.details.push({
             messageId: item.id,
-            action: "would_append_thread",
+            action: "appended_thread",
             fromEmail: message.fromEmail,
             subject: message.subject,
             issueId: existingThread.issueId,
@@ -305,103 +341,90 @@ export async function syncSupportMail(input?: {
           continue;
         }
 
-        const commentBody = [
-          `Follow-up email from ${message.fromEmail}`,
-          `Subject: ${message.subject}`,
-          "",
-          message.bodyText || message.snippet || "",
-        ].join("\n");
+        if (dryRun) {
+          const match = await matchCustomerForSupportMail(message.fromEmail);
+          let matchKind: string = match?.kind ?? "inbox";
+          if (match) {
+            const contract = await fetchActiveSupportContractForCustomer(
+              match.customerId
+            );
+            if (!contract) matchKind = "inbox";
+          }
+          result.created += 1;
+          result.details.push({
+            messageId: item.id,
+            action: "would_create",
+            fromEmail: message.fromEmail,
+            subject: message.subject,
+            customerId: match?.customerId ?? null,
+            matchKind,
+          });
+          continue;
+        }
 
-        await insertWorkIssueComment({
-          boardId: existingThread.boardId,
-          issueId: existingThread.issueId,
-          authorAppUserId: actorAppUserId,
-          body: commentBody.slice(0, 20_000),
+        const target = await resolveTargetBoard({
+          actorAppUserId,
+          fromEmail: message.fromEmail,
         });
-        await recordMailMessage({
+
+        const issueId = await createCaseFromMessage({
+          actorAppUserId,
           message,
-          customerId: null,
-          matchKind: "thread",
-          workIssueId: existingThread.issueId,
+          boardId: target.boardId,
+          customerId: target.customerId,
+          mappedCustomerId: target.mappedCustomerId,
+          matchKind: target.matchKind,
+          customerName: target.customerName,
         });
+
         if (labelId) {
           await applySupportMailLabel(item.id, labelId);
           result.labeled += 1;
         }
-        result.threaded += 1;
-        result.details.push({
-          messageId: item.id,
-          action: "appended_thread",
-          fromEmail: message.fromEmail,
-          subject: message.subject,
-          issueId: existingThread.issueId,
-          matchKind: "thread",
-        });
-        continue;
-      }
 
-      if (dryRun) {
-        const match = await matchCustomerForSupportMail(message.fromEmail);
-        let matchKind: string = match?.kind ?? "inbox";
-        if (match) {
-          const contract = await fetchActiveSupportContractForCustomer(
-            match.customerId
-          );
-          if (!contract) matchKind = "inbox";
-        }
         result.created += 1;
         result.details.push({
           messageId: item.id,
-          action: "would_create",
+          action: "created",
           fromEmail: message.fromEmail,
           subject: message.subject,
-          customerId: match?.customerId ?? null,
-          matchKind,
+          customerId: target.mappedCustomerId,
+          matchKind: target.matchKind,
+          issueId,
         });
-        continue;
+      } catch (error) {
+        const errMessage =
+          error instanceof Error ? error.message : "Unknown sync error";
+        result.errors.push({ messageId: item.id, error: errMessage });
+        result.details.push({
+          messageId: item.id,
+          action: "error",
+        });
+        console.error("[supportMailSync]", item.id, error);
       }
-
-      const target = await resolveTargetBoard({
-        actorAppUserId,
-        fromEmail: message.fromEmail,
-      });
-
-      const issueId = await createCaseFromMessage({
-        actorAppUserId,
-        message,
-        boardId: target.boardId,
-        customerId: target.customerId,
-        mappedCustomerId: target.mappedCustomerId,
-        matchKind: target.matchKind,
-        customerName: target.customerName,
-      });
-
-      if (labelId) {
-        await applySupportMailLabel(item.id, labelId);
-        result.labeled += 1;
-      }
-
-      result.created += 1;
-      result.details.push({
-        messageId: item.id,
-        action: "created",
-        fromEmail: message.fromEmail,
-        subject: message.subject,
-        customerId: target.mappedCustomerId,
-        matchKind: target.matchKind,
-        issueId,
-      });
-    } catch (error) {
-      const errMessage =
-        error instanceof Error ? error.message : "Unknown sync error";
-      result.errors.push({ messageId: item.id, error: errMessage });
-      result.details.push({
-        messageId: item.id,
-        action: "error",
-      });
-      console.error("[supportMailSync]", item.id, error);
     }
+
+    return result;
+  };
+
+  // Hold one pooled connection for the advisory lock so unlock hits the same session.
+  if (dryRun) {
+    return run();
   }
 
-  return result;
+  return withCloudSqlClient("support-mail-sync-lock", async (lockClient) => {
+    const { rows: lockRows } = await lockClient.query<{ locked: boolean }>(
+      `SELECT pg_try_advisory_lock(hashtext('support_mail_sync')) AS locked`
+    );
+    if (!lockRows[0]?.locked) {
+      throw new Error("Support mail sync is already running");
+    }
+    try {
+      return await run();
+    } finally {
+      await lockClient.query(
+        `SELECT pg_advisory_unlock(hashtext('support_mail_sync'))`
+      );
+    }
+  });
 }

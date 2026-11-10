@@ -26,7 +26,10 @@ export function breadcrumbsForPathname(
   }
 
   if (pathname.startsWith(ROUTES.planner)) {
-    const planner: Breadcrumb = { label: "Planner" };
+    const planner: Breadcrumb = {
+      label: "Planner",
+      href: ROUTES.plannerConsultant,
+    };
     if (pathname.startsWith(ROUTES.plannerCustomer)) {
       return [root, planner, { label: "Customer" }];
     }
@@ -42,19 +45,26 @@ export function breadcrumbsForPathname(
   if (pathname.startsWith(ROUTES.timeApproval)) {
     return [
       root,
-      { label: "Time report", href: ROUTES.timeReportHome },
+      { label: "Time report", href: ROUTES.timeReportOverview },
       { label: "Time approval" },
     ];
   }
 
-  if (pathname === ROUTES.timeReportHome) {
-    return [root, { label: "Time report" }];
+  if (
+    pathname === ROUTES.timeReportHome ||
+    pathname.startsWith(ROUTES.timeReportOverview)
+  ) {
+    return [
+      root,
+      { label: "Time report", href: ROUTES.timeReportOverview },
+      { label: "Overview" },
+    ];
   }
 
   if (pathname.startsWith("/time-report")) {
     return [
       root,
-      { label: "Time report", href: ROUTES.timeReportHome },
+      { label: "Time report", href: ROUTES.timeReportOverview },
       { label: "Time report" },
     ];
   }
@@ -68,7 +78,11 @@ export function breadcrumbsForPathname(
       return [root, settings, { label: "People" }];
     }
     if (pathname.startsWith(ROUTES.monitors)) {
-      return [root, { label: "Rove Support", href: ROUTES.support }, { label: "Overview" }];
+      return [
+        root,
+        { label: "Rove Support", href: ROUTES.supportOverview },
+        { label: "Overview" },
+      ];
     }
     if (pathname.startsWith(ROUTES.consultants)) {
       return [root, settings, { label: "Consultants" }];
@@ -87,21 +101,45 @@ export function breadcrumbsForPathname(
     return [root, { label: "Projects" }];
   }
 
-  if (pathname.startsWith("/insights")) {
+  if (pathname.startsWith(ROUTES.insights)) {
+    const insights: Breadcrumb = {
+      label: "Insights",
+      href: ROUTES.insightsOverview,
+    };
+    if (
+      pathname === ROUTES.insights ||
+      pathname.startsWith(ROUTES.insightsOverview)
+    ) {
+      return [root, insights, { label: "Overview" }];
+    }
     return [root, { label: "Insights" }];
   }
 
   if (pathname.startsWith(ROUTES.support)) {
-    const support: Breadcrumb = { label: "Rove Support", href: ROUTES.support };
+    const support: Breadcrumb = {
+      label: "Rove Support",
+      href: ROUTES.supportOverview,
+    };
     if (pathname.startsWith(ROUTES.supportOverview)) {
       return [root, support, { label: "Overview" }];
     }
+    if (pathname === ROUTES.supportMonitors) {
+      return [root, support, { label: "Monitors" }];
+    }
+    if (pathname === ROUTES.supportIncidents) {
+      return [root, support, { label: "Incidents" }];
+    }
     const remainder = pathname.slice(ROUTES.support.length).replace(/^\//, "");
     const [customerSeg, section] = remainder.split("/");
-    if (customerSeg && customerSeg !== "overview") {
+    if (
+      customerSeg &&
+      customerSeg !== "overview" &&
+      customerSeg !== "monitors" &&
+      customerSeg !== "incidents"
+    ) {
       const customerCrumb: Breadcrumb = {
         label: "Customer",
-        href: `${ROUTES.support}/${customerSeg}`,
+        href: `${ROUTES.supportMonitors}?customer=${encodeURIComponent(customerSeg)}`,
       };
       if (section === "incidents" || section === "cases") {
         return [root, support, customerCrumb, { label: "Incidents" }];
@@ -114,15 +152,21 @@ export function breadcrumbsForPathname(
           return [
             root,
             support,
-            customerCrumb,
             {
               label: "Monitors",
-              href: `${ROUTES.support}/${customerSeg}/monitors`,
+              href: `${ROUTES.supportMonitors}?customer=all`,
             },
-            { label: "Incidents" },
+            { label: "Downtime" },
           ];
         }
-        return [root, support, customerCrumb, { label: "Monitors" }];
+        return [
+          root,
+          support,
+          {
+            label: "Monitors",
+            href: `${ROUTES.supportMonitors}?customer=all`,
+          },
+        ];
       }
       return [root, support, { label: "Customer" }];
     }
@@ -130,10 +174,16 @@ export function breadcrumbsForPathname(
   }
 
   if (pathname.startsWith(ROUTES.work)) {
-    const work: Breadcrumb = { label: "Rove Work", href: ROUTES.work };
+    const work: Breadcrumb = {
+      label: "Rove Work",
+      href: ROUTES.workOverview,
+    };
     const remainder = pathname.slice(ROUTES.work.length).replace(/^\//, "");
-    if (!remainder) {
-      return [root, { label: "Rove Work" }];
+    if (!remainder || remainder === "overview") {
+      return [root, work, { label: "Overview" }];
+    }
+    if (remainder === "mine" || remainder.startsWith("mine/")) {
+      return [root, work, { label: "My work" }];
     }
     const parts = remainder.split("/").filter(Boolean);
     const customerName = extras?.workCustomerName?.trim();

@@ -69,6 +69,7 @@ export async function fetchActiveSupportContractForCustomer(
      FROM support_contracts
      WHERE customer_id = $1
        AND active
+       AND (starts_on IS NULL OR starts_on <= CURRENT_DATE)
        AND (ends_on IS NULL OR ends_on >= CURRENT_DATE)
      LIMIT 1`,
     [customerId]
@@ -95,10 +96,12 @@ export async function fetchCustomerIdsWithActiveSupportContract(
          FROM support_contracts
          WHERE customer_id = ANY($1::uuid[])
            AND active
+           AND (starts_on IS NULL OR starts_on <= CURRENT_DATE)
            AND (ends_on IS NULL OR ends_on >= CURRENT_DATE)`
       : `SELECT customer_id
          FROM support_contracts
          WHERE active
+           AND (starts_on IS NULL OR starts_on <= CURRENT_DATE)
            AND (ends_on IS NULL OR ends_on >= CURRENT_DATE)`,
     customerIds ? [customerIds] : []
   );

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import type { BreadcrumbExtras } from "@/lib/breadcrumbs";
+import { ROUTES } from "@/lib/routes";
 
 const WorkTrailContext = createContext<{
   trail: BreadcrumbExtras | null;
@@ -24,7 +25,11 @@ export function WorkTrailProvider({ children }: { children: ReactNode }) {
   const [trail, setTrail] = useState<BreadcrumbExtras | null>(null);
 
   useEffect(() => {
-    if (!pathname.startsWith("/work/") || pathname === "/work") {
+    const onWorkDeep =
+      pathname.startsWith(`${ROUTES.work}/`) &&
+      pathname !== ROUTES.workOverview &&
+      !pathname.startsWith(`${ROUTES.workMine}`);
+    if (!onWorkDeep) {
       setTrail(null);
     }
   }, [pathname]);

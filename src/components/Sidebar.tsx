@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   CalendarCheck,
   ChevronLeft,
@@ -19,16 +19,10 @@ import {
 import { signOut } from "next-auth/react";
 import {
   ROUTES,
-  supportCustomerIncidentsHref,
-  supportCustomerContactHref,
-  supportCustomerHref,
-  supportCustomerMonitorsHref,
   workCustomerHref,
   workProjectHref,
 } from "@/lib/routes";
 import type { AppKey } from "@/lib/peopleTypes";
-import { SUPPORT_CONTACT_NAV_ENABLED } from "@/lib/supportFeatures";
-import type { SupportNavCustomer } from "@/lib/supportNav";
 import type { WorkSelectorCustomer } from "@/lib/workTypes";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { useShortcuts } from "@/components/ShortcutsProvider";
@@ -64,6 +58,10 @@ function pathMatches(
   return pathname === href;
 }
 
+function hrefPathname(href: string) {
+  return href.split("?")[0] || href;
+}
+
 function NavLink({
   href,
   label,
@@ -77,6 +75,8 @@ function NavLink({
   className = "",
   collapsed = false,
   active,
+  prefetch = false,
+  onNavigate,
 }: {
   href: string;
   label: string;
@@ -90,6 +90,10 @@ function NavLink({
   className?: string;
   collapsed?: boolean;
   active?: boolean;
+  /** Prefetch RSC payload — use for app Overview landings. */
+  prefetch?: boolean;
+  /** Optimistic sidebar highlight before the route finishes loading. */
+  onNavigate?: (href: string) => void;
 }) {
   const nest = indent || depth > 0;
   const isActive = active ?? pathMatches(pathname, href, activeMatch);
@@ -113,7 +117,8 @@ function NavLink({
   return (
     <Link
       href={href}
-      prefetch={false}
+      prefetch={prefetch}
+      onClick={() => onNavigate?.(href)}
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
       className={`group relative flex h-8 w-full min-w-0 items-center justify-start gap-1.5 rounded-md py-0 ${typeClass} ${toneClass} ${className}`.trim()}
@@ -174,6 +179,8 @@ function AppGroup({
   collapsed = false,
   collapsedHref,
   active = false,
+  prefetch = true,
+  onNavigate,
 }: {
   label: string;
   icon: IconType;
@@ -185,6 +192,9 @@ function AppGroup({
   collapsed?: boolean;
   collapsedHref?: string;
   active?: boolean;
+  /** Prefetch landing href (Overview). Default on for product apps. */
+  prefetch?: boolean;
+  onNavigate?: (href: string) => void;
 }) {
   const headingActive = href
     ? pathMatches(pathname, href, collapsed ? "prefix" : "exact")
@@ -201,6 +211,8 @@ function AppGroup({
           pathname={pathname}
           collapsed
           active={headingActive || active}
+          prefetch={prefetch}
+          onNavigate={onNavigate}
         />
       );
     }
@@ -216,7 +228,11 @@ function AppGroup({
         {href ? (
           <Link
             href={href}
-            prefetch={false}
+            prefetch={prefetch}
+            onClick={() => {
+              if (!open) onToggle();
+              onNavigate?.(href);
+            }}
             className="flex h-8 min-w-0 flex-1 items-center justify-start gap-1.5 rounded-md py-0 text-left text-heading-xs text-text-primary"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
@@ -389,10 +405,12 @@ function WorkCustomerNav({
   customer,
   pathname,
   forceOpen,
+  onNavigate,
 }: {
   customer: WorkSelectorCustomer;
   pathname: string;
   forceOpen: boolean;
+  onNavigate?: (href: string) => void;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -412,6 +430,7 @@ function WorkCustomerNav({
             label={customer.name}
             pathname={pathname}
             depth={1}
+            onNavigate={onNavigate}
             leading={
               <CustomerFavicon
                 name={customer.name}
@@ -448,94 +467,10 @@ function WorkCustomerNav({
               pathname={pathname}
               depth={2}
               activeMatch="prefix"
+              onNavigate={onNavigate}
             />
           ))
         : null}
-    </div>
-  );
-}
-
-function SupportCustomerNav({
-  customer,
-  pathname,
-  forceOpen,
-}: {
-  customer: SupportNavCustomer;
-  pathname: string;
-  forceOpen: boolean;
-}) {
-  const [open, setOpen] = useState(true);
-  const driftHref = supportCustomerMonitorsHref(customer.id);
-  const hasSections = customer.hasActiveContract;
-
-  useEffect(() => {
-    if (forceOpen) setOpen(true);
-  }, [forceOpen]);
-
-  return (
-    <div className="flex flex-col gap-px">
-      <div className="flex min-w-0 items-center">
-        <div className="min-w-0 flex-1">
-          <NavLink
-            href={driftHref}
-            label={customer.name}
-            pathname={pathname}
-            depth={1}
-            active={forceOpen}
-            leading={
-              <CustomerFavicon
-                name={customer.name}
-                url={customer.url}
-                color={customer.color}
-                size="nav"
-              />
-            }
-          />
-        </div>
-        {hasSections ? (
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-label={`${open ? "Collapse" : "Expand"} ${customer.name} support`}
-            onClick={() => setOpen((current) => !current)}
-            className="flex h-8 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-tertiary hover:bg-nav-active hover:text-text-primary"
-          >
-            <ChevronRight
-              className={`h-3.5 w-3.5 transition-transform duration-120 ${
-                open ? "rotate-90" : ""
-              }`}
-              aria-hidden
-            />
-          </button>
-        ) : null}
-      </div>
-      {open && hasSections ? (
-        <>
-          <NavLink
-            href={driftHref}
-            label="Monitors"
-            pathname={pathname}
-            depth={2}
-            activeMatch="prefix"
-          />
-          <NavLink
-            href={supportCustomerIncidentsHref(customer.id)}
-            label="Incidents"
-            pathname={pathname}
-            depth={2}
-            activeMatch="prefix"
-          />
-          {SUPPORT_CONTACT_NAV_ENABLED ? (
-            <NavLink
-              href={supportCustomerContactHref(customer.id)}
-              label="Contact"
-              pathname={pathname}
-              depth={2}
-              activeMatch="prefix"
-            />
-          ) : null}
-        </>
-      ) : null}
     </div>
   );
 }
@@ -546,7 +481,6 @@ type SidebarProps = {
   isCustomerUser?: boolean;
   appKeys?: AppKey[];
   workNav?: WorkSelectorCustomer[];
-  supportNav?: SupportNavCustomer[];
   initialCollapsed?: boolean;
 };
 
@@ -556,37 +490,69 @@ export function Sidebar({
   isCustomerUser = false,
   appKeys = [],
   workNav = [],
-  supportNav = [],
   initialCollapsed = false,
 }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const pendingFromRef = useRef<string | null>(null);
   const [openApps, setOpenApps] = useState<{
     planner: boolean;
     timeReport: boolean;
     settings: boolean;
     work: boolean;
     support: boolean;
+    insights: boolean;
   }>({
     planner: false,
     timeReport: false,
     settings: false,
     work: false,
     support: false,
+    insights: false,
   });
 
-  const plannerActive = pathMatches(pathname, ROUTES.planner, "prefix");
-  const timeReportChildActive = pathMatches(pathname, "/time-report", "prefix");
-  const settingsChildActive = pathname.startsWith("/settings");
-  const workActive = pathMatches(pathname, ROUTES.work, "prefix");
-  const supportActive = pathMatches(pathname, ROUTES.support, "prefix");
-  const activeWorkCustomerId = pathname.startsWith(`${ROUTES.work}/`)
-    ? pathname.slice(ROUTES.work.length + 1).split("/")[0] ?? null
+  // Optimistic path so Overview/app highlight updates before RSC finishes.
+  const activePath = pendingPath ?? pathname;
+
+  const plannerActive = pathMatches(activePath, ROUTES.planner, "prefix");
+  const timeReportChildActive = pathMatches(activePath, "/time-report", "prefix");
+  const settingsChildActive = activePath.startsWith("/settings");
+  const workActive = pathMatches(activePath, ROUTES.work, "prefix");
+  const supportActive = pathMatches(activePath, ROUTES.support, "prefix");
+  const insightsActive = pathMatches(activePath, ROUTES.insights, "prefix");
+  const workSegment = activePath.startsWith(`${ROUTES.work}/`)
+    ? activePath.slice(ROUTES.work.length + 1).split("/")[0] ?? null
     : null;
-  const activeSupportCustomerId = pathname.startsWith(`${ROUTES.support}/`)
-    ? pathname.slice(ROUTES.support.length + 1).split("/")[0] ?? null
-    : null;
+  const activeWorkCustomerId =
+    workSegment && workSegment !== "overview" && workSegment !== "mine"
+      ? workSegment
+      : null;
   const showSupportOverview = !isCustomerUser && appKeys.includes("support");
+
+  function markPending(href: string) {
+    const next = hrefPathname(href);
+    if (next === pathname && !pendingPath) return;
+    pendingFromRef.current = pathname;
+    setPendingPath(next);
+  }
+
+  useEffect(() => {
+    if (!pendingPath) return;
+    if (pathname === pendingPath) {
+      setPendingPath(null);
+      pendingFromRef.current = null;
+      return;
+    }
+    if (
+      pendingFromRef.current != null &&
+      pathname !== pendingFromRef.current
+    ) {
+      setPendingPath(null);
+      pendingFromRef.current = null;
+    }
+  }, [pathname, pendingPath]);
 
   useEffect(() => {
     setOpenApps((prev) => ({
@@ -595,15 +561,36 @@ export function Sidebar({
       settings: settingsChildActive ? true : prev.settings,
       work: workActive ? true : prev.work,
       support: supportActive ? true : prev.support,
+      insights: insightsActive ? true : prev.insights,
     }));
   }, [
-    pathname,
+    activePath,
     plannerActive,
     timeReportChildActive,
     settingsChildActive,
     workActive,
     supportActive,
+    insightsActive,
   ]);
+
+  // Warm Overview RSC payloads so app-name clicks feel instant.
+  useEffect(() => {
+    const hrefs: string[] = [];
+    if (appKeys.includes("planner")) hrefs.push(ROUTES.plannerConsultant);
+    if (appKeys.includes("time_report")) hrefs.push(ROUTES.timeReportOverview);
+    if (appKeys.includes("work")) hrefs.push(ROUTES.workOverview);
+    if (appKeys.includes("support")) {
+      hrefs.push(
+        showSupportOverview ? ROUTES.supportOverview : ROUTES.supportMonitors
+      );
+    }
+    if (appKeys.includes("insights") && !isCustomerUser) {
+      hrefs.push(ROUTES.insightsOverview);
+    }
+    for (const href of hrefs) {
+      router.prefetch(href);
+    }
+  }, [appKeys, isCustomerUser, router, showSupportOverview]);
 
   async function handleSignOut() {
     await signOut({ callbackUrl: "/login" });
@@ -714,7 +701,7 @@ export function Sidebar({
               label="Planner"
               icon={CalendarCheck}
               href={ROUTES.plannerConsultant}
-              pathname={pathname}
+              pathname={activePath}
               open={openApps.planner}
               onToggle={() =>
                 setOpenApps((prev) => ({ ...prev, planner: !prev.planner }))
@@ -722,34 +709,40 @@ export function Sidebar({
               collapsed={collapsed}
               collapsedHref={ROUTES.plannerConsultant}
               active={plannerActive}
+              onNavigate={markPending}
             >
               <NavLink
                 href={ROUTES.plannerConsultant}
                 label="Consultant"
-                pathname={pathname}
+                pathname={activePath}
                 indent
                 activeMatch="prefix"
+                prefetch
+                onNavigate={markPending}
               />
               <NavLink
                 href={ROUTES.plannerCustomer}
                 label="Customer"
-                pathname={pathname}
+                pathname={activePath}
                 indent
                 activeMatch="prefix"
+                onNavigate={markPending}
               />
               <NavLink
                 href={ROUTES.plannerProject}
                 label="Project"
-                pathname={pathname}
+                pathname={activePath}
                 indent
                 activeMatch="prefix"
+                onNavigate={markPending}
               />
               <NavLink
                 href={ROUTES.plannerHistory}
                 label="Allocation history"
-                pathname={pathname}
+                pathname={activePath}
                 indent
                 activeMatch="prefix"
+                onNavigate={markPending}
               />
             </AppGroup>
           )}
@@ -757,8 +750,8 @@ export function Sidebar({
             <AppGroup
               label="Time report"
               icon={Clock}
-              href={ROUTES.timeReportHome}
-              pathname={pathname}
+              href={ROUTES.timeReportOverview}
+              pathname={activePath}
               open={openApps.timeReport}
               onToggle={() =>
                 setOpenApps((prev) => ({
@@ -767,22 +760,33 @@ export function Sidebar({
                 }))
               }
               collapsed={collapsed}
-              collapsedHref={ROUTES.timeReportHome}
+              collapsedHref={ROUTES.timeReportOverview}
               active={timeReportChildActive}
+              onNavigate={markPending}
             >
+              <NavLink
+                href={ROUTES.timeReportOverview}
+                label="Overview"
+                pathname={activePath}
+                indent
+                prefetch
+                onNavigate={markPending}
+              />
               <NavLink
                 href={ROUTES.timeReport}
                 label="Time report"
-                pathname={pathname}
+                pathname={activePath}
                 indent
+                onNavigate={markPending}
               />
               {showTimeApproval && (
                 <NavLink
                   href={ROUTES.timeApproval}
                   label="Time approval"
-                  pathname={pathname}
+                  pathname={activePath}
                   indent
                   activeMatch="prefix"
+                  onNavigate={markPending}
                 />
               )}
             </AppGroup>
@@ -791,20 +795,31 @@ export function Sidebar({
             <AppGroup
               label="Rove Work"
               icon={Briefcase}
-              href={ROUTES.work}
-              pathname={pathname}
+              href={ROUTES.workOverview}
+              pathname={activePath}
               open={openApps.work}
               onToggle={() =>
                 setOpenApps((prev) => ({ ...prev, work: !prev.work }))
               }
               collapsed={collapsed}
+              collapsedHref={ROUTES.workOverview}
               active={workActive}
+              onNavigate={markPending}
             >
+              <NavLink
+                href={ROUTES.workOverview}
+                label="Overview"
+                pathname={activePath}
+                indent
+                prefetch
+                onNavigate={markPending}
+              />
               <NavLink
                 href={ROUTES.workMine}
                 label="My work"
-                pathname={pathname}
+                pathname={activePath}
                 depth={1}
+                onNavigate={markPending}
                 leading={<Inbox className="h-3.5 w-3.5 text-text-tertiary" aria-hidden />}
               />
               <div className="h-1.5" aria-hidden />
@@ -818,8 +833,9 @@ export function Sidebar({
                     <WorkCustomerNav
                       key={customer.id}
                       customer={customer}
-                      pathname={pathname}
+                      pathname={activePath}
                       forceOpen={customer.id === activeWorkCustomerId}
+                      onNavigate={markPending}
                     />
                   ))}
                 </div>
@@ -833,11 +849,9 @@ export function Sidebar({
               href={
                 showSupportOverview
                   ? ROUTES.supportOverview
-                  : supportNav[0]
-                    ? supportCustomerHref(supportNav[0].id)
-                    : ROUTES.support
+                  : ROUTES.supportMonitors
               }
-              pathname={pathname}
+              pathname={activePath}
               open={openApps.support}
               onToggle={() =>
                 setOpenApps((prev) => ({
@@ -846,47 +860,69 @@ export function Sidebar({
                 }))
               }
               collapsed={collapsed}
+              collapsedHref={
+                showSupportOverview
+                  ? ROUTES.supportOverview
+                  : ROUTES.supportMonitors
+              }
               active={supportActive}
+              onNavigate={markPending}
             >
               {showSupportOverview ? (
-                <>
-                  <NavLink
-                    href={ROUTES.supportOverview}
-                    label="Overview"
-                    pathname={pathname}
-                    depth={1}
-                    leading={<span className="block h-4 w-4" aria-hidden />}
-                  />
-                  <div className="h-1.5" aria-hidden />
-                </>
+                <NavLink
+                  href={ROUTES.supportOverview}
+                  label="Overview"
+                  pathname={activePath}
+                  indent
+                  prefetch
+                  onNavigate={markPending}
+                />
               ) : null}
-              {supportNav.length === 0 ? (
-                <p className="px-2 py-1.5 pl-10 text-body-m text-text-tertiary">
-                  No customers yet
-                </p>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {supportNav.map((customer) => (
-                    <SupportCustomerNav
-                      key={customer.id}
-                      customer={customer}
-                      pathname={pathname}
-                      forceOpen={customer.id === activeSupportCustomerId}
-                    />
-                  ))}
-                </div>
-              )}
+              <NavLink
+                href={ROUTES.supportMonitors}
+                label="Monitors"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
+              <NavLink
+                href={ROUTES.supportIncidents}
+                label="Incidents"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
             </AppGroup>
           )}
           {appKeys.includes("insights") && !isCustomerUser && (
-            <NavLink
-              href={ROUTES.insights}
+            <AppGroup
               label="Insights"
               icon={Sparkles}
-              pathname={pathname}
-              activeMatch="prefix"
+              href={ROUTES.insightsOverview}
+              pathname={activePath}
+              open={openApps.insights}
+              onToggle={() =>
+                setOpenApps((prev) => ({
+                  ...prev,
+                  insights: !prev.insights,
+                }))
+              }
               collapsed={collapsed}
-            />
+              collapsedHref={ROUTES.insightsOverview}
+              active={insightsActive}
+              onNavigate={markPending}
+            >
+              <NavLink
+                href={ROUTES.insightsOverview}
+                label="Overview"
+                pathname={activePath}
+                indent
+                prefetch
+                onNavigate={markPending}
+              />
+            </AppGroup>
           )}
         </div>
 
@@ -896,7 +932,7 @@ export function Sidebar({
               label="Settings"
               icon={Settings}
               href={settingsRailHref}
-              pathname={pathname}
+              pathname={activePath}
               open={openApps.settings}
               onToggle={() =>
                 setOpenApps((prev) => ({
@@ -907,30 +943,34 @@ export function Sidebar({
               collapsed={collapsed}
               collapsedHref={settingsRailHref}
               active={settingsChildActive}
+              onNavigate={markPending}
             >
               {isAdmin && (
                 <>
                   <NavLink
                     href={ROUTES.settings}
                     label="General"
-                    pathname={pathname}
+                    pathname={activePath}
                     indent
+                    onNavigate={markPending}
                   />
                   <NavLink
                     href={ROUTES.people}
                     label="People"
-                    pathname={pathname}
+                    pathname={activePath}
                     indent
                     activeMatch="prefix"
+                    onNavigate={markPending}
                   />
                 </>
               )}
               <NavLink
                 href={ROUTES.customers}
                 label="Customers"
-                pathname={pathname}
+                pathname={activePath}
                 indent
                 activeMatch="prefix"
+                onNavigate={markPending}
               />
             </AppGroup>
           </div>

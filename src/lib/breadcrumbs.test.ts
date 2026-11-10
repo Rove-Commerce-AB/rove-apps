@@ -5,27 +5,39 @@ describe("breadcrumbsForPathname", () => {
   it("redirects legacy Settings monitors crumbs to Support", () => {
     expect(breadcrumbsForPathname("/settings/monitors")).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Rove Support", href: "/support" },
+      { label: "Rove Support", href: "/support/overview" },
       { label: "Overview" },
     ]);
   });
 
-  it("shows Support monitors and incidents", () => {
+  it("shows flat Support Monitors and Incidents", () => {
+    expect(breadcrumbsForPathname("/support/monitors")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Rove Support", href: "/support/overview" },
+      { label: "Monitors" },
+    ]);
+    expect(breadcrumbsForPathname("/support/incidents")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Rove Support", href: "/support/overview" },
+      { label: "Incidents" },
+    ]);
+  });
+
+  it("shows Support monitor downtime history", () => {
     expect(
       breadcrumbsForPathname("/support/cust/monitors/mon/incidents")
     ).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Rove Support", href: "/support" },
-      { label: "Customer", href: "/support/cust" },
-      { label: "Monitors", href: "/support/cust/monitors" },
-      { label: "Incidents" },
+      { label: "Rove Support", href: "/support/overview" },
+      { label: "Monitors", href: "/support/monitors?customer=all" },
+      { label: "Downtime" },
     ]);
   });
 
   it("uses Consultant as the current planner page", () => {
     expect(breadcrumbsForPathname("/planner/consultant")).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Planner" },
+      { label: "Planner", href: "/planner/consultant" },
       { label: "Consultant" },
     ]);
   });
@@ -33,12 +45,12 @@ describe("breadcrumbsForPathname", () => {
   it("uses Customer and Project as planner pages", () => {
     expect(breadcrumbsForPathname("/planner/customer")).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Planner" },
+      { label: "Planner", href: "/planner/consultant" },
       { label: "Customer" },
     ]);
     expect(breadcrumbsForPathname("/planner/project")).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Planner" },
+      { label: "Planner", href: "/planner/consultant" },
       { label: "Project" },
     ]);
   });
@@ -46,15 +58,24 @@ describe("breadcrumbsForPathname", () => {
   it("uses Allocation history as a planner page", () => {
     expect(breadcrumbsForPathname("/planner/history")).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Planner" },
+      { label: "Planner", href: "/planner/consultant" },
       { label: "Allocation history" },
     ]);
   });
 
-  it("uses Rove Work as the current page on the selector", () => {
-    expect(breadcrumbsForPathname("/work")).toEqual([
+  it("uses Overview as the Rove Work landing page", () => {
+    expect(breadcrumbsForPathname("/work/overview")).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Rove Work" },
+      { label: "Rove Work", href: "/work/overview" },
+      { label: "Overview" },
+    ]);
+  });
+
+  it("uses My work as the current page on /work/mine", () => {
+    expect(breadcrumbsForPathname("/work/mine")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Rove Work", href: "/work/overview" },
+      { label: "My work" },
     ]);
   });
 
@@ -65,7 +86,7 @@ describe("breadcrumbsForPathname", () => {
       })
     ).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Rove Work", href: "/work" },
+      { label: "Rove Work", href: "/work/overview" },
       { label: "Acme" },
     ]);
   });
@@ -78,7 +99,7 @@ describe("breadcrumbsForPathname", () => {
       })
     ).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Rove Work", href: "/work" },
+      { label: "Rove Work", href: "/work/overview" },
       { label: "Acme", href: "/work/cust-1" },
       { label: "Website" },
     ]);
@@ -93,10 +114,26 @@ describe("breadcrumbsForPathname", () => {
       })
     ).toEqual([
       { label: "Rove Apps", href: "/" },
-      { label: "Rove Work", href: "/work" },
+      { label: "Rove Work", href: "/work/overview" },
       { label: "Acme", href: "/work/cust-1" },
       { label: "Website", href: "/work/cust-1/board-1" },
       { label: "RT-12" },
+    ]);
+  });
+
+  it("uses Overview as the Insights landing page", () => {
+    expect(breadcrumbsForPathname("/insights/overview")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Insights", href: "/insights/overview" },
+      { label: "Overview" },
+    ]);
+  });
+
+  it("uses Overview as the Time report landing page", () => {
+    expect(breadcrumbsForPathname("/time-report/overview")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Time report", href: "/time-report/overview" },
+      { label: "Overview" },
     ]);
   });
 });

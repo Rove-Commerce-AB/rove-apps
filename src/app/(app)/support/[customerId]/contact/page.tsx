@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 import { PageHeader, Panel } from "@/components/ui";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
-import {
-  supportCustomerMonitorsHref,
-} from "@/lib/routes";
+import { supportMonitorsHref } from "@/lib/routes";
 import { canViewSupportContact } from "@/lib/supportAccess";
 import {
   linkedSupportCustomerIdsForActor,
@@ -22,14 +20,14 @@ export default async function SupportContactPage({ params }: Props) {
 
   // Hidden for now — keep route for later; send people to Monitors.
   if (!SUPPORT_CONTACT_NAV_ENABLED) {
-    redirect(supportCustomerMonitorsHref(customerId));
+    redirect(supportMonitorsHref(customerId));
   }
 
   const actor = await requireSupportActor();
   const linked = await linkedSupportCustomerIdsForActor(actor);
   const hasContract = await customerHasActiveSupportContract(customerId);
   if (!canViewSupportContact(actor, linked, customerId, hasContract)) {
-    redirect(supportCustomerMonitorsHref(customerId));
+    redirect(supportMonitorsHref(customerId));
   }
 
   const [{ rows: customers }, contract] = await Promise.all([

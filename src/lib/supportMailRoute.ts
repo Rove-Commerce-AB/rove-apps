@@ -103,13 +103,14 @@ export async function routeInboxToSupportBoard(input: {
   );
 
   revalidatePath(ROUTES.supportOverview);
-  revalidatePath(supportCustomerIncidentsHref(input.customerId));
+  const casesHref = supportCustomerIncidentsHref(input.customerId);
+  revalidatePath(casesHref);
 
   return {
     issueId: issue.id,
     targetBoardId,
     customerId: input.customerId,
-    href: supportCustomerIncidentsHref(input.customerId),
+    href: `${casesHref}${casesHref.includes("?") ? "&" : "?"}case=${encodeURIComponent(issue.id)}`,
   };
 }
 

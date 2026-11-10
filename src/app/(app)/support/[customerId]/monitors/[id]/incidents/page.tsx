@@ -1,13 +1,23 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { MonitorDowntimeClient } from "@/components/MonitorDowntimeClient";
 import { Button, PageHeader, Panel } from "@/components/ui";
 import { getMonitorIncidentPage, type IncidentPage } from "@/lib/monitorIncidents";
 import { parseIncidentPage } from "@/lib/monitorIncidentFilters";
 import {
-  supportCustomerMonitorsHref,
+  getMonitorById,
+  getMonitorCustomers,
+  getSlackNotifications,
+} from "@/lib/monitors";
+import {
+  supportMonitorsAllHref,
   supportMonitorIncidentsHref,
 } from "@/lib/routes";
-import { requireSupportActor } from "@/lib/supportActor";
+import { canManageMonitors } from "@/lib/supportAccess";
+import {
+  linkedSupportCustomerIdsForActor,
+  requireSupportActor,
+} from "@/lib/supportActor";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +72,8 @@ export default async function SupportMonitorIncidentsPage({
   params,
   searchParams,
 }: Props) {
-  await requireSupportActor();
+  const actor = await requireSupportActor();
+  const linked = await linkedSupportCustomerIdsForActor(actor);
 
   const [{ customerId, id }, query] = await Promise.all([params, searchParams]);
   let data: IncidentPage | null = null;
@@ -75,14 +86,19 @@ export default async function SupportMonitorIncidentsPage({
     );
   } catch (error) {
     loadError =
-      error instanceof Error ? error.message : "Failed to load incidents";
+      error instanceof Error ? error.message : "Failed to load downtime history";
   }
 
   if (!data && !loadError) notFound();
+  if (data && data.monitor.customerId && data.monitor.customerId !== customerId) {
+    redirect(
+      supportMonitorIncidentsHref(data.monitor.customerId, data.monitor.id)
+    );
+  }
   if (loadError || !data) {
     return (
       <div className="space-y-5">
-        <PageHeader title="Incidents" />
+        <PageHeader title="Downtime history" />
         <p
           role="alert"
           className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
@@ -90,7 +106,7 @@ export default async function SupportMonitorIncidentsPage({
           {loadError}
         </p>
         <Link
-          href={supportCustomerMonitorsHref(customerId)}
+          href={supportMonitorsAllHref()}
           className="text-sm text-brand-signal hover:underline"
         >
           ← Monitors
@@ -99,22 +115,56 @@ export default async function SupportMonitorIncidentsPage({
     );
   }
 
+  const canMutate = canManageMonitors(actor, linked, data.monitor.customerId);
+  let monitor = await getMonitorById(id);
+  if (!monitor) {
+    // Fallback shape if row projection failed unexpectedly.
+    monitor = {
+      id: data.monitor.id,
+      customer_id: data.monitor.customerId,
+      customer_name_snapshot: data.monitor.customerName,
+      name: data.monitor.name,
+      url: data.monitor.url,
+      enabled: true,
+      interval_seconds: 60,
+      retry_delay_seconds: null,
+      timeout_ms: 10000,
+      expected_status_min: 200,
+      expected_status_max: 299,
+      auth_secret_ref: null,
+      next_due_at: new Date().toISOString(),
+      status: "unknown",
+      last_checked_at: null,
+      active_incident: false,
+      slack_notification_ids: [],
+    };
+  }
+
+  let customers: { id: string; name: string }[] = [];
+  let slackNotifications: Awaited<ReturnType<typeof getSlackNotifications>> =
+    [];
+  if (canMutate) {
+    try {
+      [customers, slackNotifications] = await Promise.all([
+        getMonitorCustomers(),
+        getSlackNotifications(),
+      ]);
+    } catch {
+      customers = [
+        { id: monitor.customer_id, name: monitor.customer_name_snapshot },
+      ];
+    }
+  }
+
   const base = supportMonitorIncidentsHref(customerId, data.monitor.id);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          href={supportCustomerMonitorsHref(customerId)}
-          className="text-sm text-text-secondary hover:underline"
-        >
-          ← Monitors
-        </Link>
-      </div>
-      <PageHeader
-        title={`${data.monitor.name} incidents`}
-        description={`${data.monitor.customerName} · ${data.monitor.url}`}
-      />
+    <MonitorDowntimeClient
+      monitor={monitor}
+      canMutate={canMutate}
+      customers={customers}
+      slackNotifications={slackNotifications}
+    >
       <form action={base} method="get" className="flex flex-wrap items-end gap-3">
         <div>
           <label
@@ -164,7 +214,7 @@ export default async function SupportMonitorIncidentsPage({
         </a>
       </form>
       <p className="text-xs text-text-tertiary">
-        Shows incidents overlapping the selected dates. Dates and times use
+        Shows downtime overlapping the selected dates. Dates and times use
         Europe/Stockholm. Apply the date filter before exporting.
       </p>
       <Panel className="max-w-sm p-5">
@@ -213,7 +263,7 @@ export default async function SupportMonitorIncidentsPage({
               {data.incidents.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-6 text-text-secondary">
-                    No incidents found for this period.
+                    No downtime found for this period.
                   </td>
                 </tr>
               )}
@@ -256,7 +306,7 @@ export default async function SupportMonitorIncidentsPage({
             <tfoot className="border-t border-border-subtle font-medium text-text-primary">
               <tr>
                 <td colSpan={6} className="px-4 py-3">
-                  Total downtime (all incidents in period)
+                  Total downtime (all events in period)
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">
                   {formatMinutes(data.totalDowntimeMinutes)}
@@ -268,7 +318,7 @@ export default async function SupportMonitorIncidentsPage({
       </Panel>
       <div className="flex items-center justify-between text-sm text-text-secondary">
         <span>
-          {data.total} {data.total === 1 ? "incident" : "incidents"} · Page{" "}
+          {data.total} {data.total === 1 ? "event" : "events"} · Page{" "}
           {data.page} of {data.pageCount}
         </span>
         <div className="flex gap-3">
@@ -290,6 +340,6 @@ export default async function SupportMonitorIncidentsPage({
           )}
         </div>
       </div>
-    </div>
+    </MonitorDowntimeClient>
   );
 }
