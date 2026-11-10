@@ -33,10 +33,13 @@ import {
   fetchWorkBoardById,
   fetchWorkBoardStatuses,
 } from "@/lib/workBoardsQueries";
+import { clearSupportAwaitingStaff } from "@/lib/supportAwaitingStaff";
 import {
+  deleteWorkIssue as deleteWorkIssueRow,
   insertWorkIssue,
   insertWorkIssueComment,
   moveWorkIssue,
+  workIssueHasLoggedTime,
 } from "@/lib/workIssuesQueries";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
 
@@ -140,6 +143,8 @@ export type SupportCaseListItem = {
   createdAt: string;
   customerId: string;
   customerName: string;
+  /** Customer follow-up mail awaiting staff response. */
+  awaitingStaff: boolean;
 };
 
 export type SupportCaseListResult = {
@@ -165,14 +170,16 @@ export async function listSupportCases(
     status: string;
     created_at: Date;
     prefix: string;
+    support_awaiting_staff_at: Date | null;
     total_count: string | number;
   }>(
     `SELECT i.id, i.number, i.title, i.status, i.created_at, p.prefix,
+            i.support_awaiting_staff_at,
             COUNT(*) OVER() AS total_count
      FROM work_issues i
      JOIN work_projects p ON p.id = i.project_id
      WHERE i.project_id = $1
-     ORDER BY i.number DESC
+     ORDER BY i.support_awaiting_staff_at DESC NULLS LAST, i.number DESC
      LIMIT 200`,
     [projectId]
   );
@@ -193,6 +200,7 @@ export async function listSupportCases(
         createdAt: new Date(row.created_at).toISOString(),
         customerId,
         customerName,
+        awaitingStaff: row.support_awaiting_staff_at != null,
       };
     }),
   };
@@ -226,11 +234,13 @@ export async function listSupportCasesForCustomers(
     customer_name: string;
     status_name: string | null;
     status_is_done: boolean | null;
+    support_awaiting_staff_at: Date | null;
     total_count: string | number;
   }>(
     `SELECT i.id, i.number, i.title, i.status, i.created_at, p.prefix,
             p.customer_id, c.name AS customer_name,
             s.name AS status_name, s.is_done AS status_is_done,
+            i.support_awaiting_staff_at,
             COUNT(*) OVER() AS total_count
      FROM work_issues i
      JOIN work_projects p ON p.id = i.project_id
@@ -245,7 +255,7 @@ export async function listSupportCasesForCustomers(
      WHERE p.customer_id = ANY($1::uuid[])
        AND p.is_support_board
        AND COALESCE(p.is_support_inbox, false) = false
-     ORDER BY i.created_at DESC
+     ORDER BY i.support_awaiting_staff_at DESC NULLS LAST, i.created_at DESC
      LIMIT 200`,
     [contracted]
   );
@@ -264,12 +274,14 @@ export async function listSupportCasesForCustomers(
       createdAt: new Date(row.created_at).toISOString(),
       customerId: row.customer_id,
       customerName: row.customer_name,
+      awaitingStaff: row.support_awaiting_staff_at != null,
     })),
   };
 }
 
 function revalidateSupportIncidents() {
   revalidatePath(ROUTES.supportIncidents);
+  revalidatePath(ROUTES.supportOverview);
 }
 
 function scheduleSupportCaseSlackNotify(input: {
@@ -383,6 +395,11 @@ export type SupportCaseDetail = {
   statuses: SupportCaseStatusOption[];
   canChangeStatus: boolean;
   canReplyByEmail: boolean;
+  /** Staff-only danger zone. */
+  canDelete: boolean;
+  hasLoggedTime: boolean;
+  /** Customer follow-up mail awaiting staff response. */
+  awaitingStaff: boolean;
   mailThread: SupportCaseMailThread | null;
   comments: SupportCaseComment[];
 };
@@ -422,6 +439,7 @@ export async function getSupportCaseDetail(
   const statusById = new Map(statuses.map((s) => [s.id, s]));
   const hideInternal = actor.role === "customer";
   const canChangeStatus = isStaffSupportRole(actor.role);
+  const canDelete = canChangeStatus;
 
   const { rows } = await cloudSqlPool.query<{
     id: string;
@@ -431,8 +449,10 @@ export async function getSupportCaseDetail(
     status: string;
     created_at: Date;
     prefix: string;
+    support_awaiting_staff_at: Date | null;
   }>(
-    `SELECT i.id, i.number, i.title, i.description, i.status, i.created_at, p.prefix
+    `SELECT i.id, i.number, i.title, i.description, i.status, i.created_at, p.prefix,
+            i.support_awaiting_staff_at
      FROM work_issues i
      JOIN work_projects p ON p.id = i.project_id
      WHERE i.project_id = $1 AND i.id = $2`,
@@ -440,6 +460,8 @@ export async function getSupportCaseDetail(
   );
   const row = rows[0];
   if (!row) throw new WorkInputError("Case not found.");
+
+  const hasLoggedTime = await workIssueHasLoggedTime(issueId);
 
   const { rows: commentRows } = await cloudSqlPool.query<{
     id: string;
@@ -526,9 +548,34 @@ export async function getSupportCaseDetail(
     })),
     canChangeStatus,
     canReplyByEmail: canChangeStatus && mailThread != null,
+    canDelete,
+    hasLoggedTime,
+    awaitingStaff: row.support_awaiting_staff_at != null,
     mailThread,
     comments,
   };
+}
+
+/** Staff permanently deletes a Support case (and cascaded mail rows). */
+export async function deleteSupportCase(
+  customerId: string,
+  issueId: string
+): Promise<void> {
+  const { actor, projectId } = await requireIssueCasesContext(
+    customerId,
+    issueId
+  );
+  if (!isStaffSupportRole(actor.role)) {
+    throw new WorkInputError("Only staff can delete support cases.");
+  }
+  if (await workIssueHasLoggedTime(issueId)) {
+    throw new WorkInputError(
+      "This case has logged time and cannot be deleted."
+    );
+  }
+  const ok = await deleteWorkIssueRow(projectId, issueId);
+  if (!ok) throw new WorkInputError("Case not found.");
+  revalidateSupportIncidents();
 }
 
 export async function setSupportCaseStatus(
@@ -587,6 +634,8 @@ export async function addSupportCaseComment(
       `UPDATE work_issue_comments SET is_internal = true WHERE id = $1`,
       [commentId]
     );
+  } else if (isStaffSupportRole(actor.role)) {
+    await clearSupportAwaitingStaff(issueId);
   }
 
   revalidateSupportIncidents();
@@ -682,6 +731,8 @@ export async function replySupportCaseEmail(
       issueId,
     ]
   );
+
+  await clearSupportAwaitingStaff(issueId);
 
   revalidateSupportIncidents();
 }

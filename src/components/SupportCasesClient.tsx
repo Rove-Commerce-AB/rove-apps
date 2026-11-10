@@ -65,10 +65,18 @@ export function SupportCasesClient({
   }, [initialCaseId, cases]);
 
   const visibleCases = useMemo(() => {
-    if (statusFilter === "all") return cases;
-    if (statusFilter === "done") return cases.filter((item) => item.isDone);
-    return cases.filter((item) => !item.isDone);
-  }, [cases, statusFilter]);
+    const filtered =
+      statusFilter === "all"
+        ? cases
+        : statusFilter === "done"
+          ? cases.filter((item) => item.isDone)
+          : cases.filter((item) => !item.isDone);
+    if (isCustomerUser) return filtered;
+    return [...filtered].sort((a, b) => {
+      if (a.awaitingStaff === b.awaitingStaff) return 0;
+      return a.awaitingStaff ? -1 : 1;
+    });
+  }, [cases, statusFilter, isCustomerUser]);
 
   const effectiveCreateCustomerId = customerId ?? createCustomerId;
   const canCreate =
@@ -213,14 +221,29 @@ export function SupportCasesClient({
                         setOpenCustomerId(item.customerId);
                         setOpenIssueId(item.id);
                       }}
-                      className="flex w-full items-center gap-3 p-4 text-left hover:bg-bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-signal"
+                      className={`flex w-full items-center gap-3 p-4 text-left hover:bg-bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-signal ${
+                        !isCustomerUser && item.awaitingStaff
+                          ? "bg-accent-primary-subtle/25"
+                          : ""
+                      }`}
                     >
                       <span className="shrink-0 font-mono text-xs text-text-tertiary">
                         {item.key}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
+                      <span
+                        className={`min-w-0 flex-1 truncate text-sm ${
+                          !isCustomerUser && item.awaitingStaff
+                            ? "font-medium text-text-primary"
+                            : "text-text-primary"
+                        }`}
+                      >
                         {item.title}
                       </span>
+                      {!isCustomerUser && item.awaitingStaff ? (
+                        <span className="shrink-0 rounded bg-accent-primary-subtle px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-primary-text">
+                          Customer reply
+                        </span>
+                      ) : null}
                       {customerId == null ? (
                         <span className="hidden shrink-0 text-xs text-text-tertiary sm:inline">
                           {item.customerName}
@@ -256,6 +279,7 @@ export function SupportCasesClient({
             }
           }}
           onCommented={() => router.refresh()}
+          onDeleted={() => router.refresh()}
           allowInternalComments={!isCustomerUser}
         />
       ) : null}

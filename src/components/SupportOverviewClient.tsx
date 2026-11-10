@@ -16,6 +16,7 @@ type Props = {
   monitors: Monitor[];
   inbox?: SupportOverviewCaseItem[];
   newCases?: SupportOverviewCaseItem[];
+  needsReply?: SupportOverviewCaseItem[];
   routeCustomers?: SupportRouteCustomerOption[];
   loadError?: string;
   inboxTotal?: number;
@@ -26,6 +27,7 @@ export function SupportOverviewClient({
   monitors,
   inbox = [],
   newCases = [],
+  needsReply = [],
   routeCustomers = [],
   loadError,
   inboxTotal,
@@ -41,7 +43,7 @@ export function SupportOverviewClient({
     <div className="max-w-6xl space-y-4">
       <PageHeader
         title="Support overview"
-        description="Inbox routing, new cases, and monitor status across customers."
+        description="Routing, cases that need action, and monitor status across customers."
       />
 
       {loadError ? (
@@ -56,6 +58,7 @@ export function SupportOverviewClient({
       <SupportOverviewCaseQueues
         inbox={inbox}
         newCases={newCases}
+        needsReply={needsReply}
         routeCustomers={routeCustomers}
       />
       {(inboxTotal != null && inboxTotal > inbox.length) ||

@@ -14,6 +14,7 @@ export type SupportOverviewCaseItem = {
   isInbox: boolean;
   fromMail: boolean;
   fromEmail: string | null;
+  awaitingStaff: boolean;
 };
 
 /** Open issues on the shared Support Inbox board (needs routing). */
@@ -32,6 +33,7 @@ export async function listSupportInboxQueue(): Promise<
     board_id: string;
     from_mail: boolean;
     from_email: string | null;
+    support_awaiting_staff_at: Date | null;
   }>(
     `SELECT i.id,
             i.number,
@@ -51,7 +53,8 @@ export async function listSupportInboxQueue(): Promise<
               WHERE m.work_issue_id = i.id
               ORDER BY m.created_at ASC
               LIMIT 1
-            ) AS from_email
+            ) AS from_email,
+            i.support_awaiting_staff_at
      FROM work_issues i
      JOIN work_projects p ON p.id = i.project_id
      JOIN customers c ON c.id = p.customer_id
@@ -60,7 +63,7 @@ export async function listSupportInboxQueue(): Promise<
      WHERE p.is_support_inbox
        AND p.archived_at IS NULL
        AND COALESCE(s.is_done, false) = false
-     ORDER BY i.created_at DESC
+     ORDER BY i.support_awaiting_staff_at DESC NULLS LAST, i.created_at DESC
      LIMIT 50`
   );
 
@@ -76,6 +79,7 @@ export async function listSupportInboxQueue(): Promise<
     isInbox: true,
     fromMail: row.from_mail,
     fromEmail: row.from_email,
+    awaitingStaff: row.support_awaiting_staff_at != null,
   }));
 }
 
@@ -96,6 +100,7 @@ export async function listSupportNewCases(): Promise<SupportOverviewCaseItem[]> 
     is_inbox: boolean;
     from_mail: boolean;
     from_email: string | null;
+    support_awaiting_staff_at: Date | null;
   }>(
     `SELECT i.id,
             i.number,
@@ -119,7 +124,8 @@ export async function listSupportNewCases(): Promise<SupportOverviewCaseItem[]> 
               WHERE m.work_issue_id = i.id
               ORDER BY m.created_at ASC
               LIMIT 1
-            ) AS from_email
+            ) AS from_email,
+            i.support_awaiting_staff_at
      FROM work_issues i
      JOIN work_projects p ON p.id = i.project_id
      JOIN customers c ON c.id = p.customer_id
@@ -129,7 +135,7 @@ export async function listSupportNewCases(): Promise<SupportOverviewCaseItem[]> 
        AND p.archived_at IS NULL
        AND lower(btrim(s.name)) = 'new'
        AND s.is_done = false
-     ORDER BY i.created_at DESC
+     ORDER BY i.support_awaiting_staff_at DESC NULLS LAST, i.created_at DESC
      LIMIT 50`
   );
 
@@ -145,6 +151,81 @@ export async function listSupportNewCases(): Promise<SupportOverviewCaseItem[]> 
     isInbox: row.is_inbox,
     fromMail: row.from_mail,
     fromEmail: row.from_email,
+    awaitingStaff: row.support_awaiting_staff_at != null,
+  }));
+}
+
+/**
+ * Open support cases with unanswered customer follow-up mail.
+ */
+export async function listSupportNeedsReplyQueue(): Promise<
+  SupportOverviewCaseItem[]
+> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    number: number;
+    title: string;
+    created_at: Date;
+    prefix: string;
+    status_name: string;
+    customer_id: string;
+    customer_name: string;
+    board_id: string;
+    is_inbox: boolean;
+    from_mail: boolean;
+    from_email: string | null;
+    support_awaiting_staff_at: Date;
+  }>(
+    `SELECT i.id,
+            i.number,
+            i.title,
+            i.created_at,
+            p.prefix,
+            COALESCE(s.name, 'Unknown') AS status_name,
+            p.customer_id,
+            CASE
+              WHEN p.is_support_inbox THEN 'Support Inbox'
+              ELSE c.name
+            END AS customer_name,
+            p.id AS board_id,
+            p.is_support_inbox AS is_inbox,
+            EXISTS (
+              SELECT 1 FROM support_mail_messages m WHERE m.work_issue_id = i.id
+            ) AS from_mail,
+            (
+              SELECT m.from_email
+              FROM support_mail_messages m
+              WHERE m.work_issue_id = i.id
+              ORDER BY m.created_at ASC
+              LIMIT 1
+            ) AS from_email,
+            i.support_awaiting_staff_at
+     FROM work_issues i
+     JOIN work_projects p ON p.id = i.project_id
+     JOIN customers c ON c.id = p.customer_id
+     LEFT JOIN work_project_statuses s
+       ON s.id = i.status AND s.project_id = p.id
+     WHERE p.is_support_board
+       AND p.archived_at IS NULL
+       AND i.support_awaiting_staff_at IS NOT NULL
+       AND COALESCE(s.is_done, false) = false
+     ORDER BY i.support_awaiting_staff_at DESC
+     LIMIT 50`
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    key: `${row.prefix}-${row.number}`,
+    title: row.title,
+    statusName: row.status_name,
+    createdAt: new Date(row.created_at).toISOString(),
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    boardId: row.board_id,
+    isInbox: row.is_inbox,
+    fromMail: row.from_mail,
+    fromEmail: row.from_email,
+    awaitingStaff: true,
   }));
 }
 

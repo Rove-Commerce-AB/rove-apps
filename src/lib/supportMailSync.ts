@@ -17,6 +17,7 @@ import {
   matchCustomerForSupportMail,
   shouldSkipSender,
 } from "@/lib/supportMailMatch";
+import { markSupportAwaitingStaff } from "@/lib/supportAwaitingStaff";
 import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
 import {
   insertWorkIssue,
@@ -325,6 +326,10 @@ export async function syncSupportMail(input?: {
             matchKind: "thread",
             workIssueId: existingThread.issueId,
           });
+          await markSupportAwaitingStaff(
+            existingThread.issueId,
+            message.receivedAt ?? new Date()
+          );
           if (labelId) {
             await applySupportMailLabel(item.id, labelId);
             result.labeled += 1;

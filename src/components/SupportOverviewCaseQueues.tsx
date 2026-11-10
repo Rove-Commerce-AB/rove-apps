@@ -14,6 +14,7 @@ import type {
 type Props = {
   inbox: SupportOverviewCaseItem[];
   newCases: SupportOverviewCaseItem[];
+  needsReply: SupportOverviewCaseItem[];
   routeCustomers: SupportRouteCustomerOption[];
 };
 
@@ -28,24 +29,43 @@ function formatWhen(iso: string): string {
   }
 }
 
+function isNewStatus(item: SupportOverviewCaseItem): boolean {
+  return item.statusName.trim().toLowerCase() === "new";
+}
+
 function CaseCard({
   item,
   onOpen,
   onRoute,
+  showNewBadge = false,
 }: {
   item: SupportOverviewCaseItem;
   onOpen: () => void;
   onRoute?: () => void;
+  showNewBadge?: boolean;
 }) {
   return (
     <li className="relative">
       <button
         type="button"
         onClick={onOpen}
-        className="w-full rounded-lg border border-border-subtle bg-bg-default px-3 py-2.5 text-left transition-colors hover:bg-bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal"
+        className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal ${
+          item.awaitingStaff
+            ? "border-brand-signal/40 bg-accent-primary-subtle/30"
+            : "border-border-subtle bg-bg-default"
+        }`}
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
           <span className="font-mono text-xs text-text-tertiary">{item.key}</span>
+          {item.awaitingStaff ? (
+            <span className="rounded bg-accent-primary-subtle px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-primary-text">
+              Customer reply
+            </span>
+          ) : showNewBadge && isNewStatus(item) ? (
+            <span className="rounded bg-bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+              New
+            </span>
+          ) : null}
           {item.fromMail ? (
             <span
               className="inline-flex items-center gap-0.5 rounded bg-bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
@@ -87,6 +107,7 @@ function CaseCard({
 export function SupportOverviewCaseQueues({
   inbox,
   newCases,
+  needsReply,
   routeCustomers,
 }: Props) {
   const router = useRouter();
@@ -96,10 +117,33 @@ export function SupportOverviewCaseQueues({
     issueId: string;
   } | null>(null);
 
-  const newOnly = useMemo(() => {
-    const inboxIds = new Set(inbox.map((i) => i.id));
-    return newCases.filter((item) => !inboxIds.has(item.id));
-  }, [inbox, newCases]);
+  const needsAction = useMemo(() => {
+    const inboxIds = new Set(inbox.map((item) => item.id));
+    const byId = new Map<string, SupportOverviewCaseItem>();
+    for (const item of [...needsReply, ...newCases]) {
+      if (inboxIds.has(item.id)) continue;
+      const existing = byId.get(item.id);
+      if (!existing) {
+        byId.set(item.id, item);
+        continue;
+      }
+      byId.set(item.id, {
+        ...existing,
+        ...item,
+        awaitingStaff: existing.awaitingStaff || item.awaitingStaff,
+      });
+    }
+    return [...byId.values()].sort((a, b) => {
+      if (a.awaitingStaff !== b.awaitingStaff) {
+        return a.awaitingStaff ? -1 : 1;
+      }
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  }, [inbox, needsReply, newCases]);
+
+  function openCase(item: SupportOverviewCaseItem) {
+    setDrawer({ customerId: item.customerId, issueId: item.id });
+  }
 
   return (
     <>
@@ -123,12 +167,7 @@ export function SupportOverviewCaseQueues({
                 <CaseCard
                   key={item.id}
                   item={item}
-                  onOpen={() =>
-                    setDrawer({
-                      customerId: item.customerId,
-                      issueId: item.id,
-                    })
-                  }
+                  onOpen={() => openCase(item)}
                   onRoute={() => setRouting(item)}
                 />
               ))}
@@ -139,28 +178,24 @@ export function SupportOverviewCaseQueues({
         <Panel>
           <div className="flex items-center justify-between border-b border-border-subtle bg-bg-muted/50 px-3 py-2">
             <h2 className="text-sm font-semibold text-text-primary">
-              New cases
+              Needs action
             </h2>
             <span className="text-xs text-text-secondary">
-              {newOnly.length} in New
+              {needsAction.length} open
             </span>
           </div>
-          {newOnly.length === 0 ? (
+          {needsAction.length === 0 ? (
             <p className="px-3 py-5 text-sm text-text-secondary">
-              No incidents in New.
+              No new cases or customer replies.
             </p>
           ) : (
             <ul className="grid gap-2 p-2 sm:grid-cols-2">
-              {newOnly.map((item) => (
+              {needsAction.map((item) => (
                 <CaseCard
                   key={item.id}
                   item={item}
-                  onOpen={() =>
-                    setDrawer({
-                      customerId: item.customerId,
-                      issueId: item.id,
-                    })
-                  }
+                  showNewBadge
+                  onOpen={() => openCase(item)}
                 />
               ))}
             </ul>
@@ -176,6 +211,7 @@ export function SupportOverviewCaseQueues({
           if (!open) setDrawer(null);
         }}
         onCommented={() => router.refresh()}
+        onDeleted={() => router.refresh()}
         allowInternalComments
       />
 
