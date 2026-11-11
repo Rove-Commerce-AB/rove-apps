@@ -38,11 +38,19 @@ import {
   fetchWorkBoardStatuses,
 } from "@/lib/workBoardsQueries";
 import { clearSupportAwaitingStaff } from "@/lib/supportAwaitingStaff";
+import { workPersonFromUser } from "@/lib/workIssueKey";
+import type { WorkPerson } from "@/lib/workTypes";
 import {
+  addWorkIssueAssignee,
   deleteWorkIssue as deleteWorkIssueRow,
+  fetchWorkAssigneesForCustomer,
+  fetchWorkBoardMembers,
   insertWorkIssue,
   insertWorkIssueComment,
+  isWorkBoardMember,
   moveWorkIssue,
+  removeWorkIssueAssignee,
+  updateWorkIssueOwner,
   workIssueHasLoggedTime,
 } from "@/lib/workIssuesQueries";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
@@ -398,8 +406,14 @@ export type SupportCaseDetail = {
   statusName: string;
   isDone: boolean;
   createdAt: string;
+  owner: WorkPerson | null;
+  assignees: WorkPerson[];
+  /** Board members / staff pickable in WorkCardPeople. */
+  people: WorkPerson[];
   statuses: SupportCaseStatusOption[];
   canChangeStatus: boolean;
+  /** Same gate as status — staff only. */
+  canAssign: boolean;
   canReplyByEmail: boolean;
   /** Staff-only danger zone. */
   canDelete: boolean;
@@ -409,6 +423,38 @@ export type SupportCaseDetail = {
   mailThread: SupportCaseMailThread | null;
   comments: SupportCaseComment[];
 };
+
+async function ensureSupportBoardMember(
+  boardId: string,
+  appUserId: string
+): Promise<void> {
+  const isMember = await isWorkBoardMember(boardId, appUserId);
+  if (isMember) return;
+  await cloudSqlPool.query(
+    `INSERT INTO work_project_members (project_id, app_user_id)
+     VALUES ($1, $2)
+     ON CONFLICT DO NOTHING`,
+    [boardId, appUserId]
+  );
+}
+
+async function requireStaffAssignee(
+  appUserId: string
+): Promise<{ id: string; name: string }> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    name: string | null;
+    email: string;
+    role: string;
+  }>(`SELECT id, name, email, role FROM app_users WHERE id = $1 LIMIT 1`, [
+    appUserId,
+  ]);
+  const person = rows[0];
+  if (!person || person.role === "customer") {
+    throw new WorkInputError("Assignee must be a staff user.");
+  }
+  return workPersonFromUser(person);
+}
 
 const MAIL_IN_PREFIX = "Follow-up email from ";
 const MAIL_OUT_PREFIX = "Email reply to ";
@@ -457,11 +503,18 @@ export async function getSupportCaseDetail(
     prefix: string;
     support_awaiting_staff_at: Date | null;
     support_case_number: string | number | null;
+    owner_id: string | null;
+    owner_name: string | null;
+    owner_email: string | null;
+    is_support_inbox: boolean;
   }>(
     `SELECT i.id, i.number, i.title, i.description, i.status, i.created_at, p.prefix,
-            i.support_awaiting_staff_at, i.support_case_number
+            i.support_awaiting_staff_at, i.support_case_number,
+            o.id AS owner_id, o.name AS owner_name, o.email AS owner_email,
+            COALESCE(p.is_support_inbox, false) AS is_support_inbox
      FROM work_issues i
      JOIN work_projects p ON p.id = i.project_id
+     LEFT JOIN app_users o ON o.id = i.owner_app_user_id
      WHERE i.project_id = $1 AND i.id = $2`,
     [projectId, issueId]
   );
@@ -469,6 +522,57 @@ export async function getSupportCaseDetail(
   if (!row) throw new WorkInputError("Case not found.");
 
   const hasLoggedTime = await workIssueHasLoggedTime(issueId);
+  const canAssign = canChangeStatus;
+
+  const memberRows = await fetchWorkBoardMembers(projectId);
+  const poolRows = row.is_support_inbox
+    ? memberRows
+    : await fetchWorkAssigneesForCustomer(customerId, projectId);
+  const candidateRows = [...memberRows, ...poolRows];
+  const staffIds = new Set(
+    (
+      await cloudSqlPool.query<{ id: string }>(
+        `SELECT id FROM app_users
+         WHERE id = ANY($1::uuid[]) AND role <> 'customer'`,
+        [candidateRows.map((person) => person.id)]
+      )
+    ).rows.map((person) => person.id)
+  );
+  const peopleById = new Map<string, WorkPerson>();
+  for (const person of candidateRows) {
+    if (!staffIds.has(person.id)) continue;
+    peopleById.set(person.id, workPersonFromUser(person));
+  }
+
+  const owner: WorkPerson | null = row.owner_id
+    ? workPersonFromUser({
+        id: row.owner_id,
+        name: row.owner_name,
+        email: row.owner_email ?? "",
+      })
+    : null;
+  if (owner) peopleById.set(owner.id, owner);
+
+  const { rows: issueAssigneeRows } = await cloudSqlPool.query<{
+    id: string;
+    name: string | null;
+    email: string;
+  }>(
+    `SELECT u.id, u.name, u.email
+     FROM work_issue_assignees a
+     JOIN app_users u ON u.id = a.app_user_id
+     WHERE a.issue_id = $1
+     ORDER BY lower(COALESCE(NULLIF(trim(u.name), ''), u.email))`,
+    [issueId]
+  );
+  const assignees = issueAssigneeRows.map((person) => {
+    const mapped = workPersonFromUser(person);
+    peopleById.set(mapped.id, mapped);
+    return mapped;
+  });
+  const people = [...peopleById.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
 
   const { rows: commentRows } = await cloudSqlPool.query<{
     id: string;
@@ -554,12 +658,16 @@ export async function getSupportCaseDetail(
     statusName: status?.name ?? "Unknown",
     isDone: status?.isDone ?? false,
     createdAt: new Date(row.created_at).toISOString(),
+    owner,
+    assignees,
+    people,
     statuses: statuses.map((item: WorkBoardStatus) => ({
       id: item.id,
       name: item.name,
       isDone: item.isDone,
     })),
     canChangeStatus,
+    canAssign,
     canReplyByEmail: canChangeStatus && mailThread != null,
     canDelete,
     hasLoggedTime,
@@ -617,6 +725,63 @@ export async function setSupportCaseStatus(
     prependIfNoOrder: target.isDone,
   });
   if (moved == null) throw new WorkInputError("Case not found.");
+  revalidateSupportIncidents();
+}
+
+/** Set or clear the Work owner from Support (staff only). */
+export async function setSupportCaseOwner(
+  customerId: string,
+  issueId: string,
+  ownerAppUserId: string | null
+): Promise<void> {
+  const { actor, projectId } = await requireIssueCasesContext(
+    customerId,
+    issueId
+  );
+  if (!isStaffSupportRole(actor.role)) {
+    throw new WorkInputError("Only staff can assign support cases.");
+  }
+
+  if (ownerAppUserId) {
+    await requireStaffAssignee(ownerAppUserId);
+    await ensureSupportBoardMember(projectId, ownerAppUserId);
+  }
+
+  const ok = await updateWorkIssueOwner(projectId, issueId, ownerAppUserId);
+  if (!ok) throw new WorkInputError("Case not found.");
+  revalidateSupportIncidents();
+}
+
+/** Add a Work assignee from Support (staff only). */
+export async function addSupportCaseAssignee(
+  customerId: string,
+  issueId: string,
+  appUserId: string
+): Promise<void> {
+  const { actor, projectId } = await requireIssueCasesContext(
+    customerId,
+    issueId
+  );
+  if (!isStaffSupportRole(actor.role)) {
+    throw new WorkInputError("Only staff can assign support cases.");
+  }
+  await requireStaffAssignee(appUserId);
+  await ensureSupportBoardMember(projectId, appUserId);
+  await addWorkIssueAssignee(issueId, appUserId);
+  revalidateSupportIncidents();
+}
+
+/** Remove a Work assignee from Support (staff only). */
+export async function removeSupportCaseAssignee(
+  customerId: string,
+  issueId: string,
+  appUserId: string
+): Promise<void> {
+  const { actor } = await requireIssueCasesContext(customerId, issueId);
+  if (!isStaffSupportRole(actor.role)) {
+    throw new WorkInputError("Only staff can assign support cases.");
+  }
+  await removeWorkIssueAssignee(issueId, appUserId);
   revalidateSupportIncidents();
 }
 

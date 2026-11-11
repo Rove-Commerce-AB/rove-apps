@@ -6,22 +6,28 @@ import {
   Button,
   ConfirmModal,
   PageLoading,
+  Select,
   SideDrawer,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui";
+import { WorkCardPeople } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueDrawer";
 import {
+  addSupportCaseAssignee,
   addSupportCaseComment,
   deleteSupportCase,
   getSupportCaseDetail,
+  removeSupportCaseAssignee,
   replySupportCaseEmail,
+  setSupportCaseOwner,
   setSupportCaseStatus,
   type SupportCaseComment,
   type SupportCaseCommentKind,
   type SupportCaseDetail,
 } from "@/lib/supportCases";
+import type { WorkPerson } from "@/lib/workTypes";
 
 type Props = {
   customerId: string;
@@ -35,7 +41,12 @@ type Props = {
 };
 
 type ComposeMode = "comment" | "internal" | "email";
-type DrawerTab = "conversation" | "details" | "danger";
+type DrawerTab = "conversation" | "danger";
+
+const propertyChipClass =
+  "inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-text-primary/[0.06]";
+const metaSelectTriggerClass =
+  "h-7 !w-auto max-w-full border-0 bg-transparent px-0 py-0 text-[13px] font-medium text-text-primary hover:bg-transparent focus:border-transparent focus:ring-0";
 
 function kindLabel(kind: SupportCaseCommentKind): string | null {
   switch (kind) {
@@ -77,7 +88,9 @@ function CommentCard({
     <li
       ref={listRef}
       className={`rounded-lg border px-3 py-2.5 ${kindClass(item.kind)} ${
-        highlight ? "ring-2 ring-brand-signal ring-offset-2 ring-offset-bg-default" : ""
+        highlight
+          ? "ring-2 ring-brand-signal ring-offset-2 ring-offset-bg-default"
+          : ""
       }`}
     >
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
@@ -104,6 +117,23 @@ function CommentCard({
       </pre>
     </li>
   );
+}
+
+function initialMailComment(
+  detail: SupportCaseDetail
+): SupportCaseComment | null {
+  if (detail.descriptionKind !== "mail_in" || !detail.description.trim()) {
+    return null;
+  }
+  return {
+    id: `description:${detail.id}`,
+    body: detail.description,
+    createdAt: detail.createdAt,
+    authorName: detail.mailThread?.replyToEmail || "Customer",
+    authorId: "description",
+    isInternal: false,
+    kind: "mail_in",
+  };
 }
 
 export function SupportCaseDrawer({
@@ -220,6 +250,53 @@ export function SupportCaseDrawer({
     });
   }
 
+  function onSetOwner(person: WorkPerson | null) {
+    if (!issueId || !detail || pending) return;
+    if ((detail.owner?.id ?? null) === (person?.id ?? null)) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await setSupportCaseOwner(customerId, issueId, person?.id ?? null);
+        await refreshDetail();
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Failed to update owner"
+        );
+      }
+    });
+  }
+
+  function onAddAssignee(person: WorkPerson) {
+    if (!issueId || !detail || pending) return;
+    if (detail.assignees.some((row) => row.id === person.id)) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await addSupportCaseAssignee(customerId, issueId, person.id);
+        await refreshDetail();
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Failed to add assignee"
+        );
+      }
+    });
+  }
+
+  function onRemoveAssignee(person: WorkPerson) {
+    if (!issueId || !detail || pending) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await removeSupportCaseAssignee(customerId, issueId, person.id);
+        await refreshDetail();
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Failed to remove assignee"
+        );
+      }
+    });
+  }
+
   function removeCase() {
     if (!issueId || !detail?.canDelete || pending) return;
     setError(null);
@@ -240,7 +317,7 @@ export function SupportCaseDrawer({
   }
 
   function onTabChange(value: string) {
-    if (value === "conversation" || value === "details" || value === "danger") {
+    if (value === "conversation" || value === "danger") {
       setTab(value);
       setError(null);
     }
@@ -257,11 +334,81 @@ export function SupportCaseDrawer({
           ? "Add internal note"
           : "Send comment";
 
+  const seedMail = detail ? initialMailComment(detail) : null;
+  const timeline: SupportCaseComment[] = detail
+    ? seedMail
+      ? [seedMail, ...detail.comments]
+      : detail.comments
+    : [];
+
   const latestMailInId =
     detail?.awaitingStaff
-      ? [...detail.comments].reverse().find((item) => item.kind === "mail_in")
-          ?.id ?? null
+      ? [...timeline].reverse().find((item) => item.kind === "mail_in")?.id ??
+        null
       : null;
+
+  const conversationBody = detail ? (
+    <div className="space-y-4">
+      {detail.awaitingStaff ? (
+        <p className="rounded-md border border-brand-signal/30 bg-accent-primary-subtle/50 px-3 py-2 text-sm text-accent-primary-text">
+          Customer reply waiting for a staff response.
+        </p>
+      ) : null}
+
+      {detail.canChangeStatus || detail.canAssign || detail.owner || detail.assignees.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1 rounded-xl bg-bg-muted/40 px-3 py-2">
+          {detail.canChangeStatus ? (
+            <div className={propertyChipClass}>
+              <Select
+                value={detail.statusId}
+                onValueChange={onStatusChange}
+                disabled={pending}
+                options={detail.statuses.map((status) => ({
+                  value: status.id,
+                  label: status.name,
+                }))}
+                triggerTitle="Status"
+                variant="inlineEdit"
+                className="w-fit min-w-0"
+                triggerClassName={metaSelectTriggerClass}
+              />
+            </div>
+          ) : (
+            <p className="px-1.5 text-[13px] font-medium text-text-primary">
+              {detail.statusName}
+            </p>
+          )}
+          <div className="ml-auto flex shrink-0 items-center pl-2">
+            <WorkCardPeople
+              owner={detail.owner}
+              assignees={detail.assignees}
+              people={detail.people}
+              disabled={pending || !detail.canAssign}
+              portal={false}
+              onSetOwner={detail.canAssign ? onSetOwner : undefined}
+              onAddAssignee={detail.canAssign ? onAddAssignee : undefined}
+              onRemoveAssignee={detail.canAssign ? onRemoveAssignee : undefined}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {timeline.length === 0 ? (
+        <p className="text-sm text-text-tertiary">No comments yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {timeline.map((item) => (
+            <CommentCard
+              key={item.id}
+              item={item}
+              highlight={item.id === latestMailInId}
+              listRef={item.id === latestMailInId ? highlightRef : undefined}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  ) : null;
 
   return (
     <SideDrawer
@@ -271,18 +418,6 @@ export function SupportCaseDrawer({
       subtitle={
         detail ? (
           <span className="flex flex-wrap items-center gap-2">
-            {detail.supportCaseRef ? (
-              <span className="text-xs text-text-tertiary">{detail.key}</span>
-            ) : null}
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs ${
-                detail.isDone
-                  ? "bg-status-success-subtle text-status-success"
-                  : "bg-bg-muted text-text-secondary"
-              }`}
-            >
-              {detail.statusName}
-            </span>
             <span className="text-xs text-text-tertiary">
               Opened {new Date(detail.createdAt).toLocaleString()}
             </span>
@@ -307,174 +442,44 @@ export function SupportCaseDrawer({
       ) : detail ? (
         <>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="shrink-0 border-b border-border-subtle px-6 pb-3 pt-5">
+            <div className="shrink-0 space-y-1 border-b border-border-subtle px-6 pb-3 pt-5">
               <h2 className="text-base font-semibold text-text-primary">
                 {detail.title}
               </h2>
+              <p className="text-xs text-text-tertiary">
+                <span>{detail.key}</span>
+                {detail.mailThread?.replyToEmail ? (
+                  <>
+                    <span className="mx-1.5 text-border-strong" aria-hidden>
+                      ·
+                    </span>
+                    <span>{detail.mailThread.replyToEmail}</span>
+                  </>
+                ) : null}
+              </p>
             </div>
 
-            <Tabs
-              value={tab}
-              onValueChange={onTabChange}
-              className="flex min-h-0 flex-1 flex-col"
-            >
-              <div className="shrink-0 px-6 pt-3">
-                <TabsList className="!gap-0">
-                  <TabsTrigger value="conversation" className="px-3 !px-3">
-                    Conversation
-                  </TabsTrigger>
-                  <TabsTrigger value="details" className="px-3 !px-3">
-                    Details
-                  </TabsTrigger>
-                  {detail.canDelete ? (
+            {detail.canDelete ? (
+              <Tabs
+                value={tab}
+                onValueChange={onTabChange}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <div className="shrink-0 px-6 pt-3">
+                  <TabsList className="!gap-0">
+                    <TabsTrigger value="conversation" className="px-3 !px-3">
+                      Conversation
+                    </TabsTrigger>
                     <TabsTrigger value="danger" className="px-3 !px-3">
                       Danger
                     </TabsTrigger>
-                  ) : null}
-                </TabsList>
-              </div>
+                  </TabsList>
+                </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                <TabsContent value="conversation" className="mt-0 space-y-3">
-                  {detail.awaitingStaff ? (
-                    <p className="rounded-md border border-brand-signal/30 bg-accent-primary-subtle/50 px-3 py-2 text-sm text-accent-primary-text">
-                      Customer reply waiting for a staff response.
-                    </p>
-                  ) : null}
-                  {detail.comments.length === 0 ? (
-                    <p className="text-sm text-text-tertiary">
-                      No comments yet.
-                    </p>
-                  ) : (
-                    <ul className="space-y-3">
-                      {detail.comments.map((item) => (
-                        <CommentCard
-                          key={item.id}
-                          item={item}
-                          highlight={item.id === latestMailInId}
-                          listRef={
-                            item.id === latestMailInId
-                              ? highlightRef
-                              : undefined
-                          }
-                        />
-                      ))}
-                    </ul>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="details" className="mt-0 space-y-5">
-                  {detail.canChangeStatus ? (
-                    <label className="block text-xs font-medium text-text-secondary">
-                      Status
-                      <select
-                        className="mt-1 h-9 w-full rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary"
-                        value={detail.statusId}
-                        disabled={pending}
-                        onChange={(event) =>
-                          onStatusChange(event.target.value)
-                        }
-                      >
-                        {detail.statuses.map((status) => (
-                          <option key={status.id} value={status.id}>
-                            {status.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : (
-                    <div>
-                      <p className="text-xs font-medium text-text-secondary">
-                        Status
-                      </p>
-                      <p className="mt-1 text-sm text-text-primary">
-                        {detail.statusName}
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="mb-2 text-xs font-medium text-text-secondary">
-                      Description
-                    </p>
-                    {detail.description.trim() ? (
-                      <div
-                        className={`rounded-lg border px-3 py-2.5 ${
-                          detail.descriptionKind === "mail_in"
-                            ? kindClass("mail_in")
-                            : "border-border-subtle bg-bg-muted/30"
-                        }`}
-                      >
-                        {detail.descriptionKind === "mail_in" ? (
-                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-signal">
-                            Mail in
-                          </p>
-                        ) : null}
-                        <pre className="whitespace-pre-wrap font-sans text-sm text-text-secondary">
-                          {detail.description}
-                        </pre>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-text-tertiary">
-                        No description.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 rounded-lg border border-border-subtle bg-bg-muted/30 px-3 py-2.5">
-                    <p className="text-xs font-medium text-text-secondary">
-                      Case refs
-                    </p>
-                    <dl className="space-y-1.5 text-sm">
-                      <div>
-                        <dt className="text-xs text-text-tertiary">Support</dt>
-                        <dd className="text-text-primary">
-                          {detail.supportCaseRef ?? "—"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-text-tertiary">Work key</dt>
-                        <dd className="text-text-primary">{detail.key}</dd>
-                      </div>
-                    </dl>
-                  </div>
-
-                  {detail.mailThread ? (
-                    <div className="space-y-2 rounded-lg border border-border-subtle bg-bg-muted/30 px-3 py-2.5">
-                      <p className="text-xs font-medium text-text-secondary">
-                        Mail thread
-                      </p>
-                      <dl className="space-y-1.5 text-sm">
-                        <div>
-                          <dt className="text-xs text-text-tertiary">Subject</dt>
-                          <dd className="text-text-primary">
-                            {detail.mailThread.subject || "—"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-text-tertiary">Reply to</dt>
-                          <dd className="text-text-primary">
-                            {detail.mailThread.replyToEmail}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-text-tertiary">From</dt>
-                          <dd className="text-text-primary">
-                            {detail.mailThread.fromMailbox}
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
-                  ) : null}
-
-                  {error && tab === "details" ? (
-                    <p role="alert" className="text-sm text-danger">
-                      {error}
-                    </p>
-                  ) : null}
-                </TabsContent>
-
-                {detail.canDelete ? (
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                  <TabsContent value="conversation" className="mt-0">
+                    {conversationBody}
+                  </TabsContent>
                   <TabsContent value="danger" className="mt-0">
                     <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
                       <h3 className="text-sm font-semibold text-danger">
@@ -507,9 +512,13 @@ export function SupportCaseDrawer({
                       </Button>
                     </div>
                   </TabsContent>
-                ) : null}
+                </div>
+              </Tabs>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                {conversationBody}
               </div>
-            </Tabs>
+            )}
           </div>
 
           {tab === "conversation" ? (
@@ -541,19 +550,6 @@ export function SupportCaseDrawer({
                   ) : null}
                 </div>
               ) : null}
-              {composeMode === "email" && detail.mailThread ? (
-                <p className="text-xs text-text-tertiary">
-                  Sends from{" "}
-                  <span className="text-text-secondary">
-                    {detail.mailThread.fromMailbox}
-                  </span>{" "}
-                  to{" "}
-                  <span className="text-text-secondary">
-                    {detail.mailThread.replyToEmail}
-                  </span>{" "}
-                  in the existing Gmail thread.
-                </p>
-              ) : null}
               <label className="block text-sm font-medium text-text-primary">
                 {composeMode === "email"
                   ? "Email reply"
@@ -572,7 +568,7 @@ export function SupportCaseDrawer({
                   }
                 />
               </label>
-              {error ? (
+              {error && tab === "conversation" ? (
                 <p role="alert" className="text-sm text-danger">
                   {error}
                 </p>
