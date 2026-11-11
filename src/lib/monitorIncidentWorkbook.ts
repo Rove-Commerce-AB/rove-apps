@@ -1,5 +1,8 @@
 import ExcelJS from "exceljs";
-import type { IncidentPage } from "@/lib/monitorIncidents";
+import type {
+  IncidentPage,
+  MonitorsIncidentExport,
+} from "@/lib/monitorIncidents";
 
 const stockholmFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/Stockholm",
@@ -66,6 +69,91 @@ export async function buildMonitorIncidentWorkbook(data: IncidentPage): Promise<
   total.getCell(7).numFmt = "0.0";
   total.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF0F5" } };
+  });
+
+  const output = await workbook.xlsx.writeBuffer();
+  return new Uint8Array(output);
+}
+
+/** Multi-monitor downtime export (Customer / Monitor / URL + incident columns). */
+export async function buildMonitorsIncidentWorkbook(
+  data: MonitorsIncidentExport
+): Promise<Uint8Array> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Rove Planner";
+  workbook.subject = data.customerId
+    ? `Monitor downtime ${data.filters.from} – ${data.filters.to}`
+    : `All monitors downtime ${data.filters.from} – ${data.filters.to}`;
+  const sheet = workbook.addWorksheet("Incidents", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  sheet.columns = [
+    { header: "Customer", key: "customer", width: 24 },
+    { header: "Monitor", key: "monitor", width: 28 },
+    { header: "URL", key: "url", width: 36 },
+    { header: "Status", key: "status", width: 17 },
+    { header: "Started", key: "started", width: 22 },
+    { header: "Confirmed", key: "confirmed", width: 22 },
+    { header: "Last failure", key: "lastFailure", width: 22 },
+    { header: "Recovered", key: "recovered", width: 22 },
+    { header: "Failures", key: "failures", width: 13 },
+    { header: "Downtime (min)", key: "downtime", width: 19 },
+  ];
+  const header = sheet.getRow(1);
+  header.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  header.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF18324D" },
+  };
+  header.height = 24;
+
+  for (const incident of data.incidents) {
+    sheet.addRow({
+      customer: incident.customerName,
+      monitor: incident.monitorName,
+      url: incident.url,
+      status: incident.recoveredAt ? "Recovered" : "Open",
+      started: excelDate(incident.startedAt),
+      confirmed: excelDate(incident.confirmedAt),
+      lastFailure: excelDate(incident.lastFailureAt),
+      recovered: excelDate(incident.recoveredAt),
+      failures: incident.failureCount,
+      downtime: incident.downtimeMinutes,
+    });
+  }
+
+  for (const key of ["started", "confirmed", "lastFailure", "recovered"]) {
+    sheet.getColumn(key).numFmt = "yyyy-mm-dd hh:mm";
+  }
+  sheet.getColumn("downtime").numFmt = "0.0";
+  if (data.incidents.length) {
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: data.incidents.length + 1, column: 10 },
+    };
+  }
+
+  const total = sheet.addRow([
+    "Total downtime (all incidents in period)",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    data.totalDowntimeMinutes,
+  ]);
+  total.font = { bold: true };
+  total.getCell(10).numFmt = "0.0";
+  total.eachCell((cell) => {
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFEAF0F5" },
+    };
   });
 
   const output = await workbook.xlsx.writeBuffer();

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { MonitorFormDrawer } from "@/components/MonitorFormDrawer";
 import { MonitorGroupList } from "@/components/MonitorGroupList";
+import { MonitorsIncidentExportControls } from "@/components/MonitorsIncidentExportControls";
 import {
   Button,
   ConfirmModal,
@@ -136,7 +137,7 @@ export function MonitorsPageClient({
           {loadError || error}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-end gap-4">
         <div className="relative w-full sm:w-72">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary"
@@ -152,7 +153,7 @@ export function MonitorsPageClient({
             className="pl-9"
           />
         </div>
-        <label className="inline-flex items-center gap-2 text-xs text-text-secondary">
+        <label className="inline-flex h-10 items-center gap-2 text-xs text-text-secondary">
           <input
             type="checkbox"
             checked={downOnly}
@@ -160,7 +161,8 @@ export function MonitorsPageClient({
           />
           Down only
         </label>
-        {toolbar ? <div className="ml-auto shrink-0">{toolbar}</div> : null}
+        <MonitorsIncidentExportControls customerId={fixedCustomerId} />
+        {toolbar ? <div className="ml-auto shrink-0 self-center">{toolbar}</div> : null}
       </div>
       <Panel>
         <MonitorGroupList
