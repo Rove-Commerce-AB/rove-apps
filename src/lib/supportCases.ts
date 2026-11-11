@@ -27,6 +27,10 @@ import {
   sendGmailThreadReply,
   supportMailboxAddress,
 } from "@/lib/supportMailGmail";
+import {
+  fetchSupportCaseRef,
+  withSupportCaseRefInSubject,
+} from "@/lib/supportCaseRef";
 import { createWorkIssue } from "@/lib/workIssues";
 import { WorkInputError } from "@/lib/workErrors";
 import {
@@ -385,6 +389,8 @@ export type SupportCaseMailThread = {
 export type SupportCaseDetail = {
   id: string;
   key: string;
+  /** Stable Support reference (SUP-n), when allocated. */
+  supportCaseRef: string | null;
   title: string;
   description: string;
   descriptionKind: "mail_in" | "description";
@@ -450,9 +456,10 @@ export async function getSupportCaseDetail(
     created_at: Date;
     prefix: string;
     support_awaiting_staff_at: Date | null;
+    support_case_number: string | number | null;
   }>(
     `SELECT i.id, i.number, i.title, i.description, i.status, i.created_at, p.prefix,
-            i.support_awaiting_staff_at
+            i.support_awaiting_staff_at, i.support_case_number
      FROM work_issues i
      JOIN work_projects p ON p.id = i.project_id
      WHERE i.project_id = $1 AND i.id = $2`,
@@ -531,9 +538,15 @@ export async function getSupportCaseDetail(
 
   const status = statusById.get(row.status);
   const description = row.description ?? "";
+  const supportCaseNumber = Number(row.support_case_number);
+  const supportCaseRef =
+    Number.isFinite(supportCaseNumber) && supportCaseNumber > 0
+      ? `SUP-${supportCaseNumber}`
+      : null;
   return {
     id: row.id,
     key: `${row.prefix}-${row.number}`,
+    supportCaseRef,
     title: row.title,
     description,
     descriptionKind: descriptionKind(description),
@@ -690,7 +703,11 @@ export async function replySupportCaseEmail(
   const toEmail = inbound.from_email || headers.fromEmail;
   if (!toEmail) throw new WorkInputError("Missing reply recipient.");
 
-  const subject = inbound.subject || headers.subject || "(no subject)";
+  const supportCaseRef = await fetchSupportCaseRef(issueId);
+  const rawSubject = inbound.subject || headers.subject || "(no subject)";
+  const subject = supportCaseRef
+    ? withSupportCaseRefInSubject(rawSubject, supportCaseRef)
+    : rawSubject;
   const sent = await sendGmailThreadReply({
     threadId: first.gmail_thread_id,
     toEmail,

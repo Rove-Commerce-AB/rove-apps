@@ -73,7 +73,8 @@ export function AllocationViewControls({
 
   const viewActive =
     showView &&
-    (probabilityDisplay !== "weighted" || projectVisibility !== "all");
+    (probabilityDisplay !== "weighted" ||
+      projectVisibility !== "all");
 
   const filterLabel = filterSummary(
     teams,
@@ -296,6 +297,20 @@ export function AllocationViewControls({
                   >
                     Only show planned
                   </MenuRow>
+                  <MenuRow
+                    selected={projectVisibility === "availability"}
+                    onSelect={() => {
+                      onProjectVisibilityChange?.("availability");
+                      setMenu(null);
+                    }}
+                  >
+                    Availability
+                  </MenuRow>
+                  {projectVisibility === "availability" ? (
+                    <p className="px-3 pb-1.5 text-[11px] leading-snug text-text-tertiary">
+                      Absence bookings only. Short weeks show holiday capacity.
+                    </p>
+                  ) : null}
                 </>
               )}
             </div>,
@@ -332,6 +347,11 @@ function viewSummary(
 ) {
   if (probabilityDisplay === "weighted" && projectVisibility === "all") {
     return "View";
+  }
+  if (projectVisibility === "availability") {
+    return probabilityDisplay === "none"
+      ? "Availability · No prob"
+      : "Availability";
   }
   const parts: string[] = [];
   if (probabilityDisplay === "none") parts.push("No probability");

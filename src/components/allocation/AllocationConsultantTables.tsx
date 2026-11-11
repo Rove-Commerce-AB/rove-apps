@@ -24,7 +24,10 @@ import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 import { allocationCellKey } from "@/lib/allocationCellKey";
 import { formatAllocationEmbedRevenue } from "@/lib/allocationPageDisplay";
-import { buildPerConsultantView } from "@/lib/allocationPageView";
+import {
+  buildPerConsultantView,
+  shortWeekDaysOff,
+} from "@/lib/allocationPageView";
 import { getBookingAllocationsForRow } from "@/app/(app)/allocation/actions";
 import {
   useTimeGridColumnHighlight,
@@ -125,6 +128,8 @@ export type AllocationConsultantTablesProps = {
   grandTotalHours: number;
   weekTotalsMoney: number[] | null;
   grandTotalMoney: number;
+  /** View → Availability: absence rows + holiday capacity signal. */
+  availabilityMode?: boolean;
 };
 
 export function AllocationConsultantTables(props: AllocationConsultantTablesProps) {
@@ -168,6 +173,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
     grandTotalHours,
     weekTotalsMoney,
     grandTotalMoney,
+    availabilityMode = false,
   } = props;
 
   const consultantGrandTotalHours = useMemo(
@@ -381,17 +387,65 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       {row.percentByWeek.map((pct, i) => {
                         const details = row.percentDetailsByWeek?.[i];
                         const totalHours = details?.total ?? 0;
+                        const availableHours =
+                          details?.available ??
+                          row.consultant.availableHoursByWeek[i] ??
+                          row.consultant.hoursPerWeek;
+                        const baselineHours =
+                          row.consultant.baselineHoursPerWeek ||
+                          row.consultant.hoursPerWeek;
+                        const daysOff = availabilityMode
+                          ? shortWeekDaysOff(availableHours, baselineHours)
+                          : 0;
+                        const isShortWeek = daysOff > 0;
                         const isOverallocated = !isToPlan && pct > 115;
-                        const showHoursOnNameRow = embedMode || isToPlan;
-                        const title =
-                          showHoursOnNameRow && totalHours > 0
+                        const showHoursOnNameRow =
+                          embedMode || isToPlan || availabilityMode;
+                        const title = availabilityMode
+                          ? [
+                              totalHours > 0
+                                ? `Absence ${totalHours}h`
+                                : null,
+                              isShortWeek
+                                ? `Capacity ${availableHours}h of ${baselineHours}h (−${daysOff}d holiday)`
+                                : `Capacity ${availableHours}h`,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")
+                          : showHoursOnNameRow && totalHours > 0
                             ? `${totalHours}`
                             : details && pct > 0
                               ? `${details.total} of ${details.available} (${pct}%)`
                               : undefined;
-                        const hasBooking = isToPlan ? totalHours > 0 : (embedMode ? totalHours > 0 : pct > 0);
-                        const prevHasBooking = i > 0 && (isToPlan ? (row.percentDetailsByWeek?.[i - 1]?.total ?? 0) > 0 : embedMode ? (row.percentDetailsByWeek?.[i - 1]?.total ?? 0) > 0 : (row.percentByWeek[i - 1] ?? 0) > 0);
-                        const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
+                        const hasBooking = isToPlan
+                          ? totalHours > 0
+                          : embedMode
+                            ? totalHours > 0
+                            : availabilityMode
+                              ? totalHours > 0 || isShortWeek
+                              : pct > 0;
+                        const prevDetails = row.percentDetailsByWeek?.[i - 1];
+                        const prevDaysOff =
+                          availabilityMode && i > 0
+                            ? shortWeekDaysOff(
+                                prevDetails?.available ??
+                                  row.consultant.availableHoursByWeek[i - 1] ??
+                                  row.consultant.hoursPerWeek,
+                                baselineHours
+                              )
+                            : 0;
+                        const prevHasBooking =
+                          i > 0 &&
+                          (isToPlan
+                            ? (prevDetails?.total ?? 0) > 0
+                            : embedMode
+                              ? (prevDetails?.total ?? 0) > 0
+                              : availabilityMode
+                                ? (prevDetails?.total ?? 0) > 0 ||
+                                  prevDaysOff > 0
+                                : (row.percentByWeek[i - 1] ?? 0) > 0);
+                        const showLeftBorder =
+                          hasBooking && (i === 0 || !prevHasBooking);
                         const w = data.weeks[i];
                         const isDragRange =
                           cellDragConsultant?.id === row.consultant.id &&
@@ -414,10 +468,25 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           i,
                           setHighlightedColumnIndex
                         );
+                        const availabilityBg =
+                          availabilityMode && isShortWeek && !isDragRange
+                            ? "bg-status-warning-subtle/50"
+                            : "";
+                        const normalBg =
+                          !availabilityMode &&
+                          !isDragRange &&
+                          !row.consultant.unavailableByWeek[i] &&
+                          !isToPlan
+                            ? embedMode
+                              ? pct > 0
+                                ? "bg-success/20"
+                                : ""
+                              : getAllocationCellBgClass(pct)
+                            : "";
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${weekSideBorders} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${currentWeekCls} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
+                            className={`${weekSideBorders} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${normalBg} ${availabilityBg} ${currentWeekCls} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -437,7 +506,20 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 setCellDragWeekEnd(i);
                             }}
                           >
-                            {hasBooking ? (
+                            {availabilityMode ? (
+                              totalHours > 0 || isShortWeek ? (
+                                <span className="inline-flex flex-col items-center leading-tight">
+                                  {totalHours > 0 ? (
+                                    <span>{totalHours}h</span>
+                                  ) : null}
+                                  {isShortWeek ? (
+                                    <span className="font-medium text-status-warning">
+                                      −{daysOff}d
+                                    </span>
+                                  ) : null}
+                                </span>
+                              ) : null
+                            ) : hasBooking ? (
                               <span
                                 className={
                                   isOverallocated
@@ -949,14 +1031,53 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       </td>
                       {row.percentByWeek.map((pct, i) => {
                         const details = row.percentDetailsByWeek?.[i];
+                        const totalHours = details?.total ?? 0;
+                        const availableHours =
+                          details?.available ??
+                          row.consultant.availableHoursByWeek[i] ??
+                          row.consultant.hoursPerWeek;
+                        const baselineHours =
+                          row.consultant.baselineHoursPerWeek ||
+                          row.consultant.hoursPerWeek;
+                        const daysOff = availabilityMode
+                          ? shortWeekDaysOff(availableHours, baselineHours)
+                          : 0;
+                        const isShortWeek = daysOff > 0;
                         const isOverallocated = pct > 115;
-                        const title =
-                          details && pct > 0
+                        const title = availabilityMode
+                          ? [
+                              totalHours > 0
+                                ? `Absence ${totalHours}h`
+                                : null,
+                              isShortWeek
+                                ? `Capacity ${availableHours}h of ${baselineHours}h (−${daysOff}d holiday)`
+                                : `Capacity ${availableHours}h`,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")
+                          : details && pct > 0
                             ? `${details.total} of ${details.available} (${pct}%)`
                             : undefined;
-                        const hasBooking = pct > 0;
-                        const prevHasBooking = i > 0 && (row.percentByWeek[i - 1] ?? 0) > 0;
-                        const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
+                        const hasBooking = availabilityMode
+                          ? totalHours > 0 || isShortWeek
+                          : pct > 0;
+                        const prevDetails = row.percentDetailsByWeek?.[i - 1];
+                        const prevDaysOff =
+                          availabilityMode && i > 0
+                            ? shortWeekDaysOff(
+                                prevDetails?.available ??
+                                  row.consultant.availableHoursByWeek[i - 1] ??
+                                  row.consultant.hoursPerWeek,
+                                baselineHours
+                              )
+                            : 0;
+                        const prevHasBooking =
+                          i > 0 &&
+                          (availabilityMode
+                            ? (prevDetails?.total ?? 0) > 0 || prevDaysOff > 0
+                            : (row.percentByWeek[i - 1] ?? 0) > 0);
+                        const showLeftBorder =
+                          hasBooking && (i === 0 || !prevHasBooking);
                         const w = data.weeks[i];
                         const isDragRange =
                           cellDragConsultant?.id === row.consultant.id &&
@@ -972,10 +1093,20 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           i,
                           setHighlightedColumnIndex
                         );
+                        const availabilityBg =
+                          availabilityMode && isShortWeek && !isDragRange
+                            ? "bg-status-warning-subtle/50"
+                            : "";
+                        const normalBg =
+                          !availabilityMode &&
+                          !isDragRange &&
+                          !row.consultant.unavailableByWeek[i]
+                            ? getAllocationCellBgClass(pct)
+                            : "";
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${normalBg} ${availabilityBg} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -995,7 +1126,20 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 setCellDragWeekEnd(i);
                             }}
                           >
-                            {hasBooking ? (
+                            {availabilityMode ? (
+                              totalHours > 0 || isShortWeek ? (
+                                <span className="inline-flex flex-col items-center leading-tight">
+                                  {totalHours > 0 ? (
+                                    <span>{totalHours}h</span>
+                                  ) : null}
+                                  {isShortWeek ? (
+                                    <span className="font-medium text-status-warning">
+                                      −{daysOff}d
+                                    </span>
+                                  ) : null}
+                                </span>
+                              ) : null
+                            ) : hasBooking ? (
                               <span
                                 className={
                                   isOverallocated

@@ -840,6 +840,14 @@ function AllocationPageClientImpl({
   );
   /** On project detail (embed) we always show raw hours and ignore probability. */
   const effectiveProbabilityDisplay = embedMode ? "none" : probabilityDisplay;
+  const projectTypeById = useMemo(() => {
+    const map = new Map<string, "customer" | "internal" | "absence">();
+    for (const p of filteredData?.projects ?? data?.projects ?? []) {
+      map.set(p.id, p.type ?? "customer");
+    }
+    return map;
+  }, [filteredData?.projects, data?.projects]);
+
   const getOptimisticDisplayHours = useCallback(
     (consultantId: string, projectId: string, roleId: string | null, yearValue: number, weekValue: number) => {
       const key = allocationCellKey(consultantId, projectId, roleId, yearValue, weekValue);
@@ -850,7 +858,8 @@ function AllocationPageClientImpl({
         projectId,
         effectiveProbabilityDisplay,
         projectVisibility,
-        projectProbabilityMap
+        projectProbabilityMap,
+        projectTypeById.get(projectId)
       );
       return displayHours;
     },
@@ -859,8 +868,11 @@ function AllocationPageClientImpl({
       effectiveProbabilityDisplay,
       projectVisibility,
       projectProbabilityMap,
+      projectTypeById,
     ]
   );
+
+  const availabilityMode = !embedMode && projectVisibility === "availability";
   const perConsultant = useMemo(
     () =>
       filteredData && data
@@ -944,6 +956,13 @@ function AllocationPageClientImpl({
       ),
     [perConsultant]
   );
+
+  useEffect(() => {
+    if (!availabilityMode) return;
+    if (expandableConsultantIds.size === 0) return;
+    setExpandedConsultants(new Set(expandableConsultantIds));
+  }, [availabilityMode, expandableConsultantIds]);
+
   const expandableProjectIds = useMemo(
     () =>
       new Set(
@@ -1183,6 +1202,7 @@ function AllocationPageClientImpl({
               onCollapseAll={() => setExpandedConsultants(new Set())}
               expandedConsultants={expandedConsultants}
               toggleConsultant={toggleConsultant}
+              availabilityMode={availabilityMode}
               cellDragConsultant={cellDragConsultant}
               setCellDragConsultant={setCellDragConsultant}
               cellDragWeekStart={cellDragWeekStart}

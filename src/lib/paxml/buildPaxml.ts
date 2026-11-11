@@ -19,13 +19,17 @@ function formatHours(hours: number): string {
   return String(Math.round(hours * 100) / 100);
 }
 
-/** Build a PAXml 1.0 document with tidtransaktioner for Fortnox calendar import. */
+/** Current PAXml schema version required by paxml.se / Fortnox Lön import. */
+export const PAXML_VERSION = "2.3" as const;
+
+/** Build a PAXml document with tidtransaktioner for Fortnox calendar import. */
 export function buildPaxmlDocument(
   transactions: PaxmlTidtrans[],
   options?: { generatedAt?: Date; programName?: string }
 ): string {
   const generatedAt = options?.generatedAt ?? new Date();
   const programName = options?.programName ?? "RovePlanner";
+  // xs:dateTime without fractional seconds / Z (schema accepts local dateTime).
   const iso = generatedAt.toISOString().replace(/\.\d{3}Z$/, "");
 
   const rows = transactions
@@ -45,7 +49,7 @@ export function buildPaxmlDocument(
     `<paxml>`,
     `  <header>`,
     `    <format>LÖNIN</format>`,
-    `    <version>1.0</version>`,
+    `    <version>${PAXML_VERSION}</version>`,
     `    <datum>${iso}</datum>`,
     `    <programnamn>${escapeXml(programName)}</programnamn>`,
     `  </header>`,

@@ -8,6 +8,8 @@ export type AllocationConsultant = {
   name: string;
   initials: string;
   hoursPerWeek: number;
+  /** Capacity for a full week (no public holidays), after work%/overhead. */
+  baselineHoursPerWeek: number;
   defaultRoleName: string;
   defaultRoleId: string | null;
   teamId: string | null;
@@ -23,6 +25,7 @@ export type AllocationProject = {
   customer_id: string;
   customerName: string;
   customerColor: string;
+  type?: "customer" | "internal" | "absence";
   isActive?: boolean;
   customerIsActive?: boolean;
   probability: number | null;

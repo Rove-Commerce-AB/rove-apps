@@ -164,6 +164,7 @@ export async function getAllocationPageData(
       const overheadPct =
         Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
       const hoursPerWeek = calendarHours * workPct;
+      const baselineHoursPerWeek = hoursPerWeek * (1 - overheadPct);
       const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
       const startDate = (c as { start_date?: string | null }).start_date ?? null;
       const endDate = (c as { end_date?: string | null }).end_date ?? null;
@@ -191,6 +192,7 @@ export async function getAllocationPageData(
         name: c.name,
         initials: getInitials(c.name),
         hoursPerWeek,
+        baselineHoursPerWeek,
         defaultRoleName: roleMap.get(c.role_id) ?? "Unknown",
         defaultRoleId: c.role_id ?? null,
         teamId: c.team_id ?? null,
@@ -206,6 +208,7 @@ export async function getAllocationPageData(
       name: "To plan",
       initials: "TP",
       hoursPerWeek: 0,
+      baselineHoursPerWeek: 0,
       defaultRoleName: "",
       defaultRoleId: null,
       teamId: null,
@@ -353,6 +356,7 @@ export async function getAllocationPageDataForProject(
     const overheadPct =
       Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
     const hoursPerWeek = calendarHours * workPct;
+    const baselineHoursPerWeek = hoursPerWeek * (1 - overheadPct);
     const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
     const startDate = (c as { start_date?: string | null }).start_date ?? null;
     const endDate = (c as { end_date?: string | null }).end_date ?? null;
@@ -380,6 +384,7 @@ export async function getAllocationPageDataForProject(
       name: c.name,
       initials: getInitials(c.name),
       hoursPerWeek,
+      baselineHoursPerWeek,
       defaultRoleName: roleMap.get(c.role_id) ?? "Unknown",
       defaultRoleId: c.role_id ?? null,
       teamId: c.team_id ?? null,
@@ -395,6 +400,7 @@ export async function getAllocationPageDataForProject(
     name: "To plan",
     initials: "TP",
     hoursPerWeek: 0,
+    baselineHoursPerWeek: 0,
     defaultRoleName: "",
     defaultRoleId: null,
     teamId: null,

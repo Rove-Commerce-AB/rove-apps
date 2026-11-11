@@ -21,6 +21,7 @@ const PROJECT_VISIBILITY = new Set<ProjectVisibility>([
   "all",
   "hideNon100",
   "hide100",
+  "availability",
 ]);
 
 /** Merge week range + filter/view params into a query string (omits defaults). */

@@ -9,7 +9,10 @@ import {
   applySupportMailLabel,
   ensureSupportMailLabelId,
   getGmailMessage,
+  getGmailMessageHeaders,
   listUnprocessedInboxMessages,
+  sendGmailThreadReply,
+  supportMailboxAddress,
   type GmailParsedMessage,
 } from "@/lib/supportMailGmail";
 import { ensureSupportInboxBoard } from "@/lib/supportMailInbox";
@@ -18,6 +21,13 @@ import {
   shouldSkipSender,
 } from "@/lib/supportMailMatch";
 import { markSupportAwaitingStaff } from "@/lib/supportAwaitingStaff";
+import {
+  assignSupportCaseRef,
+  buildSupportCaseAckBody,
+  clearSupportAckSent,
+  markSupportAckSent,
+  withSupportCaseRefInSubject,
+} from "@/lib/supportCaseRef";
 import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
 import {
   insertWorkIssue,
@@ -179,6 +189,75 @@ async function resolveTargetBoard(input: {
   };
 }
 
+async function sendNewCaseAck(input: {
+  issueId: string;
+  message: GmailParsedMessage;
+  mappedCustomerId: string | null;
+  supportCaseRef: string;
+  actorAppUserId: string;
+  boardId: string;
+}): Promise<void> {
+  if (input.message.suppressAutoReply) return;
+  if (shouldSkipSender(input.message.fromEmail)) return;
+
+  const claimed = await markSupportAckSent(input.issueId);
+  if (!claimed) return;
+
+  try {
+    const headers = await getGmailMessageHeaders(input.message.id);
+    const subject = withSupportCaseRefInSubject(
+      input.message.subject || headers.subject || "(no subject)",
+      input.supportCaseRef
+    );
+    const bodyText = buildSupportCaseAckBody(input.supportCaseRef);
+
+    const sent = await sendGmailThreadReply({
+      threadId: input.message.threadId,
+      toEmail: input.message.fromEmail,
+      subject,
+      bodyText,
+      inReplyToMessageId: headers.messageIdHeader,
+      references: headers.references,
+      autoSubmitted: "auto-replied",
+    });
+
+    const replySubject = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+    const commentBody = [
+      `Email reply to ${input.message.fromEmail}`,
+      `Subject: ${replySubject}`,
+      `From: ${supportMailboxAddress()}`,
+      "",
+      bodyText,
+    ].join("\n");
+
+    await insertWorkIssueComment({
+      boardId: input.boardId,
+      issueId: input.issueId,
+      authorAppUserId: input.actorAppUserId,
+      body: commentBody.slice(0, 20_000),
+    });
+
+    await cloudSqlPool.query(
+      `INSERT INTO support_mail_messages (
+         gmail_message_id, gmail_thread_id, from_email, subject, received_at,
+         customer_id, match_kind, work_issue_id
+       ) VALUES ($1, $2, $3, $4, now(), $5, 'outbound', $6)
+       ON CONFLICT (gmail_message_id) DO NOTHING`,
+      [
+        sent.id,
+        sent.threadId,
+        supportMailboxAddress(),
+        subject.slice(0, 500),
+        input.mappedCustomerId,
+        input.issueId,
+      ]
+    );
+  } catch (err) {
+    await clearSupportAckSent(input.issueId);
+    throw err;
+  }
+}
+
 async function createCaseFromMessage(input: {
   actorAppUserId: string;
   message: GmailParsedMessage;
@@ -203,6 +282,8 @@ async function createCaseFromMessage(input: {
     ownerAppUserId: null,
   });
 
+  const supportCaseRef = await assignSupportCaseRef(issueId);
+
   await insertWorkIssueReference({
     boardId: input.boardId,
     issueId,
@@ -218,11 +299,27 @@ async function createCaseFromMessage(input: {
     workIssueId: issueId,
   });
 
+  try {
+    await sendNewCaseAck({
+      issueId,
+      message: input.message,
+      mappedCustomerId: input.mappedCustomerId,
+      supportCaseRef,
+      actorAppUserId: input.actorAppUserId,
+      boardId: input.boardId,
+    });
+  } catch (err) {
+    console.error(
+      `[supportMailSync] ack failed for ${supportCaseRef}:`,
+      err instanceof Error ? err.message : err
+    );
+  }
+
   await notifySupportCaseCreated({
     customerId: input.customerId,
     customerName: input.customerName,
     issueId,
-    title,
+    title: `${supportCaseRef}: ${title}`,
     createdByName: `Mail (${input.message.fromEmail})`,
   });
 

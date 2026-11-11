@@ -31,7 +31,11 @@ function roleNameFromWeekCells(
 }
 
 export type ProbabilityDisplay = "weighted" | "none";
-export type ProjectVisibility = "all" | "hideNon100" | "hide100";
+export type ProjectVisibility =
+  | "all"
+  | "hideNon100"
+  | "hide100"
+  | "availability";
 
 export function getProjectProbabilityMap(
   projects: AllocationPageData["projects"]
@@ -48,8 +52,12 @@ export function getDisplayHours(
   projectId: string,
   display: ProbabilityDisplay,
   visibility: ProjectVisibility,
-  probMap: Map<string, number>
+  probMap: Map<string, number>,
+  projectType?: "customer" | "internal" | "absence" | null
 ): { displayHours: number; isHidden: boolean } {
+  if (visibility === "availability" && projectType !== "absence") {
+    return { displayHours: 0, isHidden: true };
+  }
   const prob = probMap.get(projectId) ?? 100;
   if (visibility === "hideNon100" && prob !== 100)
     return { displayHours: 0, isHidden: true };
@@ -58,6 +66,16 @@ export function getDisplayHours(
   if (display === "weighted")
     return { displayHours: Math.round(hours * (prob / 100)), isHidden: false };
   return { displayHours: hours, isHidden: false };
+}
+
+/** Reduced capacity vs full-week baseline (public holidays). */
+export function shortWeekDaysOff(
+  availableHours: number,
+  baselineHours: number
+): number {
+  const missing = baselineHours - availableHours;
+  if (missing < 4) return 0;
+  return Math.max(1, Math.round(missing / 8));
 }
 
 function formatProjectNameWithProbability(
@@ -110,6 +128,7 @@ export function buildPerConsultantView(
         customerName: p.customerName,
         customerColor: p.customerColor,
         customer_id: p.customer_id,
+        type: p.type ?? "customer",
       },
     ])
   );
@@ -167,6 +186,12 @@ export function buildPerConsultantView(
       for (const [projectRowKey, byWeek] of projectsMap) {
         const projectId = projectRowKey.split("\0")[0] ?? projectRowKey;
         const proj = projectMap.get(projectId);
+        if (
+          projectVisibility === "availability" &&
+          proj?.type !== "absence"
+        ) {
+          continue;
+        }
         const weeks = data.weeks.map((w) => {
           const raw = byWeek.get(weekKey(w.year, w.week)) ?? null;
           if (!raw) return { week: w.week, cell: null };
@@ -175,7 +200,8 @@ export function buildPerConsultantView(
             projectId,
             probabilityDisplay,
             projectVisibility,
-            projectProbabilityMap
+            projectProbabilityMap,
+            proj?.type
           );
           return {
             week: w.week,
@@ -212,7 +238,7 @@ export function buildPerConsultantView(
         });
       }
       const rowsWithAllocations = rows.filter((pr) =>
-        pr.weeks.some((w) => w.cell != null && w.cell.hours > 0)
+        pr.weeks.some((w) => w.cell != null && w.cell.hours > 0 && !w.cell.isHidden)
       );
       rowsWithAllocations.sort((a, b) => compareTextSv(a.projectName, b.projectName));
       projectRows.push(...rowsWithAllocations);
@@ -292,7 +318,12 @@ export function buildPerCustomerView(
   const projectMap = new Map(
     data.projects.map((p) => [
       p.id,
-      { customer_id: p.customer_id, customerName: p.customerName, name: p.name },
+      {
+        customer_id: p.customer_id,
+        customerName: p.customerName,
+        name: p.name,
+        type: p.type ?? "customer",
+      },
     ])
   );
 
@@ -420,7 +451,8 @@ export function buildPerCustomerView(
                 x.projectId,
                 probabilityDisplay,
                 projectVisibility,
-                projectProbabilityMap
+                projectProbabilityMap,
+                projectMap.get(x.projectId)?.type
               );
               return {
                 ...x,
@@ -507,7 +539,12 @@ export function buildPerProjectView(
   const projectMap = new Map(
     data.projects.map((p) => [
       p.id,
-      { customer_id: p.customer_id, customerName: p.customerName, name: p.name },
+      {
+        customer_id: p.customer_id,
+        customerName: p.customerName,
+        name: p.name,
+        type: p.type ?? "customer",
+      },
     ])
   );
   const ROW_KEY_SEP = "|";
@@ -610,7 +647,8 @@ export function buildPerProjectView(
               x.projectId,
               probabilityDisplay,
               projectVisibility,
-              projectProbabilityMap
+              projectProbabilityMap,
+              projectMap.get(x.projectId)?.type
             );
             return {
               ...x,

@@ -37,6 +37,15 @@ describe("buildAllocationSearch", () => {
       "foo=bar&year=2026&from=1&to=10&team=t1&role=r1&prob=none&projects=hide100&unbooked=1"
     );
   });
+
+  it("includes availability view", () => {
+    expect(
+      buildAllocationSearch(
+        { year: 2026, from: 1, to: 10 },
+        { projects: "availability" }
+      )
+    ).toBe("year=2026&from=1&to=10&projects=availability");
+  });
 });
 
 describe("readAllocationFilters", () => {
@@ -50,6 +59,18 @@ describe("readAllocationFilters", () => {
       prob: "none",
       projects: "hideNon100",
       unbooked: true,
+    });
+  });
+
+  it("reads availability view", () => {
+    expect(
+      readAllocationFilters(new URLSearchParams("projects=availability"))
+    ).toEqual({
+      team: null,
+      role: null,
+      prob: "weighted",
+      projects: "availability",
+      unbooked: false,
     });
   });
 });

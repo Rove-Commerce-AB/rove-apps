@@ -22,6 +22,8 @@ export type GmailParsedMessage = {
   bodyText: string;
   receivedAt: Date | null;
   permalink: string;
+  /** True when Auto-Submitted / list-mail headers say not to auto-reply. */
+  suppressAutoReply: boolean;
 };
 
 type SaKey = {
@@ -211,7 +213,30 @@ export async function getGmailMessage(
     bodyText: extractBodyText(data.payload, snippet),
     receivedAt,
     permalink: `https://mail.google.com/mail/u/0/#inbox/${data.threadId}`,
+    suppressAutoReply: shouldSuppressAutoReply(headers),
   };
+}
+
+/** RFC 3834 / list-mail: do not send vacation-style auto replies. */
+function shouldSuppressAutoReply(
+  headers: { name?: string; value?: string }[] | undefined
+): boolean {
+  const autoSubmitted = headerValue(headers, "Auto-Submitted").toLowerCase();
+  if (autoSubmitted && autoSubmitted !== "no") return true;
+
+  const precedence = headerValue(headers, "Precedence").toLowerCase();
+  if (
+    precedence === "bulk" ||
+    precedence === "list" ||
+    precedence === "junk"
+  ) {
+    return true;
+  }
+
+  const listId = headerValue(headers, "List-Id");
+  if (listId.trim()) return true;
+
+  return false;
 }
 
 async function listLabels(): Promise<{ id: string; name: string }[]> {
@@ -308,6 +333,8 @@ export async function sendGmailThreadReply(input: {
   bodyText: string;
   inReplyToMessageId?: string | null;
   references?: string | null;
+  /** Set on automatic acknowledgements (RFC 3834). */
+  autoSubmitted?: "auto-replied" | "auto-generated" | null;
 }): Promise<{ id: string; threadId: string }> {
   const from = impersonateEmail();
   const to = input.toEmail.trim().toLowerCase();
@@ -326,6 +353,10 @@ export async function sendGmailThreadReply(input: {
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: 8bit",
   ];
+  if (input.autoSubmitted) {
+    headers.push(`Auto-Submitted: ${input.autoSubmitted}`);
+    headers.push("X-Auto-Response-Suppress: All");
+  }
   if (input.inReplyToMessageId) {
     headers.push(`In-Reply-To: ${input.inReplyToMessageId}`);
     const refs = [input.references, input.inReplyToMessageId]

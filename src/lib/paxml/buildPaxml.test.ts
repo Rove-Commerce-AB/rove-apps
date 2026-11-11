@@ -22,6 +22,7 @@ describe("buildPaxmlDocument", () => {
     );
 
     expect(xml).toContain("<format>LÖNIN</format>");
+    expect(xml).toContain("<version>2.3</version>");
     expect(xml).toContain('<tidtrans anstid="101">');
     expect(xml).toContain("<tidkod>SEM</tidkod>");
     expect(xml).toContain("<datum>2026-07-01</datum>");

@@ -267,10 +267,13 @@ export function SupportCaseDrawer({
     <SideDrawer
       open={open}
       onOpenChange={onOpenChange}
-      title={detail?.key ?? "Incident"}
+      title={detail?.supportCaseRef ?? detail?.key ?? "Incident"}
       subtitle={
         detail ? (
           <span className="flex flex-wrap items-center gap-2">
+            {detail.supportCaseRef ? (
+              <span className="text-xs text-text-tertiary">{detail.key}</span>
+            ) : null}
             <span
               className={`rounded-full px-2 py-0.5 text-xs ${
                 detail.isDone
@@ -416,6 +419,24 @@ export function SupportCaseDrawer({
                         No description.
                       </p>
                     )}
+                  </div>
+
+                  <div className="space-y-2 rounded-lg border border-border-subtle bg-bg-muted/30 px-3 py-2.5">
+                    <p className="text-xs font-medium text-text-secondary">
+                      Case refs
+                    </p>
+                    <dl className="space-y-1.5 text-sm">
+                      <div>
+                        <dt className="text-xs text-text-tertiary">Support</dt>
+                        <dd className="text-text-primary">
+                          {detail.supportCaseRef ?? "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-text-tertiary">Work key</dt>
+                        <dd className="text-text-primary">{detail.key}</dd>
+                      </div>
+                    </dl>
                   </div>
 
                   {detail.mailThread ? (
@@ -566,7 +587,7 @@ export function SupportCaseDrawer({
 
           <ConfirmModal
             isOpen={confirmDelete && detail.canDelete}
-            title={`Delete ${detail.key}?`}
+            title={`Delete ${detail.supportCaseRef ?? detail.key}?`}
             message="This permanently deletes the case and its conversation. Cases with logged time cannot be deleted."
             confirmLabel={pending ? "Deleting…" : "Delete"}
             variant="danger"
