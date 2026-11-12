@@ -1,4 +1,4 @@
-/** PAXml tidkoder used for absence export (subset of recommended 2.3 codes). */
+/** PAXml tidkoder used for absence export (subset of PAXml 2.0 codes). */
 export const ABSENCE_CODE_OPTIONS = [
   { value: "SEM", label: "Vacation (SEM)" },
   { value: "SEM_OBE", label: "Unpaid vacation (SEM_OBE)" },

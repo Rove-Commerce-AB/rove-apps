@@ -6,6 +6,7 @@ import {
   buildPayrollPaxmlAction,
   getPayrollExportPreviewAction,
 } from "@/lib/paxml/payrollExportActions";
+import { encodeIso88591 } from "@/lib/paxml/buildPaxml";
 import type {
   PayrollAbsenceRow,
   PayrollExportPreview,
@@ -32,7 +33,10 @@ function previousMonthRange(today = new Date()): { from: string; to: string } {
 }
 
 function downloadTextFile(fileName: string, contents: string) {
-  const blob = new Blob([contents], { type: "application/xml;charset=ISO-8859-1" });
+  // Must be real ISO-8859-1 bytes — `new Blob([string])` would write UTF-8.
+  const blob = new Blob([encodeIso88591(contents)], {
+    type: "application/xml;charset=ISO-8859-1",
+  });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

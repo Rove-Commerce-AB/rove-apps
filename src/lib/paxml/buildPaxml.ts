@@ -19,8 +19,26 @@ function formatHours(hours: number): string {
   return String(Math.round(hours * 100) / 100);
 }
 
-/** Current PAXml schema version required by paxml.se / Fortnox Lön import. */
-export const PAXML_VERSION = "2.3" as const;
+/**
+ * Fortnox Lön validates against PAXml 2.0 (enumeration in
+ * http://www.paxml.se/2.0/paxml.xsd). paxml.se may accept 2.3, but Fortnox rejects it.
+ */
+export const PAXML_VERSION = "2.0" as const;
+
+/** Encode a Latin-1 string as ISO-8859-1 bytes (Blob defaults to UTF-8). */
+export function encodeIso88591(text: string): Uint8Array {
+  const out = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code > 0xff) {
+      throw new Error(
+        `Character at index ${i} (U+${code.toString(16).toUpperCase()}) is outside ISO-8859-1`
+      );
+    }
+    out[i] = code;
+  }
+  return out;
+}
 
 /** Build a PAXml document with tidtransaktioner for Fortnox calendar import. */
 export function buildPaxmlDocument(
