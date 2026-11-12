@@ -26,8 +26,8 @@ function formatHours(hours: number): string {
 export const PAXML_VERSION = "2.0" as const;
 
 /** Encode a Latin-1 string as ISO-8859-1 bytes (Blob defaults to UTF-8). */
-export function encodeIso88591(text: string): Uint8Array {
-  const out = new Uint8Array(text.length);
+export function encodeIso88591(text: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(new ArrayBuffer(text.length));
   for (let i = 0; i < text.length; i += 1) {
     const code = text.charCodeAt(i);
     if (code > 0xff) {
