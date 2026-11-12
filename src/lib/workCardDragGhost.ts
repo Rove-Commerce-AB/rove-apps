@@ -66,9 +66,18 @@ export function startWorkCardDragGhost(
   const offsetX = event.clientX - rect.left;
   const offsetY = event.clientY - rect.top;
 
-  const blank = document.createElement("canvas");
+  // Chrome ignores setDragImage unless the node is in the document. An
+  // off-DOM canvas leaves the native semi-transparent preview visible,
+  // which stacks on our custom ghost and looks like a blurred duplicate.
+  const blank = document.createElement("img");
+  blank.alt = "";
   blank.width = 1;
   blank.height = 1;
+  blank.src =
+    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  blank.style.cssText =
+    "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;";
+  document.body.appendChild(blank);
   event.dataTransfer.setDragImage(blank, 0, 0);
 
   const wrap = document.createElement("div");
@@ -91,6 +100,9 @@ export function startWorkCardDragGhost(
   ghost.style.boxShadow = "var(--shadow-lg, 0 12px 28px rgba(0,0,0,0.18))";
   wrap.appendChild(ghost);
   document.body.appendChild(wrap);
+
+  // Hide the source immediately so it can't stack under the floating clone.
+  source.style.opacity = "0";
 
   function place(clientX: number, clientY: number) {
     wrap.style.transition = "none";
@@ -116,9 +128,14 @@ export function startWorkCardDragGhost(
     document.removeEventListener("dragover", onDragOver);
   }
 
+  function cleanupBlank() {
+    if (blank.isConnected) blank.remove();
+  }
+
   function remove() {
     disposed = true;
     cleanupListeners();
+    cleanupBlank();
     if (wrap.isConnected) wrap.remove();
   }
 
@@ -126,6 +143,7 @@ export function startWorkCardDragGhost(
     if (disposed) return;
     disposed = true;
     cleanupListeners();
+    cleanupBlank();
     ghost.style.transition = `transform ${durationMs}ms ${ease}`;
     ghost.style.transform = "rotate(0deg) scale(1)";
     await waitTransition(ghost, "transform", durationMs + 80);
@@ -140,6 +158,7 @@ export function startWorkCardDragGhost(
     if (disposed) return;
     disposed = true;
     cleanupListeners();
+    cleanupBlank();
 
     if (typeof target.width === "number" && target.width > 0) {
       ghost.style.width = `${target.width}px`;

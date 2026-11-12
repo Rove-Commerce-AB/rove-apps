@@ -298,6 +298,13 @@ export function WorkBoardPageClient({
     beforeIssueId: string | null;
   } | null>(null);
   const [landingIssueId, setLandingIssueId] = useState<string | null>(null);
+  const [cardError, setCardError] = useState<{
+    issueId: string;
+    message: string;
+    open: boolean;
+  } | null>(null);
+  const cardErrorTimerRef = useRef<number | null>(null);
+  const cardErrorExitTimerRef = useRef<number | null>(null);
   const dragIssueIdRef = useRef<string | null>(null);
   const dragGhostRef = useRef<WorkCardDragGhost | null>(null);
   const dragSourceRef = useRef<HTMLElement | null>(null);
@@ -525,6 +532,17 @@ export function WorkBoardPageClient({
   useEffect(() => {
     setProcess(board.process);
   }, [board.process]);
+
+  useEffect(() => {
+    return () => {
+      if (cardErrorTimerRef.current != null) {
+        window.clearTimeout(cardErrorTimerRef.current);
+      }
+      if (cardErrorExitTimerRef.current != null) {
+        window.clearTimeout(cardErrorExitTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setComponents(board.components);
@@ -808,11 +826,87 @@ export function WorkBoardPageClient({
     return fromDone && !toDone;
   }
 
+  function blockedEnterDoneWithoutApprove(
+    issueId: string,
+    nextStatus: WorkIssueStatus
+  ): boolean {
+    if (
+      !workScopeApprovalEnabled({
+        estimateUnit,
+        fixedPriceEnabled,
+      })
+    ) {
+      return false;
+    }
+    const issue = issuesRef.current.find((row) => row.id === issueId);
+    if (!issue || issue.status === nextStatus || issue.scopeApproved) {
+      return false;
+    }
+    const fromDone =
+      statuses.find((column) => column.id === issue.status)?.isDone ?? false;
+    const toDone =
+      statuses.find((column) => column.id === nextStatus)?.isDone ?? false;
+    return !fromDone && toDone;
+  }
+
+  function clearCardErrorTimers() {
+    if (cardErrorTimerRef.current != null) {
+      window.clearTimeout(cardErrorTimerRef.current);
+      cardErrorTimerRef.current = null;
+    }
+    if (cardErrorExitTimerRef.current != null) {
+      window.clearTimeout(cardErrorExitTimerRef.current);
+      cardErrorExitTimerRef.current = null;
+    }
+  }
+
+  function dismissCardError(issueId?: string) {
+    clearCardErrorTimers();
+    setCardError((current) => {
+      if (!current) return null;
+      if (issueId != null && current.issueId !== issueId) return current;
+      return { ...current, open: false };
+    });
+    cardErrorExitTimerRef.current = window.setTimeout(() => {
+      setCardError((current) => {
+        if (!current || current.open) return current;
+        if (issueId != null && current.issueId !== issueId) return current;
+        return null;
+      });
+      cardErrorExitTimerRef.current = null;
+    }, 220);
+  }
+
+  function showCardError(issueId: string, message: string) {
+    clearCardErrorTimers();
+    setCardError({ issueId, message, open: false });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setCardError((current) =>
+          current?.issueId === issueId
+            ? { ...current, message, open: true }
+            : current
+        );
+      });
+    });
+    cardErrorTimerRef.current = window.setTimeout(() => {
+      cardErrorTimerRef.current = null;
+      dismissCardError(issueId);
+    }, 5000);
+  }
+
   function requestMoveIssue(
     issueId: string,
     status: WorkIssueStatus,
     beforeIssueId: string | null
   ) {
+    if (blockedEnterDoneWithoutApprove(issueId, status)) {
+      showCardError(
+        issueId,
+        "Approve the scope before moving to Done."
+      );
+      return;
+    }
     if (leavesFixedPriceDone(issueId, status)) {
       setLeaveDoneConfirm({ issueId, status, beforeIssueId });
       return;
@@ -1219,6 +1313,38 @@ export function WorkBoardPageClient({
     return list instanceof HTMLElement ? list : null;
   }
 
+  /**
+   * Fly ghost onto an element, reveal the real card underneath, then drop the
+   * clone — avoids a blank flash between ghost and card.
+   */
+  async function settleDragGhost(
+    ghost: WorkCardDragGhost | null,
+    source: HTMLElement | null,
+    landOn: HTMLElement | null
+  ) {
+    try {
+      if (ghost && landOn?.isConnected) {
+        const rect = landOn.getBoundingClientRect();
+        await ghost.landAt({
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+        });
+        if (source) source.style.opacity = "";
+        await waitForPaint(2);
+        ghost.remove();
+      } else if (ghost) {
+        await ghost.dispose();
+        if (source) source.style.opacity = "";
+      } else if (source) {
+        source.style.opacity = "";
+      }
+    } catch {
+      ghost?.remove();
+      if (source) source.style.opacity = "";
+    }
+  }
+
   function finishDrag() {
     const target = dropTargetRef.current;
     const source = dragSourceRef.current;
@@ -1235,25 +1361,21 @@ export function WorkBoardPageClient({
 
     void (async () => {
       if (target && issueId) {
+        if (blockedEnterDoneWithoutApprove(issueId, target.status)) {
+          await settleDragGhost(ghost, source, source);
+          showCardError(
+            issueId,
+            "Approve the scope before moving to Done."
+          );
+          return;
+        }
+
         const needsLeaveDoneConfirm = leavesFixedPriceDone(
           issueId,
           target.status
         );
         if (needsLeaveDoneConfirm) {
-          if (ghost && source?.isConnected) {
-            const rect = source.getBoundingClientRect();
-            await ghost.landAt({
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-            });
-            source.style.opacity = "";
-            await waitForPaint(2);
-            ghost.remove();
-          } else {
-            if (ghost) await ghost.dispose();
-            if (source) source.style.opacity = "";
-          }
+          await settleDragGhost(ghost, source, source);
           setLeaveDoneConfirm({
             issueId,
             status: target.status,
@@ -1268,44 +1390,36 @@ export function WorkBoardPageClient({
         const landed = document.querySelector<HTMLElement>(
           `[data-issue-id="${CSS.escape(issueId)}"] [data-issue-card]`
         );
-        if (ghost && landed) {
-          const rect = landed.getBoundingClientRect();
-          await ghost.landAt({
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-          });
-          // Reveal the real card under the settled ghost, then drop the ghost.
-          setLandingIssueId(null);
-          if (source) source.style.opacity = "";
-          await waitForPaint(2);
-          ghost.remove();
-        } else if (ghost) {
-          await ghost.dispose();
-          setLandingIssueId(null);
-          if (source) source.style.opacity = "";
-        } else {
+        try {
+          if (ghost && landed) {
+            const rect = landed.getBoundingClientRect();
+            await ghost.landAt({
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+            });
+            // Reveal under the settled ghost, paint, then drop the clone.
+            setLandingIssueId(null);
+            if (source) source.style.opacity = "";
+            await waitForPaint(2);
+            ghost.remove();
+          } else if (ghost) {
+            await ghost.dispose();
+            setLandingIssueId(null);
+            if (source) source.style.opacity = "";
+          } else {
+            setLandingIssueId(null);
+            if (source) source.style.opacity = "";
+          }
+        } catch {
+          ghost?.remove();
           setLandingIssueId(null);
           if (source) source.style.opacity = "";
         }
         return;
       }
 
-      if (ghost && source?.isConnected) {
-        const rect = source.getBoundingClientRect();
-        await ghost.landAt({
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-        });
-        source.style.opacity = "";
-        await waitForPaint(2);
-        ghost.remove();
-        return;
-      }
-
-      if (ghost) await ghost.dispose();
-      if (source) source.style.opacity = "";
+      await settleDragGhost(ghost, source, source);
     })();
   }
 
@@ -1995,6 +2109,7 @@ export function WorkBoardPageClient({
                       onDragStart={(event) => {
                         event.dataTransfer.setData("text/plain", issue.id);
                         event.dataTransfer.effectAllowed = "move";
+                        dismissCardError(issue.id);
                         dragGhostRef.current?.remove();
                         dragGhostRef.current = startWorkCardDragGhost(event, {
                           rotateDeg: 3,
@@ -2273,6 +2388,24 @@ export function WorkBoardPageClient({
                         />
                       ) : null}
                     </article>
+                    {cardError?.issueId === issue.id ? (
+                      <div
+                        className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-out ${
+                          cardError.open
+                            ? "mt-1.5 grid-rows-[1fr] opacity-100"
+                            : "mt-0 grid-rows-[0fr] opacity-0"
+                        }`}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <p
+                            role="alert"
+                            className="rounded-md border border-danger/35 bg-bg-default px-2 py-1.5 text-[12px] leading-snug text-danger shadow-sm"
+                          >
+                            {cardError.message}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
                     </div>
                   </li>
                   );

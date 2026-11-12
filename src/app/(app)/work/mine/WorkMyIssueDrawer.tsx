@@ -105,6 +105,16 @@ export function WorkMyIssueDrawer({ selection, onOpenChange }: Props) {
     if (
       board.estimateUnit === "tshirt" &&
       board.fixedPriceEnabled &&
+      toDone &&
+      !fromDone &&
+      !issue.scopeApproved
+    ) {
+      setError("Approve the scope before moving to Done.");
+      return;
+    }
+    if (
+      board.estimateUnit === "tshirt" &&
+      board.fixedPriceEnabled &&
       fromDone &&
       !toDone
     ) {

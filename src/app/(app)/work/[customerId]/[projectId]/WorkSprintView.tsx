@@ -201,26 +201,32 @@ export function WorkSprintView({
     const issueId = dropIssueIdRef.current;
     dropIssueIdRef.current = null;
     if (!ghost) return;
-    if (issueId) {
-      await waitForPaint(2);
-      const landed = document.querySelector<HTMLElement>(
-        `[data-sprint-issue-id="${CSS.escape(issueId)}"]`
-      );
-      if (landed) {
-        landed.style.opacity = "0";
-        const rect = landed.getBoundingClientRect();
-        await ghost.landAt({
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-        });
-        landed.style.opacity = "";
+    let landed: HTMLElement | null = null;
+    try {
+      if (issueId) {
         await waitForPaint(2);
-        ghost.remove();
-        return;
+        landed = document.querySelector<HTMLElement>(
+          `[data-sprint-issue-id="${CSS.escape(issueId)}"]`
+        );
+        if (landed) {
+          landed.style.opacity = "0";
+          const rect = landed.getBoundingClientRect();
+          await ghost.landAt({
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+          });
+          landed.style.opacity = "";
+          await waitForPaint(2);
+          ghost.remove();
+          return;
+        }
       }
+      await ghost.dispose();
+    } catch {
+      ghost.remove();
+      if (landed) landed.style.opacity = "";
     }
-    await ghost.dispose();
   }
 
   const orderedSprints = useMemo(() => sortSprints(sprints), [sprints]);

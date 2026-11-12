@@ -116,6 +116,31 @@ async function assertIssueScopeUnlocked(boardId: string, issueId: string) {
   }
 }
 
+/** Fixed-price t-shirt: Done requires an approved scope (size + locked scope). */
+async function assertCanEnterFixedPriceDone(
+  board: { estimate_unit: string | null; fixed_price_enabled?: boolean },
+  boardId: string,
+  issueId: string,
+  targetIsDone: boolean
+) {
+  if (!targetIsDone) return;
+  if (
+    parseWorkEstimateUnit(board.estimate_unit) !== "tshirt" ||
+    board.fixed_price_enabled !== true
+  ) {
+    return;
+  }
+  const state = await fetchWorkIssueScopeLockState(boardId, issueId);
+  if (!state) throw new WorkInputError("Issue not found in this project.");
+  // Already in Done (e.g. reorder / Done→Done): keep allowing.
+  if (state.statusIsDone) return;
+  if (!state.scopeApproved) {
+    throw new WorkInputError(
+      "Approve the scope before moving to Done."
+    );
+  }
+}
+
 async function logEvent(
   issueId: string,
   actorAppUserId: string,
@@ -137,7 +162,10 @@ export async function createWorkIssue(input: WorkIssueDetailsInput & {
   /** When set, issue is placed in that sprint (current/next only). */
   sprintId?: string | null;
 }, authenticatedActor?: WorkActor): Promise<string> {
-  const { actor } = await requireBoardAccess(input.boardId, authenticatedActor);
+  const { actor, board } = await requireBoardAccess(
+    input.boardId,
+    authenticatedActor
+  );
   const details = normalizeWorkIssueDetails(input);
   const title = details.title;
 
@@ -145,7 +173,17 @@ export async function createWorkIssue(input: WorkIssueDetailsInput & {
 
   let status = input.status;
   if (status) {
-    await assertBoardStatus(input.boardId, status);
+    const statuses = await assertBoardStatus(input.boardId, status);
+    const target = statuses.find((row) => row.id === status);
+    if (
+      target?.isDone &&
+      parseWorkEstimateUnit(board.estimate_unit) === "tshirt" &&
+      board.fixed_price_enabled === true
+    ) {
+      throw new WorkInputError(
+        "Can't add issues directly to Done on fixed-price projects. Set size, approve, then move to Done."
+      );
+    }
   } else {
     const statuses = await fetchWorkBoardStatuses(input.boardId);
     status = statuses[0]?.id;
@@ -945,7 +983,7 @@ export async function setWorkIssueStatus(
   sortOrder?: number,
   authenticatedActor?: WorkActor
 ): Promise<number> {
-  const { actor } = await requireBoardAccess(boardId, authenticatedActor);
+  const { actor, board } = await requireBoardAccess(boardId, authenticatedActor);
 
   if (sortOrder !== undefined && (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 2147483646)) {
     throw new WorkInputError("Sort order must be a non-negative integer below 2147483647.");
@@ -953,6 +991,7 @@ export async function setWorkIssueStatus(
 
   const statuses = await assertBoardStatus(boardId, status);
   const target = statuses.find((row) => row.id === status)!;
+  await assertCanEnterFixedPriceDone(board, boardId, issueId, target.isDone);
   const nextOrder = await moveWorkIssue({
     boardId,
     issueId,
