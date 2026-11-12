@@ -28,6 +28,7 @@ import {
   editInputClass,
 } from "@/components/ui";
 import { CustomerRatesTab } from "./CustomerRatesTab";
+import { SizePricesSection } from "./SizePricesSection";
 import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerWithDetails } from "@/types";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
@@ -745,6 +746,15 @@ export function CustomerDetailClient({
                     onAdd: () => setAddRateModalOpen(true),
                   }}
                 />
+                <div className="mt-6 border-t border-border-subtle pt-4">
+                  <SizePricesSection
+                    scope="customer"
+                    ownerId={initialCustomer.id}
+                    billingCurrency={initialCustomer.billingCurrency}
+                    onError={setRatesError}
+                    refreshTrigger={ratesRefreshKey}
+                  />
+                </div>
               </div>
             </Panel>
           </div>

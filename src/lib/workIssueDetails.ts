@@ -23,6 +23,7 @@ import {
   fetchWorkIssueStatus,
 } from "@/lib/workIssuesQueries";
 import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
+import { parseWorkTshirtSize } from "@/lib/workEstimate";
 import type { WorkIssueCommentsInput, WorkIssueCommentsPage, WorkIssueDetails, WorkIssueLookup } from "@/lib/workTypes";
 
 export async function getWorkIssue(actor: WorkActor, input: WorkIssueLookup): Promise<{ issue: WorkIssueDetails }> {
@@ -140,6 +141,10 @@ export async function getWorkIssue(actor: WorkActor, input: WorkIssueLookup): Pr
         showEstimates && row.estimate_hours !== null
           ? Number(row.estimate_hours)
           : null,
+      estimateSize: showEstimates
+        ? parseWorkTshirtSize(row.estimate_size)
+        : null,
+      scopeApproved: row.scope_approved_at != null,
       loggedHours: showReportedTime ? hours.get(row.id) ?? 0 : 0,
       sprintId: row.sprint_id,
       startDate: pgDateToDateOnlyOrNull(row.start_date),

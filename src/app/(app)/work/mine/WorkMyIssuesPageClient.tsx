@@ -345,6 +345,7 @@ export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
                       showReportedTime: issue.showReportedTime,
                       estimateUnit: issue.estimateUnit,
                       currency: issue.billingCurrency,
+                      estimateSize: issue.estimateSize,
                     }
                   );
                   const selected =

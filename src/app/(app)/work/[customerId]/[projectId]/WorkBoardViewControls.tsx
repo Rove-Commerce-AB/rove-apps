@@ -19,8 +19,12 @@ import {
 import type { BillingCurrency } from "@/lib/currency";
 import {
   formatVisibleWorkEstimate,
+  formatWorkMoneyAmount,
+  sumFixedSizePrices,
   type WorkEstimateUnit,
+  type WorkSizePriceMap,
 } from "@/lib/workEstimate";
+import { formatWorkHours } from "@/lib/workTime";
 import type {
   WorkIssueType,
   WorkLabel,
@@ -250,6 +254,9 @@ export function WorkColumnGroupHeader({
   showReportedTime = true,
   estimateUnit = "hours",
   billingCurrency = "SEK",
+  fixedPriceEnabled = false,
+  sizePrices = {},
+  estimateSumApprovedOnly = false,
   className = "",
   actions,
 }: {
@@ -259,11 +266,19 @@ export function WorkColumnGroupHeader({
   showReportedTime?: boolean;
   estimateUnit?: WorkEstimateUnit;
   billingCurrency?: BillingCurrency;
+  fixedPriceEnabled?: boolean;
+  sizePrices?: WorkSizePriceMap;
+  /** When true (fixed-price boards), estimate/money sums only include approved issues. */
+  estimateSumApprovedOnly?: boolean;
   className?: string;
   actions?: ReactNode;
 }) {
   if (groupBy === "none") return null;
-  const estimateSum = group.issues.reduce(
+  const estimateIssues =
+    estimateSumApprovedOnly && fixedPriceEnabled
+      ? group.issues.filter((issue) => issue.scopeApproved)
+      : group.issues;
+  const estimateSum = estimateIssues.reduce(
     (sum, issue) => sum + (issue.estimateHours ?? 0),
     0
   );
@@ -271,19 +286,43 @@ export function WorkColumnGroupHeader({
     (sum, issue) => sum + issue.loggedHours,
     0
   );
-  const hasEstimate = group.issues.some(
-    (issue) => issue.estimateHours != null
+  const hasEstimate = estimateIssues.some(
+    (issue) =>
+      issue.estimateHours != null || issue.estimateSize != null
   );
-  const timeLabel = formatVisibleWorkEstimate(
-    loggedSum,
-    hasEstimate ? estimateSum : null,
-    {
-      showEstimates,
-      showReportedTime,
-      estimateUnit,
-      currency: billingCurrency,
+  const fixedSum =
+    estimateUnit === "tshirt" && fixedPriceEnabled
+      ? sumFixedSizePrices(
+          estimateIssues.map((issue) => issue.estimateSize),
+          sizePrices
+        )
+      : null;
+  let timeLabel: string | null = null;
+  if (estimateUnit === "tshirt") {
+    const parts: string[] = [];
+    if (showReportedTime) parts.push(formatWorkHours(loggedSum));
+    if (showEstimates) {
+      if (fixedSum != null) {
+        parts.push(formatWorkMoneyAmount(fixedSum, billingCurrency));
+      } else if (hasEstimate) {
+        parts.push(
+          `${estimateIssues.filter((issue) => issue.estimateSize != null).length} sized`
+        );
+      }
     }
-  );
+    timeLabel = parts.length > 0 ? parts.join(" · ") : null;
+  } else {
+    timeLabel = formatVisibleWorkEstimate(
+      loggedSum,
+      hasEstimate ? estimateSum : null,
+      {
+        showEstimates,
+        showReportedTime,
+        estimateUnit,
+        currency: billingCurrency,
+      }
+    );
+  }
   return (
     <div className={`flex min-w-0 items-center gap-1.5 px-0.5 ${className}`.trim()}>
       {groupBy === "owner" ? (

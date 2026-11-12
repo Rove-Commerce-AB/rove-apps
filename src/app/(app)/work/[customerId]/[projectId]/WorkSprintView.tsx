@@ -21,6 +21,8 @@ import {
   setWorkIssueSprintAction,
   startWorkSprintAction,
   updateWorkIssueEstimateAction,
+  updateWorkIssueEstimateSizeAction,
+  setWorkIssueScopeApprovedAction,
   updateWorkIssueOwnerAction,
   updateWorkIssueTypeAction,
   updateWorkSprintAction,
@@ -46,7 +48,13 @@ import {
   clampWorkSprintTitle,
   workSprintLabel,
 } from "@/lib/workSprintLabel";
-import { formatWorkEstimate } from "@/lib/workEstimate";
+import {
+  formatWorkEstimate,
+  formatWorkMoneyAmount,
+  sumFixedSizePrices,
+  workScopeApprovalEnabled,
+  type WorkTshirtSize,
+} from "@/lib/workEstimate";
 import { formatWorkHours } from "@/lib/workTime";
 import {
   workStatusBorderColor,
@@ -66,6 +74,7 @@ import {
 } from "./WorkBoardViewControls";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkCardPeople } from "./WorkIssueDrawer";
+import { WorkScopeApproveButton } from "./WorkScopeApproveButton";
 import { WorkViewToolbar } from "./WorkViewToolbar";
 
 const DRAG_TYPE = "application/x-work-sprint-issue";
@@ -116,11 +125,14 @@ export function WorkSprintView({
   onChanged: () => void;
   onOptimisticIssuePatch?: (
     issueId: string,
-    patch: Pick<WorkIssue, "estimateHours">
+    patch: Pick<WorkIssue, "estimateHours" | "estimateSize" | "scopeApproved">
   ) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [closeOpen, setCloseOpen] = useState(false);
+  const [unlockScopeIssueId, setUnlockScopeIssueId] = useState<string | null>(
+    null
+  );
   const [deleteSprintId, setDeleteSprintId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editSprintId, setEditSprintId] = useState<string | null>(null);
@@ -341,7 +353,15 @@ export function WorkSprintView({
   const unfinished = viewingIssuesAll.filter(
     (issue) => !doneStatusIds.has(issue.status)
   );
-  const estimateSum = issueEstimateSum(viewingIssuesAll);
+  const estimateSum =
+    board.estimateUnit === "tshirt"
+      ? board.fixedPriceEnabled
+        ? sumFixedSizePrices(
+            viewingIssuesAll.map((issue) => issue.estimateSize),
+            board.sizePrices
+          ) ?? 0
+        : 0
+      : issueEstimateSum(viewingIssuesAll);
   const estimatesAreHours = board.estimateUnit === "hours";
   const overCapacity =
     estimatesAreHours &&
@@ -354,11 +374,12 @@ export function WorkSprintView({
       : null;
   const capacityFillPct =
     capacityRatio == null ? 0 : Math.min(100, capacityRatio * 100);
-  const estimateSumLabel = formatWorkEstimate(
-    estimateSum,
-    board.estimateUnit,
-    board.billingCurrency
-  );
+  const estimateSumLabel =
+    board.estimateUnit === "tshirt"
+      ? board.fixedPriceEnabled && estimateSum > 0
+        ? formatWorkMoneyAmount(estimateSum, board.billingCurrency)
+        : null
+      : formatWorkEstimate(estimateSum, board.estimateUnit, board.billingCurrency);
 
   function parseCapacityInput(rawValue: string): number | null | false {
     const raw = rawValue.trim().replace(",", ".");
@@ -369,10 +390,15 @@ export function WorkSprintView({
   }
 
   function commitEstimate(issueId: string, value: number | null) {
-    onOptimisticIssuePatch?.(issueId, { estimateHours: value });
+    onOptimisticIssuePatch?.(issueId, {
+      estimateHours: value,
+      estimateSize: null,
+    });
     onIssuesChange(
       issues.map((issue) =>
-        issue.id === issueId ? { ...issue, estimateHours: value } : issue
+        issue.id === issueId
+          ? { ...issue, estimateHours: value, estimateSize: null }
+          : issue
       )
     );
     runQuiet(() =>
@@ -381,6 +407,35 @@ export function WorkSprintView({
         issueId,
         value == null ? "" : String(value)
       )
+    );
+  }
+
+  function commitEstimateSize(issueId: string, value: WorkTshirtSize | null) {
+    onOptimisticIssuePatch?.(issueId, {
+      estimateSize: value,
+      estimateHours: null,
+    });
+    onIssuesChange(
+      issues.map((issue) =>
+        issue.id === issueId
+          ? { ...issue, estimateSize: value, estimateHours: null }
+          : issue
+      )
+    );
+    runQuiet(() =>
+      updateWorkIssueEstimateSizeAction(board.id, issueId, value ?? "")
+    );
+  }
+
+  function commitScopeApproved(issueId: string, approved: boolean) {
+    onOptimisticIssuePatch?.(issueId, { scopeApproved: approved });
+    onIssuesChange(
+      issues.map((issue) =>
+        issue.id === issueId ? { ...issue, scopeApproved: approved } : issue
+      )
+    );
+    runQuiet(() =>
+      setWorkIssueScopeApprovedAction(board.id, issueId, approved)
     );
   }
 
@@ -638,7 +693,7 @@ export function WorkSprintView({
           deleteSprintDisabled={pending}
           actions={
             <>
-              {viewing && board.showEstimates ? (
+              {viewing && board.showEstimates && estimateSumLabel ? (
                 <div
                   className="flex w-[11rem] flex-col gap-1"
                   title={
@@ -720,6 +775,11 @@ export function WorkSprintView({
             draggingIssueId={draggingId}
             onOpenIssue={onOpenIssue}
             onEstimateChange={commitEstimate}
+            onEstimateSizeChange={commitEstimateSize}
+            onScopeApproveToggle={(issueId, approved) => {
+              if (approved) commitScopeApproved(issueId, true);
+              else setUnlockScopeIssueId(issueId);
+            }}
             onTypeChange={commitType}
             onSetOwner={commitOwner}
             onAddAssignee={commitAddAssignee}
@@ -776,6 +836,11 @@ export function WorkSprintView({
             draggingIssueId={draggingId}
             onOpenIssue={onOpenIssue}
             onEstimateChange={commitEstimate}
+            onEstimateSizeChange={commitEstimateSize}
+            onScopeApproveToggle={(issueId, approved) => {
+              if (approved) commitScopeApproved(issueId, true);
+              else setUnlockScopeIssueId(issueId);
+            }}
             onTypeChange={commitType}
             onSetOwner={commitOwner}
             onAddAssignee={commitAddAssignee}
@@ -1094,6 +1159,21 @@ export function WorkSprintView({
       ) : null}
 
       <ConfirmModal
+        isOpen={unlockScopeIssueId != null}
+        title="Unlock scope?"
+        message="You can change size and scope, then approve again."
+        confirmLabel="Unlock"
+        variant="danger"
+        onClose={() => setUnlockScopeIssueId(null)}
+        onConfirm={() => {
+          if (!unlockScopeIssueId) return;
+          const issueId = unlockScopeIssueId;
+          setUnlockScopeIssueId(null);
+          commitScopeApproved(issueId, false);
+        }}
+      />
+
+      <ConfirmModal
         isOpen={deleteSprintId != null}
         title={(() => {
           const sprint = deleteSprintId
@@ -1233,6 +1313,8 @@ function SprintColumn({
   draggingIssueId = null,
   onOpenIssue,
   onEstimateChange,
+  onEstimateSizeChange,
+  onScopeApproveToggle,
   onTypeChange,
   onSetOwner,
   onAddAssignee,
@@ -1264,6 +1346,11 @@ function SprintColumn({
   draggingIssueId?: string | null;
   onOpenIssue: (issueId: string, options?: { tab?: string }) => void;
   onEstimateChange: (issueId: string, value: number | null) => void;
+  onEstimateSizeChange?: (
+    issueId: string,
+    value: WorkTshirtSize | null
+  ) => void;
+  onScopeApproveToggle?: (issueId: string, approved: boolean) => void;
   onTypeChange: (issueId: string, issueType: WorkIssueType) => void;
   onSetOwner: (issueId: string, person: WorkPerson | null) => void;
   onAddAssignee: (issueId: string, person: WorkPerson) => void;
@@ -1431,15 +1518,34 @@ function SprintColumn({
           />
           {/* Fixed slot so edit mode does not push avatars left. */}
           {board?.showEstimates !== false ? (
-            <div className="flex w-14 shrink-0 justify-end">
+            <div className="flex min-w-14 shrink-0 items-center justify-end gap-1">
               <WorkCardEstimate
                 estimateHours={issue.estimateHours}
+                estimateSize={issue.estimateSize}
                 estimateUnit={board?.estimateUnit ?? "hours"}
                 billingCurrency={board?.billingCurrency ?? "SEK"}
-                disabled={estimateDisabled}
+                disabled={estimateDisabled || issue.scopeApproved}
                 onError={onError}
                 onChange={(value) => onEstimateChange(issue.id, value)}
+                onChangeSize={(value) =>
+                  onEstimateSizeChange?.(issue.id, value)
+                }
               />
+              {(workScopeApprovalEnabled({
+                estimateUnit: board?.estimateUnit ?? "hours",
+                fixedPriceEnabled: board?.fixedPriceEnabled === true,
+              }) ||
+                issue.scopeApproved) &&
+              onScopeApproveToggle ? (
+                <WorkScopeApproveButton
+                  approved={issue.scopeApproved}
+                  canApprove={issue.estimateSize != null}
+                  disabled={estimateDisabled}
+                  onToggle={() =>
+                    onScopeApproveToggle(issue.id, !issue.scopeApproved)
+                  }
+                />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -1540,6 +1646,8 @@ function SprintColumn({
                     showReportedTime={board?.showReportedTime}
                     estimateUnit={board?.estimateUnit}
                     billingCurrency={board?.billingCurrency}
+                    fixedPriceEnabled={board?.fixedPriceEnabled}
+                    sizePrices={board?.sizePrices}
                     className={groupIndex === 0 ? "" : "mt-1"}
                     actions={
                       onMoveGroupToSprint && group.issues.length > 0 ? (

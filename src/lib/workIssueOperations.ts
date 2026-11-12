@@ -178,6 +178,11 @@ export async function setWorkIssuePlanning(
   const billingCurrency = parseBillingCurrency(board.billing_currency);
 
   if (changes.estimateHours !== undefined && changes.estimateHours !== null) {
+    if (estimateUnit === "tshirt") {
+      throw new WorkInputError(
+        "This project uses t-shirt sizes. Set estimateSize (xs–xl) instead of estimateHours."
+      );
+    }
     const check = parseWorkEstimateValue(
       String(changes.estimateHours),
       estimateUnit

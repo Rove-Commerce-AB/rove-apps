@@ -860,6 +860,8 @@ export function WorkTimelineView({
                       showReportedTime={board.showReportedTime}
                       estimateUnit={board.estimateUnit}
                       billingCurrency={board.billingCurrency}
+                      fixedPriceEnabled={board.fixedPriceEnabled}
+                      sizePrices={board.sizePrices}
                     />
                   </div>
                   <div style={{ width: chartW, height: GROUP_HEADER_H }} />

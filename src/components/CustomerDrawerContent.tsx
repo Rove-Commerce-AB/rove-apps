@@ -26,6 +26,7 @@ import { CreateProjectAppAvailability } from "@/components/CreateProjectAppAvail
 import { CustomerDrawerOverview } from "@/components/CustomerDrawerOverview";
 import { CustomerProjectGroup } from "@/components/CustomerProjectGroup";
 import { CustomerRatesTab } from "@/components/CustomerRatesTab";
+import { SizePricesSection } from "@/components/SizePricesSection";
 import { CustomerDrawerSupportTab } from "@/components/CustomerDrawerSupportTab";
 import { ProjectSettingsPanel } from "@/components/ProjectSettingsPanel";
 import {
@@ -740,6 +741,15 @@ export function CustomerDrawerContent({
                 onAdd: () => setAddRateOpen(true),
               }}
             />
+            <div className="mt-6 border-t border-border-subtle pt-4">
+              <SizePricesSection
+                scope="customer"
+                ownerId={customer.id}
+                billingCurrency={customer.billingCurrency}
+                onError={setRatesError}
+                refreshTrigger={ratesRefreshKey}
+              />
+            </div>
           </div>
         </TabsContent>
 

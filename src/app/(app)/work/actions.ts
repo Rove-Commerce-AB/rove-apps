@@ -21,6 +21,7 @@ import {
   saveWorkProjectInstructions,
   saveWorkProjectProcess,
   setWorkProjectEstimateUnit,
+  setWorkProjectFixedPriceEnabled,
   setWorkProjectPreferredView,
   countWorkProjectEstimates,
 } from "@/lib/workBoards";
@@ -65,6 +66,8 @@ import {
   setIssueRequirementDone,
   setWorkIssueComponent,
   setWorkIssueEstimate,
+  setWorkIssueEstimateSize,
+  setWorkIssueScopeApproved,
   setWorkIssueOwner,
   setWorkIssuePriority,
   setWorkIssueType,
@@ -303,7 +306,12 @@ export async function setWorkProjectEstimateUnitAction(
   boardId: string,
   unit: WorkEstimateUnit
 ): Promise<
-  | { ok: true; estimateUnit: WorkEstimateUnit; clearedEstimates: number }
+  | {
+      ok: true;
+      estimateUnit: WorkEstimateUnit;
+      clearedEstimates: number;
+      fixedPriceEnabled: boolean;
+    }
   | Err
 > {
   try {
@@ -315,7 +323,21 @@ export async function setWorkProjectEstimateUnitAction(
       ok: true,
       estimateUnit: result.estimateUnit,
       clearedEstimates: result.clearedEstimates,
+      fixedPriceEnabled: result.fixedPriceEnabled,
     };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setWorkProjectFixedPriceEnabledAction(
+  boardId: string,
+  enabled: boolean
+): Promise<{ ok: true; fixedPriceEnabled: boolean } | Err> {
+  try {
+    const result = await setWorkProjectFixedPriceEnabled(boardId, enabled);
+    revalidateBoard(boardId);
+    return { ok: true, fixedPriceEnabled: result.fixedPriceEnabled };
   } catch (error) {
     return fail(error);
   }
@@ -510,6 +532,34 @@ export async function updateWorkIssueEstimateAction(
     await setWorkIssueEstimate(boardId, issueId, hours);
     revalidateBoard(boardId, issueId);
     return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueEstimateSizeAction(
+  boardId: string,
+  issueId: string,
+  size: string
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueEstimateSize(boardId, issueId, size);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setWorkIssueScopeApprovedAction(
+  boardId: string,
+  issueId: string,
+  approved: boolean
+): Promise<(Ok & { scopeApproved: boolean }) | Err> {
+  try {
+    const result = await setWorkIssueScopeApproved(boardId, issueId, approved);
+    revalidateBoard(boardId, issueId);
+    return { ok: true, scopeApproved: result.scopeApproved };
   } catch (error) {
     return fail(error);
   }

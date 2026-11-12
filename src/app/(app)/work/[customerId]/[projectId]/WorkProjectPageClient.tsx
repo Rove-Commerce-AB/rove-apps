@@ -14,6 +14,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
   BookOpen,
+  Check,
   GripVertical,
   Link2,
   MoreHorizontal,
@@ -66,15 +67,25 @@ import {
   reorderWorkIssuesInStatusAction,
   linkWorkProjectToPlannerProjectAction,
   setWorkProjectEstimateUnitAction,
+  setWorkProjectFixedPriceEnabledAction,
   hideDoneIssuesFromBoardAction,
   unhideHiddenIssuesFromBoardAction,
   setWorkProjectPreferredViewAction,
   updateWorkIssueEstimateAction,
+  updateWorkIssueEstimateSizeAction,
+  setWorkIssueScopeApprovedAction,
   updateWorkIssueOwnerAction,
   updateWorkIssueTypeAction,
 } from "../../actions";
-import { formatWorkEstimate } from "@/lib/workEstimate";
-import type { WorkEstimateUnit } from "@/lib/workEstimate";
+import {
+  formatWorkEstimate,
+  formatWorkMoneyAmount,
+  sumFixedSizePrices,
+  workScopeApprovalEnabled,
+  type WorkEstimateUnit,
+  type WorkSizePriceMap,
+  type WorkTshirtSize,
+} from "@/lib/workEstimate";
 import type { BillingCurrency } from "@/lib/currency";
 import {
   workStatusAccent,
@@ -120,6 +131,7 @@ import {
 import { WorkJiraImportDialog } from "./WorkJiraImportDialog";
 import { WorkProcessPanel } from "./WorkProcessPanel";
 import { WorkCardEstimate } from "./WorkCardEstimate";
+import { WorkScopeApproveButton } from "./WorkScopeApproveButton";
 import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
 import { WorkTimelineView } from "./WorkTimelineView";
@@ -363,10 +375,26 @@ export function WorkBoardPageClient({
   const [estimateUnit, setEstimateUnit] = useState<WorkEstimateUnit>(
     board.estimateUnit
   );
+  const [showEstimateSum, setShowEstimateSum] = useState(true);
+  const [estimateSumApprovedOnly, setEstimateSumApprovedOnly] = useState(false);
+  const [fixedPriceEnabled, setFixedPriceEnabled] = useState(
+    board.fixedPriceEnabled
+  );
+  const [sizePrices, setSizePrices] = useState<WorkSizePriceMap>(
+    board.sizePrices
+  );
   const [billingCurrency, setBillingCurrency] = useState<BillingCurrency>(
     board.billingCurrency
   );
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [leaveDoneConfirm, setLeaveDoneConfirm] = useState<{
+    issueId: string;
+    status: WorkIssueStatus;
+    beforeIssueId: string | null;
+  } | null>(null);
+  const [unlockScopeConfirm, setUnlockScopeConfirm] = useState<{
+    issueId: string;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] =
     useState<WorkProjectSettingsTab>("details");
@@ -525,8 +553,32 @@ export function WorkBoardPageClient({
 
   useEffect(() => {
     setEstimateUnit(board.estimateUnit);
+    setFixedPriceEnabled(board.fixedPriceEnabled);
+    setSizePrices(board.sizePrices);
     setBillingCurrency(board.billingCurrency);
-  }, [board.estimateUnit, board.billingCurrency]);
+  }, [
+    board.estimateUnit,
+    board.fixedPriceEnabled,
+    board.sizePrices,
+    board.billingCurrency,
+  ]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(
+        `work.showEstimateSum.${board.id}`
+      );
+      if (raw === "0") setShowEstimateSum(false);
+      else if (raw === "1") setShowEstimateSum(true);
+      const approvedOnly = localStorage.getItem(
+        `work.estimateSumApprovedOnly.${board.id}`
+      );
+      if (approvedOnly === "1") setEstimateSumApprovedOnly(true);
+      else if (approvedOnly === "0") setEstimateSumApprovedOnly(false);
+    } catch {
+      // ignore
+    }
+  }, [board.id]);
 
   useEffect(() => {
     setBoardTitle(board.title);
@@ -700,6 +752,72 @@ export function WorkBoardPageClient({
       document.activeElement.blur();
     }
     router.push(workBoardHref(board.customerId, board.id), { scroll: false });
+  }
+
+  function applyScopeApproved(issueId: string, approved: boolean) {
+    const previous = issuesRef.current;
+    noteOptimisticIssuePatch(optimisticPatchesRef.current, issueId, {
+      scopeApproved: approved,
+    });
+    setIssues((current) => {
+      const next = current.map((issue) =>
+        issue.id === issueId ? { ...issue, scopeApproved: approved } : issue
+      );
+      issuesRef.current = next;
+      return next;
+    });
+    setError(null);
+    void setWorkIssueScopeApprovedAction(board.id, issueId, approved).then(
+      (result) => {
+        if (result.ok) {
+          noteOptimisticIssuePatch(optimisticPatchesRef.current, issueId, {
+            scopeApproved: result.scopeApproved,
+          });
+          setIssues((current) => {
+            const next = current.map((issue) =>
+              issue.id === issueId
+                ? { ...issue, scopeApproved: result.scopeApproved }
+                : issue
+            );
+            issuesRef.current = next;
+            return next;
+          });
+          return;
+        }
+        setError(result.error);
+        clearOptimisticIssuePatch(optimisticPatchesRef.current, issueId);
+        issuesRef.current = previous;
+        setIssues(previous);
+      }
+    );
+  }
+
+  function leavesFixedPriceDone(
+    issueId: string,
+    nextStatus: WorkIssueStatus
+  ): boolean {
+    if (estimateUnit !== "tshirt" || !fixedPriceEnabled) return false;
+    const currentStatus = issuesRef.current.find(
+      (issue) => issue.id === issueId
+    )?.status;
+    if (!currentStatus || currentStatus === nextStatus) return false;
+    const fromDone =
+      statuses.find((column) => column.id === currentStatus)?.isDone ?? false;
+    const toDone =
+      statuses.find((column) => column.id === nextStatus)?.isDone ?? false;
+    return fromDone && !toDone;
+  }
+
+  function requestMoveIssue(
+    issueId: string,
+    status: WorkIssueStatus,
+    beforeIssueId: string | null
+  ) {
+    if (leavesFixedPriceDone(issueId, status)) {
+      setLeaveDoneConfirm({ issueId, status, beforeIssueId });
+      return;
+    }
+    moveIssue(issueId, status, beforeIssueId);
   }
 
   function moveIssue(
@@ -1117,6 +1235,33 @@ export function WorkBoardPageClient({
 
     void (async () => {
       if (target && issueId) {
+        const needsLeaveDoneConfirm = leavesFixedPriceDone(
+          issueId,
+          target.status
+        );
+        if (needsLeaveDoneConfirm) {
+          if (ghost && source?.isConnected) {
+            const rect = source.getBoundingClientRect();
+            await ghost.landAt({
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+            });
+            source.style.opacity = "";
+            await waitForPaint(2);
+            ghost.remove();
+          } else {
+            if (ghost) await ghost.dispose();
+            if (source) source.style.opacity = "";
+          }
+          setLeaveDoneConfirm({
+            issueId,
+            status: target.status,
+            beforeIssueId: target.beforeIssueId,
+          });
+          return;
+        }
+
         setLandingIssueId(issueId);
         moveIssue(target.issueId, target.status, target.beforeIssueId);
         await waitForPaint(2);
@@ -1340,6 +1485,7 @@ export function WorkBoardPageClient({
             issues,
             sprints,
             estimateUnit,
+            fixedPriceEnabled,
             billingCurrency,
           }}
           issues={issues}
@@ -1475,10 +1621,36 @@ export function WorkBoardPageClient({
             : 0;
           const columnIssues = visibleColumnIssues;
           const issueGroups = columnIssueGroups(columnIssues, groupBy);
-          const columnEstimateSum = visibleColumnIssues.reduce(
-            (sum, issue) => sum + (issue.estimateHours ?? 0),
-            0
-          );
+          const sumScopeApproval = workScopeApprovalEnabled({
+            estimateUnit,
+            fixedPriceEnabled,
+          });
+          const estimateSumIssues =
+            sumScopeApproval && estimateSumApprovedOnly
+              ? visibleColumnIssues.filter((issue) => issue.scopeApproved)
+              : visibleColumnIssues;
+          const columnEstimateSum =
+            estimateUnit === "tshirt"
+              ? fixedPriceEnabled
+                ? sumFixedSizePrices(
+                    estimateSumIssues.map((issue) => issue.estimateSize),
+                    sizePrices
+                  )
+                : null
+              : estimateSumIssues.reduce(
+                  (sum, issue) => sum + (issue.estimateHours ?? 0),
+                  0
+                );
+          const columnEstimateLabel =
+            columnEstimateSum != null && columnEstimateSum > 0
+              ? estimateUnit === "tshirt"
+                ? formatWorkMoneyAmount(columnEstimateSum, billingCurrency)
+                : formatWorkEstimate(
+                    columnEstimateSum,
+                    estimateUnit,
+                    billingCurrency
+                  )
+              : null;
           const isDragOver = dragOverStatus === status && !draggingStatusId;
           const isFirstColumn = columnIndex === 0;
           const isLastColumn = columnIndex === statuses.length - 1;
@@ -1645,16 +1817,14 @@ export function WorkBoardPageClient({
                   )}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
-                  {board.showEstimates && columnEstimateSum > 0 ? (
+                  {board.showEstimates &&
+                  showEstimateSum &&
+                  columnEstimateLabel ? (
                     <span
                       className="tabular-nums text-caption text-current/55"
-                      title={`Total estimate ${formatWorkEstimate(columnEstimateSum, estimateUnit, billingCurrency)}`}
+                      title={`Total estimate ${columnEstimateLabel}`}
                     >
-                      {formatWorkEstimate(
-                        columnEstimateSum,
-                        estimateUnit,
-                        billingCurrency
-                      )}
+                      {columnEstimateLabel}
                     </span>
                   ) : null}
                   <button
@@ -1735,10 +1905,15 @@ export function WorkBoardPageClient({
                         <WorkColumnGroupHeader
                           groupBy={groupBy}
                           group={group}
-                          showEstimates={board.showEstimates}
+                          showEstimates={board.showEstimates && showEstimateSum}
                           showReportedTime={board.showReportedTime}
                           estimateUnit={estimateUnit}
                           billingCurrency={billingCurrency}
+                          fixedPriceEnabled={fixedPriceEnabled}
+                          sizePrices={sizePrices}
+                          estimateSumApprovedOnly={
+                            sumScopeApproval && estimateSumApprovedOnly
+                          }
                           className={groupIndex === 0 ? "" : "mt-1"}
                         />
                       </li>
@@ -1988,42 +2163,102 @@ export function WorkBoardPageClient({
                         <WorkCardLabels labels={issue.labels} />
                         {board.showEstimates ? (
                           <div className="mt-2 flex items-center justify-between gap-2">
-                            <WorkCardEstimate
-                              estimateHours={issue.estimateHours}
-                              estimateUnit={estimateUnit}
-                              billingCurrency={billingCurrency}
-                              onError={setError}
-                              onChange={(value) => {
-                                noteOptimisticIssuePatch(
-                                  optimisticPatchesRef.current,
-                                  issue.id,
-                                  { estimateHours: value }
-                                );
-                                setIssues((current) => {
-                                  const next = current.map((row) =>
-                                    row.id === issue.id
-                                      ? { ...row, estimateHours: value }
-                                      : row
-                                  );
-                                  issuesRef.current = next;
-                                  return next;
-                                });
-                                void updateWorkIssueEstimateAction(
-                                  board.id,
-                                  issue.id,
-                                  value == null ? "" : String(value)
-                                ).then((result) => {
-                                  if (result.ok) return;
-                                  setError(result.error);
-                                  clearOptimisticIssuePatch(
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <WorkCardEstimate
+                                estimateHours={issue.estimateHours}
+                                estimateSize={issue.estimateSize}
+                                estimateUnit={estimateUnit}
+                                billingCurrency={billingCurrency}
+                                disabled={issue.scopeApproved}
+                                onError={setError}
+                                onChange={(value) => {
+                                  noteOptimisticIssuePatch(
                                     optimisticPatchesRef.current,
-                                    issue.id
+                                    issue.id,
+                                    { estimateHours: value, estimateSize: null }
                                   );
-                                  issuesRef.current = board.issues;
-                                  setIssues(board.issues);
-                                });
-                              }}
-                            />
+                                  setIssues((current) => {
+                                    const next = current.map((row) =>
+                                      row.id === issue.id
+                                        ? {
+                                            ...row,
+                                            estimateHours: value,
+                                            estimateSize: null,
+                                          }
+                                        : row
+                                    );
+                                    issuesRef.current = next;
+                                    return next;
+                                  });
+                                  void updateWorkIssueEstimateAction(
+                                    board.id,
+                                    issue.id,
+                                    value == null ? "" : String(value)
+                                  ).then((result) => {
+                                    if (result.ok) return;
+                                    setError(result.error);
+                                    clearOptimisticIssuePatch(
+                                      optimisticPatchesRef.current,
+                                      issue.id
+                                    );
+                                    issuesRef.current = board.issues;
+                                    setIssues(board.issues);
+                                  });
+                                }}
+                                onChangeSize={(value: WorkTshirtSize | null) => {
+                                  noteOptimisticIssuePatch(
+                                    optimisticPatchesRef.current,
+                                    issue.id,
+                                    { estimateSize: value, estimateHours: null }
+                                  );
+                                  setIssues((current) => {
+                                    const next = current.map((row) =>
+                                      row.id === issue.id
+                                        ? {
+                                            ...row,
+                                            estimateSize: value,
+                                            estimateHours: null,
+                                          }
+                                        : row
+                                    );
+                                    issuesRef.current = next;
+                                    return next;
+                                  });
+                                  void updateWorkIssueEstimateSizeAction(
+                                    board.id,
+                                    issue.id,
+                                    value ?? ""
+                                  ).then((result) => {
+                                    if (result.ok) return;
+                                    setError(result.error);
+                                    clearOptimisticIssuePatch(
+                                      optimisticPatchesRef.current,
+                                      issue.id
+                                    );
+                                    issuesRef.current = board.issues;
+                                    setIssues(board.issues);
+                                  });
+                                }}
+                              />
+                              {workScopeApprovalEnabled({
+                                estimateUnit,
+                                fixedPriceEnabled,
+                              }) || issue.scopeApproved ? (
+                                <WorkScopeApproveButton
+                                  approved={issue.scopeApproved}
+                                  canApprove={issue.estimateSize != null}
+                                  onToggle={() => {
+                                    if (issue.scopeApproved) {
+                                      setUnlockScopeConfirm({
+                                        issueId: issue.id,
+                                      });
+                                      return;
+                                    }
+                                    applyScopeApproved(issue.id, true);
+                                  }}
+                                />
+                              ) : null}
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -2168,18 +2403,23 @@ export function WorkBoardPageClient({
         people={board.people}
         components={components}
         estimateUnit={estimateUnit}
+        fixedPriceEnabled={fixedPriceEnabled}
         billingCurrency={billingCurrency}
         showDangerTab={board.viewerRole !== "customer"}
         canEditAccess={board.viewerRole !== "customer"}
         onProcessSaved={setProcess}
         onSetEstimateUnit={async (unit) => {
           const previousUnit = estimateUnit;
+          const previousFixed = fixedPriceEnabled;
           setEstimateUnit(unit);
+          if (unit !== "tshirt") setFixedPriceEnabled(false);
           if (unit !== previousUnit) {
             setIssues((current) => {
               const next = current.map((issue) => ({
                 ...issue,
-                estimateHours: null,
+                estimateHours: null as number | null,
+                estimateSize: null as WorkTshirtSize | null,
+                scopeApproved: false,
               }));
               issuesRef.current = next;
               return next;
@@ -2188,11 +2428,29 @@ export function WorkBoardPageClient({
           const result = await setWorkProjectEstimateUnitAction(board.id, unit);
           if (!result.ok) {
             setEstimateUnit(previousUnit);
+            setFixedPriceEnabled(previousFixed);
             setError(result.error);
             router.refresh();
             return false;
           }
           setEstimateUnit(result.estimateUnit);
+          setFixedPriceEnabled(result.fixedPriceEnabled);
+          router.refresh();
+          return true;
+        }}
+        onSetFixedPriceEnabled={async (enabled) => {
+          const previous = fixedPriceEnabled;
+          setFixedPriceEnabled(enabled);
+          const result = await setWorkProjectFixedPriceEnabledAction(
+            board.id,
+            enabled
+          );
+          if (!result.ok) {
+            setFixedPriceEnabled(previous);
+            setError(result.error);
+            return false;
+          }
+          setFixedPriceEnabled(result.fixedPriceEnabled);
           router.refresh();
           return true;
         }}
@@ -2357,6 +2615,36 @@ export function WorkBoardPageClient({
         onConfirm={() => confirmArchiveBoard()}
       />
 
+      <ConfirmModal
+        isOpen={leaveDoneConfirm != null}
+        title="Remove from Done?"
+        message="This reverses the fixed-price delivery for Looker. Moving the issue back to Done later will count it again at the current size price."
+        confirmLabel="Remove from Done"
+        variant="danger"
+        onClose={() => setLeaveDoneConfirm(null)}
+        onConfirm={() => {
+          if (!leaveDoneConfirm) return;
+          const pending = leaveDoneConfirm;
+          setLeaveDoneConfirm(null);
+          moveIssue(pending.issueId, pending.status, pending.beforeIssueId);
+        }}
+      />
+
+      <ConfirmModal
+        isOpen={unlockScopeConfirm != null}
+        title="Unlock scope?"
+        message="You can change size and scope, then approve again."
+        confirmLabel="Unlock"
+        variant="danger"
+        onClose={() => setUnlockScopeConfirm(null)}
+        onConfirm={() => {
+          if (!unlockScopeConfirm) return;
+          const issueId = unlockScopeConfirm.issueId;
+          setUnlockScopeConfirm(null);
+          applyScopeApproved(issueId, false);
+        }}
+      />
+
       {statusMenu
         ? createPortal(
             (() => {
@@ -2399,6 +2687,77 @@ export function WorkBoardPageClient({
               >
                 Rename
               </button>
+              {board.showEstimates ? (
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={showEstimateSum}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
+                  onClick={() => {
+                    setShowEstimateSum((current) => {
+                      const next = !current;
+                      try {
+                        localStorage.setItem(
+                          `work.showEstimateSum.${board.id}`,
+                          next ? "1" : "0"
+                        );
+                      } catch {
+                        // ignore
+                      }
+                      return next;
+                    });
+                    setStatusMenu(null);
+                  }}
+                >
+                  <span className="min-w-0 flex-1">Show estimate sum</span>
+                  <Check
+                    className={`h-3.5 w-3.5 shrink-0 ${
+                      showEstimateSum
+                        ? "text-text-primary"
+                        : "text-transparent"
+                    }`}
+                    aria-hidden
+                  />
+                </button>
+              ) : null}
+              {board.showEstimates &&
+              workScopeApprovalEnabled({
+                estimateUnit,
+                fixedPriceEnabled,
+              }) ? (
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={estimateSumApprovedOnly}
+                  disabled={!showEstimateSum}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted disabled:opacity-40"
+                  onClick={() => {
+                    setEstimateSumApprovedOnly((current) => {
+                      const next = !current;
+                      try {
+                        localStorage.setItem(
+                          `work.estimateSumApprovedOnly.${board.id}`,
+                          next ? "1" : "0"
+                        );
+                      } catch {
+                        // ignore
+                      }
+                      return next;
+                    });
+                    setStatusMenu(null);
+                  }}
+                >
+                  <span className="min-w-0 flex-1">Sum approved only</span>
+                  <Check
+                    className={`h-3.5 w-3.5 shrink-0 ${
+                      estimateSumApprovedOnly
+                        ? "text-text-primary"
+                        : "text-transparent"
+                    }`}
+                    aria-hidden
+                  />
+                </button>
+              ) : null}
               {canHideDone || canShowDone ? (
                 <>
                   <div
@@ -2578,7 +2937,7 @@ export function WorkBoardPageClient({
             issue={selected}
             initialTab={selectedIssueTab}
             onStatus={(status) => {
-              moveIssue(selected.id, status, null);
+              requestMoveIssue(selected.id, status, null);
             }}
             onChanged={() => {
               setError(null);

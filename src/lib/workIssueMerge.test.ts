@@ -34,6 +34,8 @@ function issue(partial: Partial<WorkIssue> & Pick<WorkIssue, "id">): WorkIssue {
     references: [],
     relations: emptyWorkIssueRelations(),
     estimateHours: null,
+    estimateSize: null,
+    scopeApproved: false,
     loggedHours: 0,
     sprintId: null,
     startDate: null,

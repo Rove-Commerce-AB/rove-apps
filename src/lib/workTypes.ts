@@ -1,6 +1,10 @@
 import type { BillingCurrency } from "@/lib/currency";
 import type { AppUserRole } from "@/lib/peopleTypes";
-import type { WorkEstimateUnit } from "@/lib/workEstimate";
+import type {
+  WorkEstimateUnit,
+  WorkSizePriceMap,
+  WorkTshirtSize,
+} from "@/lib/workEstimate";
 import type { WorkProcess, WorkProcessStep } from "@/lib/workProcess";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkIssueRelations } from "@/lib/workIssueRelations";
@@ -102,7 +106,8 @@ export type WorkIssueLookup = { projectId: string; issueId?: string; issueKey?: 
 
 export type WorkIssueDetails = WorkIssueListItem & Pick<WorkIssue,
   "reporter" | "component" | "requirements" | "definitionOfDone" | "preDeployActions" |
-  "references" | "relations" | "files" | "estimateHours" | "loggedHours" | "sprintId" | "startDate" | "dueDate"
+  "references" | "relations" | "files" | "estimateHours" | "estimateSize" | "scopeApproved" |
+  "loggedHours" | "sprintId" | "startDate" | "dueDate"
 > & { showEstimates: boolean; showReportedTime: boolean };
 
 export type WorkIssueCommentsInput = { projectId: string; issueId: string; limit?: number; cursor?: string };
@@ -205,6 +210,9 @@ export type WorkIssue = {
   references: WorkReference[];
   relations: WorkIssueRelations;
   estimateHours: number | null;
+  estimateSize: WorkTshirtSize | null;
+  /** Fixed-price t-shirt: scope (size + description/requirements) is locked. */
+  scopeApproved: boolean;
   loggedHours: number;
   sprintId: string | null;
   startDate: string | null;
@@ -231,6 +239,10 @@ export type WorkBoardView = {
   plannerProjectName: string | null;
   /** How estimate values on this project are interpreted. */
   estimateUnit: WorkEstimateUnit;
+  /** When estimateUnit is tshirt: show size × catalog price (display only). */
+  fixedPriceEnabled: boolean;
+  /** Resolved size → amount (customer + project overrides). Empty when not fixed price. */
+  sizePrices: WorkSizePriceMap;
   /** Customer billing currency — used when estimateUnit is currency. */
   billingCurrency: BillingCurrency;
   /**

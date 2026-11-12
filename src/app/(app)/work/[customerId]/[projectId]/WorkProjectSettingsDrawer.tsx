@@ -10,6 +10,7 @@ import {
   Input,
   OptionSegments,
   SideDrawer,
+  Switch,
   Tabs,
   TabsContent,
   TabsList,
@@ -35,7 +36,7 @@ import { WorkBoardMembers } from "./WorkBoardMembers";
 const ESTIMATE_UNIT_OPTIONS = [
   { value: "hours", label: WORK_ESTIMATE_UNIT_LABELS.hours },
   { value: "currency", label: WORK_ESTIMATE_UNIT_LABELS.currency },
-  { value: "points", label: WORK_ESTIMATE_UNIT_LABELS.points },
+  { value: "tshirt", label: WORK_ESTIMATE_UNIT_LABELS.tshirt },
 ] as const;
 
 export type WorkProjectSettingsTab =
@@ -72,8 +73,10 @@ export function WorkProjectSettingsDrawer({
   onArchive,
   onImportFromJira,
   estimateUnit,
+  fixedPriceEnabled,
   billingCurrency,
   onSetEstimateUnit,
+  onSetFixedPriceEnabled,
   showDangerTab = true,
   canEditAccess = true,
   onProcessSaved,
@@ -94,8 +97,10 @@ export function WorkProjectSettingsDrawer({
   people: WorkPerson[];
   components: WorkComponent[];
   estimateUnit: WorkEstimateUnit;
+  fixedPriceEnabled: boolean;
   billingCurrency: BillingCurrency;
   onSetEstimateUnit: (unit: WorkEstimateUnit) => Promise<boolean>;
+  onSetFixedPriceEnabled: (enabled: boolean) => Promise<boolean>;
   onRename: (nextTitle: string) => Promise<boolean>;
   onLinkPlannerProject: (
     plannerProjectId: string
@@ -133,21 +138,24 @@ export function WorkProjectSettingsDrawer({
   const [loadingLinkable, setLoadingLinkable] = useState(false);
   const [estimateUnitDraft, setEstimateUnitDraft] =
     useState<WorkEstimateUnit>(estimateUnit);
+  const [fixedPriceDraft, setFixedPriceDraft] = useState(fixedPriceEnabled);
   const [pendingEstimateUnit, setPendingEstimateUnit] =
     useState<WorkEstimateUnit | null>(null);
   const [estimateChangeCount, setEstimateChangeCount] = useState(0);
   const [savingEstimateUnit, setSavingEstimateUnit] = useState(false);
+  const [savingFixedPrice, setSavingFixedPrice] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setNameDraft(title);
     setEstimateUnitDraft(estimateUnit);
+    setFixedPriceDraft(fixedPriceEnabled);
     setPendingEstimateUnit(null);
     setTab(
       !showDangerTab && initialTab === "danger" ? "details" : initialTab
     );
     setNewComponentName("");
-  }, [open, title, estimateUnit, initialTab, showDangerTab]);
+  }, [open, title, estimateUnit, fixedPriceEnabled, initialTab, showDangerTab]);
 
   useEffect(() => {
     if (!showDangerTab && tab === "danger") setTab("details");
@@ -323,13 +331,35 @@ export function WorkProjectSettingsDrawer({
                   disabled={savingEstimateUnit || showDangerTab === false}
                   options={[...ESTIMATE_UNIT_OPTIONS]}
                 />
-                <p className="text-sm text-text-secondary">
-                  {estimateUnitDraft === "currency"
-                    ? `Estimates use the customer currency (${billingCurrency}).`
-                    : estimateUnitDraft === "points"
-                      ? "Estimates are story points (whole numbers)."
+                {estimateUnitDraft !== "tshirt" ? (
+                  <p className="text-sm text-text-secondary">
+                    {estimateUnitDraft === "currency"
+                      ? `Estimates use the customer currency (${billingCurrency}).`
                       : "Estimates are in hours."}
-                </p>
+                  </p>
+                ) : null}
+                {estimateUnitDraft === "tshirt" ? (
+                  <Switch
+                    id="work-fixed-price"
+                    checked={fixedPriceDraft}
+                    disabled={
+                      savingFixedPrice ||
+                      savingEstimateUnit ||
+                      showDangerTab === false
+                    }
+                    onCheckedChange={(checked) => {
+                      void (async () => {
+                        setSavingFixedPrice(true);
+                        const previous = fixedPriceDraft;
+                        setFixedPriceDraft(checked);
+                        const ok = await onSetFixedPriceEnabled(checked);
+                        if (!ok) setFixedPriceDraft(previous);
+                        setSavingFixedPrice(false);
+                      })();
+                    }}
+                    label="Fixed price"
+                  />
+                ) : null}
               </section>
 
               <section className="space-y-3">

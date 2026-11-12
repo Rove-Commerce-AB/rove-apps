@@ -43,7 +43,10 @@ import {
   updateWorkIssueComment,
   updateWorkIssueComponent,
   updateWorkIssueEstimate,
+  updateWorkIssueEstimateSize,
   updateWorkIssueField,
+  fetchWorkIssueScopeLockState,
+  updateWorkIssueScopeApproved,
   updateWorkIssueOwner,
   updateWorkIssuePriority,
   updateWorkIssueType,
@@ -83,6 +86,8 @@ import {
 import { parseBillingCurrency } from "@/lib/currency";
 import {
   formatWorkEstimate,
+  formatWorkTshirtSize,
+  parseWorkEstimateSizeValue,
   parseWorkEstimateUnit,
   parseWorkEstimateValue,
 } from "@/lib/workEstimate";
@@ -99,6 +104,16 @@ async function requireBoardAccess(boardId: string, authenticatedActor?: WorkActo
   if (!visible) throw new WorkInputError("Project not found or access denied.");
 
   return visible;
+}
+
+async function assertIssueScopeUnlocked(boardId: string, issueId: string) {
+  const state = await fetchWorkIssueScopeLockState(boardId, issueId);
+  if (!state) throw new WorkInputError("Issue not found in this project.");
+  if (state.scopeApproved) {
+    throw new WorkInputError(
+      "Scope is approved. Unlock it before changing size or scope."
+    );
+  }
 }
 
 async function logEvent(
@@ -323,6 +338,7 @@ export async function setWorkIssueTextField(
   value: string
 ): Promise<void> {
   const { actor, board } = await requireBoardAccess(boardId);
+  await assertIssueScopeUnlocked(boardId, issueId);
   const previousDescription =
     field === "description"
       ? await fetchWorkIssueDescription(boardId, issueId)
@@ -368,6 +384,9 @@ export async function setWorkIssueEstimate(
     throw new Error("Unauthorized");
   }
   const estimateUnit = parseWorkEstimateUnit(board.estimate_unit);
+  if (estimateUnit === "tshirt") {
+    throw new Error("Use a t-shirt size (XS–XL) instead of a numeric estimate.");
+  }
   const billingCurrency = parseBillingCurrency(board.billing_currency);
   const parsed = parseWorkEstimateValue(rawHours, estimateUnit);
   if (!parsed.ok) throw new Error(parsed.message);
@@ -380,6 +399,36 @@ export async function setWorkIssueEstimate(
     parsed.value == null
       ? "cleared the estimate"
       : `set the estimate to ${formatWorkEstimate(parsed.value, estimateUnit, billingCurrency)}`
+  );
+}
+
+export async function setWorkIssueEstimateSize(
+  boardId: string,
+  issueId: string,
+  rawSize: string
+): Promise<void> {
+  const { actor, board } = await requireBoardAccess(boardId);
+  if (
+    !canSeeWorkEstimates(actor, board.work_show_estimates_to_customer_users)
+  ) {
+    throw new Error("Unauthorized");
+  }
+  const estimateUnit = parseWorkEstimateUnit(board.estimate_unit);
+  if (estimateUnit !== "tshirt") {
+    throw new Error("T-shirt sizes are only available when estimate unit is T-shirt.");
+  }
+  await assertIssueScopeUnlocked(boardId, issueId);
+  const parsed = parseWorkEstimateSizeValue(rawSize);
+  if (!parsed.ok) throw new Error(parsed.message);
+  const ok = await updateWorkIssueEstimateSize(boardId, issueId, parsed.value);
+  if (!ok) throw new Error("Issue not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "estimate",
+    parsed.value == null
+      ? "cleared the size"
+      : `set the size to ${formatWorkTshirtSize(parsed.value)}`
   );
 }
 
@@ -503,6 +552,7 @@ export async function addIssueRequirement(
   kind: WorkRequirementKind = "acceptance"
 ): Promise<{ id: string; sortOrder: number }> {
   const { actor } = await requireBoardAccess(boardId);
+  await assertIssueScopeUnlocked(boardId, issueId);
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Requirement text is required");
   const created = await insertWorkIssueRequirement({
@@ -528,6 +578,7 @@ export async function setIssueRequirementBody(
   body: string
 ): Promise<void> {
   const { actor } = await requireBoardAccess(boardId);
+  await assertIssueScopeUnlocked(boardId, issueId);
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Requirement text is required");
   const ok = await updateWorkIssueRequirementBody(
@@ -567,9 +618,59 @@ export async function removeIssueRequirement(
   requirementId: string
 ): Promise<void> {
   const { actor } = await requireBoardAccess(boardId);
+  await assertIssueScopeUnlocked(boardId, issueId);
   const ok = await deleteWorkIssueRequirement(issueId, requirementId);
   if (!ok) throw new Error("Requirement not found");
   await logEvent(issueId, actor.id, "requirement", "removed a requirement");
+}
+
+export async function setWorkIssueScopeApproved(
+  boardId: string,
+  issueId: string,
+  approved: boolean
+): Promise<{ scopeApproved: boolean }> {
+  const { actor, board } = await requireBoardAccess(boardId);
+  const estimateUnit = parseWorkEstimateUnit(board.estimate_unit);
+
+  const state = await fetchWorkIssueScopeLockState(boardId, issueId);
+  if (!state) throw new WorkInputError("Issue not found in this project.");
+
+  if (approved) {
+    if (estimateUnit !== "tshirt" || board.fixed_price_enabled !== true) {
+      throw new WorkInputError(
+        "Scope approval is only available on fixed-price t-shirt projects."
+      );
+    }
+    if (!state.estimateSize) {
+      throw new WorkInputError("Set a size before approving scope.");
+    }
+    if (state.scopeApproved) return { scopeApproved: true };
+    const ok = await updateWorkIssueScopeApproved(
+      boardId,
+      issueId,
+      true,
+      actor.id
+    );
+    if (!ok) throw new WorkInputError("Issue not found in this project.");
+    await logEvent(issueId, actor.id, "scope", "approved the scope");
+    return { scopeApproved: true };
+  }
+
+  if (!state.scopeApproved) return { scopeApproved: false };
+  if (state.statusIsDone || state.hasActiveDelivery) {
+    throw new WorkInputError(
+      "Can't unlock scope while the issue is Done or has an active delivery."
+    );
+  }
+  const ok = await updateWorkIssueScopeApproved(
+    boardId,
+    issueId,
+    false,
+    actor.id
+  );
+  if (!ok) throw new WorkInputError("Issue not found in this project.");
+  await logEvent(issueId, actor.id, "scope", "unlocked the scope");
+  return { scopeApproved: false };
 }
 
 export async function addIssuePreDeployAction(

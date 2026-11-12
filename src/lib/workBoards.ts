@@ -10,9 +10,11 @@ import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
 import { parseBillingCurrency } from "@/lib/currency";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { resolveWorkCustomerColor } from "@/lib/workStatusColors";
+import { getResolvedSizePriceMap } from "@/lib/sizePrices";
 import {
   isWorkEstimateUnit,
   parseWorkEstimateUnit,
+  parseWorkTshirtSize,
   type WorkEstimateUnit,
 } from "@/lib/workEstimate";
 import { WorkInputError } from "@/lib/workErrors";
@@ -616,6 +618,10 @@ export async function getWorkBoardView(
           ? null
           : Number(row.estimate_hours)
         : null,
+      estimateSize: showEstimates
+        ? parseWorkTshirtSize(row.estimate_size)
+        : null,
+      scopeApproved: row.scope_approved_at != null,
       loggedHours: showReportedTime
         ? loggedHoursByIssue.get(row.id) ?? 0
         : 0,
@@ -674,6 +680,14 @@ export async function getWorkBoardView(
     plannerProjectId: board.planner_project_id ?? null,
     plannerProjectName: board.planner_project_name ?? null,
     estimateUnit: parseWorkEstimateUnit(board.estimate_unit),
+    fixedPriceEnabled: board.fixed_price_enabled === true,
+    sizePrices:
+      board.fixed_price_enabled === true
+        ? await getResolvedSizePriceMap(
+            board.customer_id,
+            board.planner_project_id
+          )
+        : {},
     billingCurrency: parseBillingCurrency(board.billing_currency),
     showEstimates,
     showReportedTime,
@@ -825,6 +839,7 @@ export async function setWorkProjectEstimateUnit(
   estimateUnit: WorkEstimateUnit;
   clearedEstimates: number;
   customerId: string;
+  fixedPriceEnabled: boolean;
 }> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
@@ -840,6 +855,7 @@ export async function setWorkProjectEstimateUnit(
       estimateUnit: current,
       clearedEstimates: 0,
       customerId: visible.board.customer_id,
+      fixedPriceEnabled: visible.board.fixed_price_enabled === true,
     };
   }
   const estimateCount = await q.countWorkIssueEstimates(boardId);
@@ -852,6 +868,30 @@ export async function setWorkProjectEstimateUnit(
   return {
     estimateUnit: unit,
     clearedEstimates: shouldClear ? estimateCount : 0,
+    customerId: visible.board.customer_id,
+    fixedPriceEnabled: unit === "tshirt" ? visible.board.fixed_price_enabled === true : false,
+  };
+}
+
+export async function setWorkProjectFixedPriceEnabled(
+  boardId: string,
+  enabled: boolean
+): Promise<{
+  fixedPriceEnabled: boolean;
+  customerId: string;
+}> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) throw new Error("Board not found");
+  if (visible.actor.role === "customer") {
+    throw new Error("Customer users cannot change fixed price");
+  }
+  const unit = parseWorkEstimateUnit(visible.board.estimate_unit);
+  if (unit !== "tshirt") {
+    throw new Error("Fixed price is only available with T-shirt estimates.");
+  }
+  await q.updateWorkProjectFixedPriceEnabled(boardId, enabled);
+  return {
+    fixedPriceEnabled: enabled,
     customerId: visible.board.customer_id,
   };
 }

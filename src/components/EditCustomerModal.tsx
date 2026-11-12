@@ -7,6 +7,7 @@ import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, ConfirmModal, Tabs, TabsList, TabsTrigger, TabsContent, modalInputClass } from "@/components/ui";
 import { CustomerRatesTab } from "./CustomerRatesTab";
+import { SizePricesSection } from "./SizePricesSection";
 import type { CustomerWithDetails } from "@/types";
 
 type Tab = "information" | "rates";
@@ -263,12 +264,22 @@ export function EditCustomerModal({
           </TabsContent>
           <TabsContent value="rates" className="mt-6 min-h-[340px]">
             {customer && (
-              <CustomerRatesTab
-                mode="edit"
-                customerId={customer.id}
-                billingCurrency={customer.billingCurrency}
-                onError={setRatesError}
-              />
+              <>
+                <CustomerRatesTab
+                  mode="edit"
+                  customerId={customer.id}
+                  billingCurrency={customer.billingCurrency}
+                  onError={setRatesError}
+                />
+                <div className="mt-6 border-t border-border-subtle pt-4">
+                  <SizePricesSection
+                    scope="customer"
+                    ownerId={customer.id}
+                    billingCurrency={customer.billingCurrency}
+                    onError={setRatesError}
+                  />
+                </div>
+              </>
             )}
             {ratesError && (
               <p className="mt-4 text-sm text-danger">{ratesError}</p>

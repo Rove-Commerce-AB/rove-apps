@@ -37,6 +37,7 @@ import {
 } from "@/components/ui";
 import { ProjectRatesTab } from "./ProjectRatesTab";
 import { AddProjectRateModal } from "./AddProjectRateModal";
+import { SizePricesSection } from "./SizePricesSection";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import {
   ABSENCE_CODE_OPTIONS,
@@ -781,6 +782,15 @@ export function ProjectSettingsPanel({
                 billingCurrency={initial.billingCurrency}
                 onError={setRatesError}
                 showDescription={false}
+                refreshTrigger={ratesRefreshKey}
+              />
+            </div>
+            <div className="mt-6 border-t border-border-subtle pt-4">
+              <SizePricesSection
+                scope="project"
+                ownerId={initial.id}
+                billingCurrency={initial.billingCurrency}
+                onError={setRatesError}
                 refreshTrigger={ratesRefreshKey}
               />
             </div>

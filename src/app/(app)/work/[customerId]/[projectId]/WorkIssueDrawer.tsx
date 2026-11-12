@@ -67,6 +67,8 @@ import {
   updateWorkIssueCommentAction,
   updateWorkIssueComponentAction,
   updateWorkIssueEstimateAction,
+  updateWorkIssueEstimateSizeAction,
+  setWorkIssueScopeApprovedAction,
   updateWorkIssueFieldAction,
   updateWorkIssueOwnerAction,
   updateWorkIssuePriorityAction,
@@ -92,11 +94,16 @@ import { WorkTimeGraph } from "./WorkTimeGraph";
 import { canDeleteWorkIssue } from "@/lib/workAccess";
 import { encodeMentions, mentionPlainText } from "@/lib/workMentions";
 import {
-  formatWorkEstimatePair,
+  formatVisibleWorkEstimate,
   parseWorkEstimateValue,
+  resolveSizePrice,
   workEstimateSuffix,
+  workScopeApprovalEnabled,
+  type WorkTshirtSize,
 } from "@/lib/workEstimate";
 import { formatWorkHours } from "@/lib/workTime";
+import { WorkCardEstimate } from "./WorkCardEstimate";
+import { WorkScopeApproveButton } from "./WorkScopeApproveButton";
 import type {
   WorkIssueTimeLogEntry,
   WorkIssueTimeLogRoleOption,
@@ -282,6 +289,7 @@ function RequirementsChecklistSection({
   draft,
   onDraftChange,
   pending,
+  scopeLocked = false,
   onToggle,
   onSaveBody,
   onRemove,
@@ -294,6 +302,8 @@ function RequirementsChecklistSection({
   draft: string;
   onDraftChange: (value: string) => void;
   pending: boolean;
+  /** When true, checklist text cannot be edited/added/removed (done toggles stay). */
+  scopeLocked?: boolean;
   onToggle: (
     item: { id: string; body: string; isDone: boolean },
     isDone: boolean
@@ -330,22 +340,34 @@ function RequirementsChecklistSection({
           />
         );
       }}
-      onRename={(row, nextLabel) => {
-        const item = byId.get(row.id);
-        if (!item) return;
-        onSaveBody(item, nextLabel);
-      }}
-      onRemove={(row) => {
-        const item = byId.get(row.id);
-        if (!item) return;
-        onRemove(item);
-      }}
-      compose={{
-        value: draft,
-        onChange: onDraftChange,
-        onSubmit: onAdd,
-        placeholder,
-      }}
+      onRename={
+        scopeLocked
+          ? undefined
+          : (row, nextLabel) => {
+              const item = byId.get(row.id);
+              if (!item) return;
+              onSaveBody(item, nextLabel);
+            }
+      }
+      onRemove={
+        scopeLocked
+          ? undefined
+          : (row) => {
+              const item = byId.get(row.id);
+              if (!item) return;
+              onRemove(item);
+            }
+      }
+      compose={
+        scopeLocked
+          ? undefined
+          : {
+              value: draft,
+              onChange: onDraftChange,
+              onSubmit: onAdd,
+              placeholder,
+            }
+      }
     />
   );
 }
@@ -374,11 +396,24 @@ export function WorkIssueDrawer({
   const [tab, setTab] = useState(initialTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [unlockScopeOpen, setUnlockScopeOpen] = useState(false);
+
+  const scopeApprovalAvailable =
+    workScopeApprovalEnabled({
+      estimateUnit: board.estimateUnit,
+      fixedPriceEnabled: board.fixedPriceEnabled,
+    }) || issue.scopeApproved;
+  const scopeLocked = issue.scopeApproved;
 
   const canShowDangerTab = canDeleteWorkIssue(
     { id: board.currentUser.id, role: board.viewerRole },
     issue.reporter?.id ?? null
   );
+
+  function applyScopeApproved(approved: boolean) {
+    onIssuePatch({ scopeApproved: approved });
+    run(() => setWorkIssueScopeApprovedAction(board.id, issue.id, approved));
+  }
 
   useEffect(() => {
     setTab(
@@ -1234,75 +1269,116 @@ export function WorkIssueDrawer({
                 </div>
               </div>
               {board.showEstimates ? (
-                <div>
-                  <label
-                    className={`${propertyChipClass} cursor-text gap-1`}
-                    title={`Estimate (${workEstimateSuffix(board.estimateUnit, board.billingCurrency)})`}
-                  >
-                    <Clock
-                      className="h-3 w-3 shrink-0 text-text-tertiary"
-                      aria-hidden
-                    />
-                    <input
-                      type="text"
-                      inputMode={
-                        board.estimateUnit === "points" ? "numeric" : "decimal"
-                      }
-                      value={estimateDraft}
+                board.estimateUnit === "tshirt" ? (
+                  <div className="flex items-center gap-1.5">
+                  <WorkCardEstimate
+                    estimateHours={null}
+                    estimateSize={issue.estimateSize}
+                    estimateUnit="tshirt"
+                    billingCurrency={board.billingCurrency}
+                    disabled={pending || scopeLocked}
+                    onError={onError}
+                    onChange={() => {}}
+                    onChangeSize={(value: WorkTshirtSize | null) => {
+                      onIssuePatch({
+                        estimateSize: value,
+                        estimateHours: null,
+                      });
+                      void updateWorkIssueEstimateSizeAction(
+                        board.id,
+                        issue.id,
+                        value ?? ""
+                      ).then((result) => {
+                        if (result.ok) return;
+                        onError(result.error);
+                      });
+                    }}
+                  />
+                  {scopeApprovalAvailable ? (
+                    <WorkScopeApproveButton
+                      approved={issue.scopeApproved}
+                      canApprove={issue.estimateSize != null}
                       disabled={pending}
-                      aria-label={`Estimate in ${workEstimateSuffix(board.estimateUnit, board.billingCurrency)}`}
-                      placeholder="Est"
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setEstimateDraft(next);
-                        estimateDraftRef.current = next;
-                        scheduleEstimateSave(next);
-                      }}
-                      onFocus={() => setEstimateFocused(true)}
-                      onBlur={(event) => {
-                        if (estimateSaveTimerRef.current) {
-                          clearTimeout(estimateSaveTimerRef.current);
-                          estimateSaveTimerRef.current = null;
-                        }
-                        if (skipEstimateSaveRef.current) {
-                          skipEstimateSaveRef.current = false;
-                          setEstimateFocused(false);
+                      size="drawer"
+                      onToggle={() => {
+                        if (issue.scopeApproved) {
+                          setUnlockScopeOpen(true);
                           return;
                         }
-                        saveEstimate(event.currentTarget.value);
-                        setEstimateFocused(false);
+                        applyScopeApproved(true);
                       }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.currentTarget.blur();
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
+                    />
+                  ) : null}
+                  </div>
+                ) : (
+                  <div>
+                    <label
+                      className={`${propertyChipClass} cursor-text gap-1`}
+                      title={`Estimate (${workEstimateSuffix(board.estimateUnit, board.billingCurrency)})`}
+                    >
+                      <Clock
+                        className="h-3 w-3 shrink-0 text-text-tertiary"
+                        aria-hidden
+                      />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={estimateDraft}
+                        disabled={pending}
+                        aria-label={`Estimate in ${workEstimateSuffix(board.estimateUnit, board.billingCurrency)}`}
+                        placeholder="Est"
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setEstimateDraft(next);
+                          estimateDraftRef.current = next;
+                          scheduleEstimateSave(next);
+                        }}
+                        onFocus={() => setEstimateFocused(true)}
+                        onBlur={(event) => {
                           if (estimateSaveTimerRef.current) {
                             clearTimeout(estimateSaveTimerRef.current);
                             estimateSaveTimerRef.current = null;
                           }
-                          const revert =
-                            lastSubmittedEstimateRef.current == null
-                              ? ""
-                              : String(lastSubmittedEstimateRef.current);
-                          skipEstimateSaveRef.current = true;
-                          estimateDraftRef.current = revert;
-                          setEstimateDraft(revert);
+                          if (skipEstimateSaveRef.current) {
+                            skipEstimateSaveRef.current = false;
+                            setEstimateFocused(false);
+                            return;
+                          }
+                          saveEstimate(event.currentTarget.value);
                           setEstimateFocused(false);
-                          event.currentTarget.blur();
-                        }
-                      }}
-                      className="w-10 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
-                    />
-                    <span className="text-[13px] text-text-tertiary">
-                      {workEstimateSuffix(
-                        board.estimateUnit,
-                        board.billingCurrency
-                      )}
-                    </span>
-                  </label>
-                </div>
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            if (estimateSaveTimerRef.current) {
+                              clearTimeout(estimateSaveTimerRef.current);
+                              estimateSaveTimerRef.current = null;
+                            }
+                            const revert =
+                              lastSubmittedEstimateRef.current == null
+                                ? ""
+                                : String(lastSubmittedEstimateRef.current);
+                            skipEstimateSaveRef.current = true;
+                            estimateDraftRef.current = revert;
+                            setEstimateDraft(revert);
+                            setEstimateFocused(false);
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        className="w-10 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+                      />
+                      <span className="text-[13px] text-text-tertiary">
+                        {workEstimateSuffix(
+                          board.estimateUnit,
+                          board.billingCurrency
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                )
               ) : null}
               <div>
                 {showDates ? (
@@ -1349,7 +1425,7 @@ export function WorkIssueDrawer({
                   contentKey={issue.id}
                   value={description}
                   people={board.members}
-                  disabled={pending}
+                  disabled={pending || scopeLocked}
                   placeholder="Add description… Use @ to mention"
                   onChange={setDescription}
                   onBlur={saveDescription}
@@ -1361,17 +1437,25 @@ export function WorkIssueDrawer({
                     src: thumb.previewUrl,
                     uploading: thumb.uploading,
                   }))}
-                  onRemove={(key) => {
-                    setDescriptionThumbs((prev) => {
-                      const row = prev.find((thumb) => thumb.localId === key);
-                      if (row?.revokeOnClear) {
-                        URL.revokeObjectURL(row.previewUrl);
-                      }
-                      const next = prev.filter((thumb) => thumb.localId !== key);
-                      queueMicrotask(() => persistDescription(next));
-                      return next;
-                    });
-                  }}
+                  onRemove={
+                    scopeLocked
+                      ? undefined
+                      : (key) => {
+                          setDescriptionThumbs((prev) => {
+                            const row = prev.find(
+                              (thumb) => thumb.localId === key
+                            );
+                            if (row?.revokeOnClear) {
+                              URL.revokeObjectURL(row.previewUrl);
+                            }
+                            const next = prev.filter(
+                              (thumb) => thumb.localId !== key
+                            );
+                            queueMicrotask(() => persistDescription(next));
+                            return next;
+                          });
+                        }
+                  }
                 />
               </div>
 
@@ -1383,9 +1467,9 @@ export function WorkIssueDrawer({
                   <AutosizeTextarea
                     className={textFieldClass}
                     value={currentState}
-                    disabled={pending}
+                    disabled={pending || scopeLocked}
                     placeholder="Add current state…"
-                    autoFocus={!issue.currentState.trim()}
+                    autoFocus={!issue.currentState.trim() && !scopeLocked}
                     onChange={(event) => setCurrentState(event.target.value)}
                     onBlur={() => {
                       if (!currentState.trim()) setShowCurrentState(false);
@@ -1407,9 +1491,9 @@ export function WorkIssueDrawer({
                   <AutosizeTextarea
                     className={textFieldClass}
                     value={nextStep}
-                    disabled={pending}
+                    disabled={pending || scopeLocked}
                     placeholder="Add next step…"
-                    autoFocus={!issue.nextStep.trim()}
+                    autoFocus={!issue.nextStep.trim() && !scopeLocked}
                     onChange={(event) => setNextStep(event.target.value)}
                     onBlur={() => {
                       if (!nextStep.trim()) setShowNextStep(false);
@@ -1420,7 +1504,7 @@ export function WorkIssueDrawer({
               ) : null}
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                {!showCurrentState ? (
+                {!showCurrentState && !scopeLocked ? (
                   <button
                     type="button"
                     disabled={pending}
@@ -1430,7 +1514,7 @@ export function WorkIssueDrawer({
                     + Current state
                   </button>
                 ) : null}
-                {!showNextStep ? (
+                {!showNextStep && !scopeLocked ? (
                   <button
                     type="button"
                     disabled={pending}
@@ -1636,14 +1720,18 @@ export function WorkIssueDrawer({
           <TabsContent value="time" className="mt-5 space-y-5">
             <div className="flex items-center gap-3">
               <p className="min-w-0 shrink-0 text-sm tabular-nums text-text-primary">
-                {board.showEstimates && issue.estimateHours != null
-                  ? formatWorkEstimatePair(
-                      issue.loggedHours,
-                      issue.estimateHours,
-                      board.estimateUnit,
-                      board.billingCurrency
-                    )
-                  : formatWorkHours(issue.loggedHours)}
+                {formatVisibleWorkEstimate(issue.loggedHours, issue.estimateHours, {
+                  showEstimates: board.showEstimates,
+                  showReportedTime: true,
+                  estimateUnit: board.estimateUnit,
+                  currency: board.billingCurrency,
+                  estimateSize: issue.estimateSize,
+                  fixedPriceEnabled: board.fixedPriceEnabled,
+                  sizePrice: resolveSizePrice(
+                    issue.estimateSize,
+                    board.sizePrices
+                  ),
+                }) ?? formatWorkHours(issue.loggedHours)}
               </p>
               <div className="min-w-0 flex-1">
                 <WorkTimeGraph
@@ -1854,6 +1942,7 @@ export function WorkIssueDrawer({
               draft={requirementDraft}
               onDraftChange={setRequirementDraft}
               pending={pending}
+              scopeLocked={scopeLocked}
               onToggle={(requirement, isDone) => {
                 onIssuePatch({
                   requirements: issue.requirements.map((row) =>
@@ -1923,6 +2012,7 @@ export function WorkIssueDrawer({
               draft={dodDraft}
               onDraftChange={setDodDraft}
               pending={pending}
+              scopeLocked={scopeLocked}
               onToggle={(requirement, isDone) => {
                 onIssuePatch({
                   definitionOfDone: issue.definitionOfDone.map((row) =>
@@ -1987,7 +2077,7 @@ export function WorkIssueDrawer({
               <AutosizeTextarea
                 className={textFieldClass}
                 value={outOfScope}
-                disabled={pending}
+                disabled={pending || scopeLocked}
                 minRows={2}
                 placeholder="Not in this issue…"
                 onChange={(event) => setOutOfScope(event.target.value)}
@@ -2316,6 +2406,19 @@ export function WorkIssueDrawer({
       </div>
 
       <ConfirmModal
+        isOpen={unlockScopeOpen}
+        title="Unlock scope?"
+        message="You can change size and scope, then approve again."
+        confirmLabel="Unlock"
+        variant="danger"
+        onClose={() => setUnlockScopeOpen(false)}
+        onConfirm={() => {
+          setUnlockScopeOpen(false);
+          applyScopeApproved(false);
+        }}
+      />
+
+      <ConfirmModal
         isOpen={deleteOpen && canShowDangerTab}
         title={`Delete ${issue.key}?`}
         message="This permanently deletes the issue and its comments, files, and activity. Issues with logged time cannot be deleted."
@@ -2520,6 +2623,8 @@ export function WorkCardPeople({
   const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const menuOpen = menu != null;
   const extras = assignees
     .filter((person) => person.id !== owner?.id)
@@ -2552,29 +2657,35 @@ export function WorkCardPeople({
     );
   }, [pickablePeople, query]);
 
+  function closeMenu() {
+    setMenu(null);
+    setQuery("");
+  }
+
   useEffect(() => {
     if (!menuOpen) return;
     function onPointerDown(event: PointerEvent) {
       const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest("[data-card-assign-people]")
-      ) {
-        return;
-      }
-      setMenu(null);
-      setQuery("");
+      if (!(target instanceof Node)) return;
+      // Keep interactions inside this menu / its trigger.
+      if (menuRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      // Swallow the outside click so it cannot open another card's people menu
+      // (or otherwise interact with the board underneath).
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu();
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setMenu(null);
-        setQuery("");
+        event.preventDefault();
+        closeMenu();
       }
     }
-    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [menuOpen]);
@@ -2591,8 +2702,7 @@ export function WorkCardPeople({
     event.stopPropagation();
     if (!interactive || disabled || pickablePeople.length === 0) return;
     if (menuOpen) {
-      setMenu(null);
-      setQuery("");
+      closeMenu();
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
@@ -2609,7 +2719,7 @@ export function WorkCardPeople({
 
   const menuNode = interactive && menuOpen && menu ? (
     <div
-      data-card-assign-people
+      ref={menuRef}
       role="dialog"
       aria-label="Owner and assignees"
       className="fixed z-[80] overflow-hidden rounded-lg border border-border-subtle bg-bg-default shadow-lg"
@@ -2735,13 +2845,13 @@ export function WorkCardPeople({
   return (
     <span
       className="relative flex shrink-0 items-center"
-      data-card-assign-people
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
       {interactive && pickablePeople.length > 0 ? (
         <button
+          ref={triggerRef}
           type="button"
           disabled={disabled}
           title={peopleTitle || "Owner & assignees"}

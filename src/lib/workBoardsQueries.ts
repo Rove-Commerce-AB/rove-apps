@@ -16,6 +16,8 @@ export type WorkBoardRow = {
   is_support_board?: boolean;
   /** Present after estimate-unit migration; treat missing as hours. */
   estimate_unit?: string;
+  /** Present after t-shirt fixed-price migration; treat missing as false. */
+  fixed_price_enabled?: boolean;
 };
 
 export type WorkCustomerRow = {
@@ -155,6 +157,7 @@ export async function fetchWorkBoardById(
        COALESCE(b.process_steps, '[]'::jsonb) AS process_steps,
        COALESCE(b.is_support_board, false) AS is_support_board,
        COALESCE(b.estimate_unit, 'hours') AS estimate_unit,
+       COALESCE(b.fixed_price_enabled, false) AS fixed_price_enabled,
        c.name AS customer_name,
        c.color AS customer_color,
        c.is_internal AS customer_is_internal,
@@ -190,6 +193,7 @@ export async function fetchWorkBoardById(
     member_ids: row.member_ids ?? [],
     is_support_board: row.is_support_board ?? false,
     estimate_unit: row.estimate_unit ?? "hours",
+    fixed_price_enabled: row.fixed_price_enabled ?? false,
   };
 }
 
@@ -201,17 +205,38 @@ export async function updateWorkProjectEstimateUnit(
   await withCloudSqlTransaction("work-estimate-unit", async (client) => {
     if (options?.clearEstimates) {
       await client.query(
-        `UPDATE work_issues SET estimate_hours = NULL WHERE project_id = $1`,
+        `UPDATE work_issues
+         SET estimate_hours = NULL, estimate_size = NULL
+         WHERE project_id = $1`,
         [boardId]
       );
     }
     await client.query(
       `UPDATE work_projects
-       SET estimate_unit = $2, updated_at = now()
+       SET estimate_unit = $2,
+           fixed_price_enabled = CASE
+             WHEN $2 = 'tshirt' THEN fixed_price_enabled
+             ELSE false
+           END,
+           updated_at = now()
        WHERE id = $1 AND archived_at IS NULL`,
       [boardId, unit]
     );
   });
+}
+
+export async function updateWorkProjectFixedPriceEnabled(
+  boardId: string,
+  enabled: boolean
+): Promise<void> {
+  await cloudSqlPool.query(
+    `UPDATE work_projects
+     SET fixed_price_enabled = $2, updated_at = now()
+     WHERE id = $1
+       AND archived_at IS NULL
+       AND estimate_unit = 'tshirt'`,
+    [boardId, enabled]
+  );
 }
 
 export async function countWorkIssueEstimates(
@@ -221,7 +246,7 @@ export async function countWorkIssueEstimates(
     `SELECT count(*)::text AS count
      FROM work_issues
      WHERE project_id = $1
-       AND estimate_hours IS NOT NULL`,
+       AND (estimate_hours IS NOT NULL OR estimate_size IS NOT NULL)`,
     [boardId]
   );
   return Number(rows[0]?.count ?? 0);

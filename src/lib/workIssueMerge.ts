@@ -13,6 +13,8 @@ export type WorkIssueOptimisticPatch = Partial<
     | "issueType"
     | "component"
     | "estimateHours"
+    | "estimateSize"
+    | "scopeApproved"
     | "owner"
     | "assignees"
     | "labels"

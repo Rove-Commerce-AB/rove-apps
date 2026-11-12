@@ -5,7 +5,9 @@ import { getCurrentAppUser } from "@/lib/appUsers";
 import { parseBillingCurrency, type BillingCurrency } from "@/lib/currency";
 import {
   parseWorkEstimateUnit,
+  parseWorkTshirtSize,
   type WorkEstimateUnit,
+  type WorkTshirtSize,
 } from "@/lib/workEstimate";
 import {
   canSeeWorkEstimates,
@@ -45,6 +47,7 @@ export type WorkMyIssue = {
   estimateUnit: WorkEstimateUnit;
   billingCurrency: BillingCurrency;
   estimateHours: number | null;
+  estimateSize: WorkTshirtSize | null;
   loggedHours: number;
   dueDate: string | null;
   isOwner: boolean;
@@ -110,6 +113,9 @@ export async function listMyWorkIssues(): Promise<WorkMyIssue[]> {
         ? row.estimate_hours == null
           ? null
           : Number(row.estimate_hours)
+        : null,
+      estimateSize: showEstimates
+        ? parseWorkTshirtSize(row.estimate_size)
         : null,
       loggedHours: showReportedTime ? loggedHours.get(row.id) ?? 0 : 0,
       dueDate: typeof row.due_date === "string" ? row.due_date : null,

@@ -412,7 +412,7 @@ function WorkCustomerNav({
   forceOpen: boolean;
   onNavigate?: (href: string) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(forceOpen);
 
   useEffect(() => {
     if (forceOpen) setOpen(true);

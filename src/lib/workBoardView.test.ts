@@ -49,6 +49,8 @@ function issue(
     references: [],
     relations: emptyWorkIssueRelations(),
     estimateHours: null,
+    estimateSize: null,
+    scopeApproved: false,
     loggedHours: 0,
     priority: null,
     sprintId: null,

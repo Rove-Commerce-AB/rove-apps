@@ -1,5 +1,9 @@
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import type { PoolClient } from "pg";
+import {
+  reverseActiveWorkIssueDelivery,
+  syncWorkIssueDeliveryOnStatusChange,
+} from "@/lib/workIssueDeliveriesQueries";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkIssueDetailsInput, WorkLabel } from "@/lib/workTypes";
 
@@ -31,6 +35,9 @@ export type WorkIssueRow = {
   reporter_name: string | null;
   reporter_email: string | null;
   estimate_hours: string | number | null;
+  estimate_size: string | null;
+  scope_approved_at: Date | string | null;
+  scope_approved_by_app_user_id: string | null;
   sprint_id: string | null;
   start_date: Date | string | null;
   due_date: Date | string | null;
@@ -218,6 +225,9 @@ export async function fetchWorkIssuesForBoard(
        r.name AS reporter_name,
        r.email AS reporter_email,
        i.estimate_hours,
+       i.estimate_size,
+       i.scope_approved_at,
+       i.scope_approved_by_app_user_id,
        i.sprint_id,
        i.start_date,
        i.due_date,
@@ -550,8 +560,90 @@ export async function updateWorkIssueEstimate(
   estimateHours: number | null
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
-    `UPDATE work_issues SET estimate_hours = $3 WHERE id = $2 AND project_id = $1`,
+    `UPDATE work_issues
+     SET estimate_hours = $3, estimate_size = NULL
+     WHERE id = $2 AND project_id = $1`,
     [boardId, issueId, estimateHours]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function updateWorkIssueEstimateSize(
+  boardId: string,
+  issueId: string,
+  estimateSize: string | null
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issues
+     SET estimate_size = $3, estimate_hours = NULL
+     WHERE id = $2 AND project_id = $1`,
+    [boardId, issueId, estimateSize]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function fetchWorkIssueScopeLockState(
+  boardId: string,
+  issueId: string
+): Promise<{
+  scopeApproved: boolean;
+  estimateSize: string | null;
+  statusIsDone: boolean;
+  hasActiveDelivery: boolean;
+} | null> {
+  const { rows } = await cloudSqlPool.query<{
+    scope_approved_at: Date | string | null;
+    estimate_size: string | null;
+    status_is_done: boolean;
+    has_active_delivery: boolean;
+  }>(
+    `SELECT
+       i.scope_approved_at,
+       i.estimate_size,
+       COALESCE(s.is_done, false) AS status_is_done,
+       EXISTS (
+         SELECT 1
+         FROM work_issue_deliveries d
+         WHERE d.issue_id = i.id
+           AND d.reversed_at IS NULL
+       ) AS has_active_delivery
+     FROM work_issues i
+     LEFT JOIN work_project_statuses s
+       ON s.id = i.status AND s.project_id = i.project_id
+     WHERE i.id = $2 AND i.project_id = $1`,
+    [boardId, issueId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    scopeApproved: row.scope_approved_at != null,
+    estimateSize: row.estimate_size,
+    statusIsDone: row.status_is_done === true,
+    hasActiveDelivery: row.has_active_delivery === true,
+  };
+}
+
+export async function updateWorkIssueScopeApproved(
+  boardId: string,
+  issueId: string,
+  approved: boolean,
+  actorAppUserId: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    approved
+      ? `UPDATE work_issues
+         SET scope_approved_at = now(),
+             scope_approved_by_app_user_id = $3,
+             updated_at = now()
+         WHERE id = $2 AND project_id = $1`
+      : `UPDATE work_issues
+         SET scope_approved_at = NULL,
+             scope_approved_by_app_user_id = NULL,
+             updated_at = now()
+         WHERE id = $2 AND project_id = $1`,
+    approved
+      ? [boardId, issueId, actorAppUserId]
+      : [boardId, issueId]
   );
   return (result.rowCount ?? 0) === 1;
 }
@@ -1360,6 +1452,12 @@ export async function moveWorkIssue(input: {
          VALUES ($1, $2, 'status', $3)`,
         [input.issueId, input.actorAppUserId, `changed status to ${input.statusName}`]
       );
+      await syncWorkIssueDeliveryOnStatusChange(client, {
+        boardId: input.boardId,
+        issueId: input.issueId,
+        previousStatusId: previous[0].status,
+        nextStatusId: input.status,
+      });
     }
 
     return rows[0].sort_order;
@@ -1649,6 +1747,9 @@ export async function moveWorkIssueToProject(input: {
       [input.issueId]
     );
 
+    // Fixed-price delivery belongs to the source board snapshot; reverse before move.
+    await reverseActiveWorkIssueDelivery(client, input.issueId);
+
     await client.query(
       `UPDATE work_issues
        SET project_id = $2,
@@ -1677,6 +1778,19 @@ export async function moveWorkIssueToProject(input: {
         input.eventSummary?.trim() || "moved the issue to another board",
       ]
     );
+
+    const targetDone = statusRows.find((row) => row.id === statusId)?.is_done;
+    if (targetDone) {
+      const nonDone = statusRows.find((row) => !row.is_done);
+      if (nonDone) {
+        await syncWorkIssueDeliveryOnStatusChange(client, {
+          boardId: input.toProjectId,
+          issueId: input.issueId,
+          previousStatusId: nonDone.id,
+          nextStatusId: statusId,
+        });
+      }
+    }
 
     return { number: nextNumber, statusId };
   });

@@ -22,11 +22,13 @@ export type WorkMyIssueRow = {
   project_title: string;
   project_prefix: string;
   estimate_unit: string;
+  fixed_price_enabled: boolean;
   status_index: number;
   status_count: number;
   sprint_number: number | null;
   sprint_title: string | null;
   estimate_hours: string | number | null;
+  estimate_size: string | null;
   due_date: Date | string | null;
   is_owner: boolean;
   is_assignee: boolean;
@@ -72,6 +74,7 @@ export async function fetchMyWorkIssues(
        p.title AS project_title,
        p.prefix AS project_prefix,
        COALESCE(p.estimate_unit, 'hours') AS estimate_unit,
+       COALESCE(p.fixed_price_enabled, false) AS fixed_price_enabled,
        (
          SELECT COUNT(*)::int
          FROM work_project_statuses earlier
@@ -86,6 +89,7 @@ export async function fetchMyWorkIssues(
        sp.number AS sprint_number,
        sp.title AS sprint_title,
        i.estimate_hours,
+       i.estimate_size,
        i.due_date,
        (i.owner_app_user_id = $2) AS is_owner,
        EXISTS (
