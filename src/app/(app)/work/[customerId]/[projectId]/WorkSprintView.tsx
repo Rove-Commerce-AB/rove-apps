@@ -125,7 +125,9 @@ export function WorkSprintView({
   onChanged: () => void;
   onOptimisticIssuePatch?: (
     issueId: string,
-    patch: Pick<WorkIssue, "estimateHours" | "estimateSize" | "scopeApproved">
+    patch: Partial<
+      Pick<WorkIssue, "estimateHours" | "estimateSize" | "scopeApproved">
+    >
   ) => void;
 }) {
   const [pending, startTransition] = useTransition();
