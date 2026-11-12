@@ -250,6 +250,23 @@ export function workScopeApprovalEnabled(input: {
 
 export type WorkSizePriceMap = Partial<Record<WorkTshirtSize, number>>;
 
+/**
+ * Build the full size ladder from XS by doubling each step:
+ * S = XS×2, M = S×2, L = M×2, XL = L×2.
+ */
+export function doubleSizePricesFromXs(
+  xsAmount: number
+): Record<WorkTshirtSize, number> | null {
+  if (!Number.isFinite(xsAmount) || xsAmount < 0) return null;
+  const roundMoney = (value: number) => Math.round(value * 100) / 100;
+  const xs = roundMoney(xsAmount);
+  const s = roundMoney(xs * 2);
+  const m = roundMoney(s * 2);
+  const l = roundMoney(m * 2);
+  const xl = roundMoney(l * 2);
+  return { xs, s, m, l, xl };
+}
+
 export function resolveSizePrice(
   size: WorkTshirtSize | null | undefined,
   prices: WorkSizePriceMap | null | undefined

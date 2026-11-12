@@ -6,6 +6,7 @@ import {
   parseWorkEstimateUnit,
   parseWorkEstimateValue,
   parseWorkEstimateSizeValue,
+  doubleSizePricesFromXs,
   resolveSizePrice,
   sumFixedSizePrices,
   workEstimateComparesToLogged,
@@ -110,6 +111,17 @@ describe("size price helpers", () => {
     expect(resolveSizePrice("m", prices)).toBe(5000);
     expect(resolveSizePrice("s", prices)).toBeNull();
     expect(sumFixedSizePrices(["m", "xl", null], prices)).toBe(17000);
+  });
+
+  it("doubles each size from XS", () => {
+    expect(doubleSizePricesFromXs(1000)).toEqual({
+      xs: 1000,
+      s: 2000,
+      m: 4000,
+      l: 8000,
+      xl: 16000,
+    });
+    expect(doubleSizePricesFromXs(-1)).toBeNull();
   });
 });
 

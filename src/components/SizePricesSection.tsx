@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui";
+import { CopyPlus } from "lucide-react";
+import { Button, IconButton } from "@/components/ui";
 import { editInputClass, inlineEditTriggerClass } from "@/components/ui";
 import { moneyLabel } from "@/lib/currency";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
@@ -17,6 +18,7 @@ import {
 import {
   WORK_TSHIRT_SIZES,
   WORK_TSHIRT_SIZE_LABELS,
+  doubleSizePricesFromXs,
   type WorkTshirtSize,
 } from "@/lib/workEstimate";
 
@@ -47,6 +49,7 @@ export function SizePricesSection({
   const [editValue, setEditValue] = useState("");
   const originalValueRef = useRef("");
   const [savingSize, setSavingSize] = useState<WorkTshirtSize | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
   const currency = moneyLabel(billingCurrency);
 
   useEffect(() => {
@@ -72,6 +75,51 @@ export function SizePricesSection({
   }, [scope, ownerId, refreshTrigger]);
 
   const amountBySize = new Map(rows.map((row) => [row.size, row.amount]));
+  const xsAmount = amountBySize.get("xs") ?? null;
+
+  async function duplicateFromXs() {
+    if (xsAmount == null || duplicating || savingSize != null) return;
+    const ladder = doubleSizePricesFromXs(xsAmount);
+    if (!ladder) {
+      onError("Set a valid XS amount first");
+      return;
+    }
+    setDuplicating(true);
+    setEditingSize(null);
+    try {
+      const savedRows: SizePriceRow[] = [];
+      for (const size of WORK_TSHIRT_SIZES) {
+        const saved =
+          scope === "customer"
+            ? await upsertCustomerSizePrice(
+                ownerId,
+                size,
+                ladder[size],
+                billingCurrency
+              )
+            : await upsertProjectSizePrice(
+                ownerId,
+                size,
+                ladder[size],
+                billingCurrency
+              );
+        savedRows.push(saved);
+      }
+      setRows(
+        savedRows.sort(
+          (a, b) =>
+            WORK_TSHIRT_SIZES.indexOf(a.size) -
+            WORK_TSHIRT_SIZES.indexOf(b.size)
+        )
+      );
+    } catch (error) {
+      onError(
+        error instanceof Error ? error.message : "Could not duplicate sizes"
+      );
+    } finally {
+      setDuplicating(false);
+    }
+  }
 
   async function saveSize(size: WorkTshirtSize, raw: string) {
     const trimmed = raw.trim().replace(/\s/g, "").replace(",", ".");
@@ -138,95 +186,119 @@ export function SizePricesSection({
       {loading ? (
         <p className="text-sm text-text-tertiary">Loading…</p>
       ) : (
-        <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
-          {WORK_TSHIRT_SIZES.map((size) => {
-            const amount = amountBySize.get(size) ?? null;
-            const editing = editingSize === size;
-            return (
-              <li
-                key={size}
-                className="flex items-center justify-between gap-3 px-3 py-2"
-              >
-                <span className="w-8 text-sm font-medium text-text-primary">
-                  {WORK_TSHIRT_SIZE_LABELS[size]}
-                </span>
-                <div className="min-w-0 flex-1">
-                  {editing ? (
-                    <div className="flex items-center justify-end gap-1.5">
-                      <input
-                        autoFocus
-                        inputMode="decimal"
-                        disabled={savingSize === size}
-                        aria-label={`${WORK_TSHIRT_SIZE_LABELS[size]} price`}
-                        value={editValue}
-                        onChange={(event) => setEditValue(event.target.value)}
-                        onBlur={() => {
-                          if (
-                            !isInlineEditValueChanged(
-                              editValue,
-                              originalValueRef.current
-                            )
-                          ) {
-                            setEditingSize(null);
-                            return;
-                          }
-                          void saveSize(size, editValue);
+        <>
+          <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
+            {WORK_TSHIRT_SIZES.map((size) => {
+              const amount = amountBySize.get(size) ?? null;
+              const editing = editingSize === size;
+              return (
+                <li
+                  key={size}
+                  className="flex items-center justify-between gap-3 px-3 py-2"
+                >
+                  <div className="flex w-14 shrink-0 items-center gap-0.5">
+                    <span className="text-sm font-medium text-text-primary">
+                      {WORK_TSHIRT_SIZE_LABELS[size]}
+                    </span>
+                    {size === "xs" && xsAmount != null && !editing ? (
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        disabled={duplicating || savingSize != null}
+                        title="Duplicate ×2 from XS (S=XS×2, M=S×2, …)"
+                        aria-label="Duplicate prices ×2 from XS"
+                        className="!p-0.5 text-text-tertiary hover:text-text-secondary"
+                        onClick={() => {
+                          void duplicateFromXs();
                         }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            (event.target as HTMLInputElement).blur();
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setEditValue(originalValueRef.current);
-                            setEditingSize(null);
-                          }
+                      >
+                        <CopyPlus
+                          className={`h-3 w-3 ${duplicating ? "opacity-40" : ""}`}
+                          aria-hidden
+                        />
+                      </IconButton>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {editing ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <input
+                          autoFocus
+                          inputMode="decimal"
+                          disabled={savingSize === size || duplicating}
+                          aria-label={`${WORK_TSHIRT_SIZE_LABELS[size]} price`}
+                          value={editValue}
+                          onChange={(event) => setEditValue(event.target.value)}
+                          onBlur={() => {
+                            if (
+                              !isInlineEditValueChanged(
+                                editValue,
+                                originalValueRef.current
+                              )
+                            ) {
+                              setEditingSize(null);
+                              return;
+                            }
+                            void saveSize(size, editValue);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              (event.target as HTMLInputElement).blur();
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setEditValue(originalValueRef.current);
+                              setEditingSize(null);
+                            }
+                          }}
+                          className={`${editInputClass} max-w-[8rem] text-right`}
+                        />
+                        <span className="text-sm text-text-tertiary">
+                          {currency}
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={duplicating}
+                        className={`${inlineEditTriggerClass} w-full justify-end text-right`}
+                        onClick={() => {
+                          const next = amountDraft(amount);
+                          originalValueRef.current = next;
+                          setEditValue(next);
+                          setEditingSize(size);
                         }}
-                        className={`${editInputClass} max-w-[8rem] text-right`}
-                      />
-                      <span className="text-sm text-text-tertiary">
-                        {currency}
-                      </span>
-                    </div>
-                  ) : (
-                    <button
+                      >
+                        {amount == null ? (
+                          <span className="text-text-tertiary">Set price</span>
+                        ) : (
+                          <span className="tabular-nums">
+                            {amount} {currency}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  {amount != null && !editing ? (
+                    <Button
                       type="button"
-                      className={`${inlineEditTriggerClass} w-full justify-end text-right`}
+                      variant="ghost"
+                      size="sm"
+                      disabled={duplicating}
+                      className="shrink-0 text-text-tertiary"
                       onClick={() => {
-                        const next = amountDraft(amount);
-                        originalValueRef.current = next;
-                        setEditValue(next);
-                        setEditingSize(size);
+                        void saveSize(size, "");
                       }}
                     >
-                      {amount == null ? (
-                        <span className="text-text-tertiary">Set price</span>
-                      ) : (
-                        <span className="tabular-nums">
-                          {amount} {currency}
-                        </span>
-                      )}
-                    </button>
-                  )}
-                </div>
-                {amount != null && !editing ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="shrink-0 text-text-tertiary"
-                    onClick={() => {
-                      void saveSize(size, "");
-                    }}
-                  >
-                    Clear
-                  </Button>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                      Clear
+                    </Button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </section>
   );
