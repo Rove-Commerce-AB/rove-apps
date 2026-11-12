@@ -20,10 +20,11 @@ function formatHours(hours: number): string {
 }
 
 /**
- * Fortnox Lön validates against PAXml 2.0 (enumeration in
- * http://www.paxml.se/2.0/paxml.xsd). paxml.se may accept 2.3, but Fortnox rejects it.
+ * Current PAXml schema on paxml.se / XSD enumeration
+ * (http://www.paxml.se/2.3/paxml.xsd). Omit optional `<format>LÖNIN</format>`
+ * so the file stays ASCII-safe through mail/transfer.
  */
-export const PAXML_VERSION = "2.0" as const;
+export const PAXML_VERSION = "2.3" as const;
 
 /** Encode a Latin-1 string as ISO-8859-1 bytes (Blob defaults to UTF-8). */
 export function encodeIso88591(text: string): Uint8Array<ArrayBuffer> {
@@ -66,7 +67,6 @@ export function buildPaxmlDocument(
     `<?xml version="1.0" encoding="ISO-8859-1"?>`,
     `<paxml>`,
     `  <header>`,
-    `    <format>LÖNIN</format>`,
     `    <version>${PAXML_VERSION}</version>`,
     `    <datum>${iso}</datum>`,
     `    <programnamn>${escapeXml(programName)}</programnamn>`,

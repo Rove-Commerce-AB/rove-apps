@@ -21,8 +21,8 @@ describe("buildPaxmlDocument", () => {
       { generatedAt: new Date("2026-11-09T10:00:00.000Z"), programName: "RovePlanner" }
     );
 
-    expect(xml).toContain("<format>LÖNIN</format>");
-    expect(xml).toContain("<version>2.0</version>");
+    expect(xml).not.toContain("<format>");
+    expect(xml).toContain("<version>2.3</version>");
     expect(xml).toContain('<tidtrans anstid="101">');
     expect(xml).toContain("<tidkod>SEM</tidkod>");
     expect(xml).toContain("<datum>2026-07-01</datum>");
@@ -31,7 +31,7 @@ describe("buildPaxmlDocument", () => {
     expect(xml).toContain("<timmar>4.5</timmar>");
   });
 
-  it("encodes LÖNIN as ISO-8859-1 single-byte Ö", () => {
+  it("encodes as ISO-8859-1 ASCII-safe bytes without LÖNIN", () => {
     const xml = buildPaxmlDocument(
       [
         {
@@ -44,13 +44,9 @@ describe("buildPaxmlDocument", () => {
       { generatedAt: new Date("2026-11-11T13:18:48.000Z") }
     );
     const bytes = encodeIso88591(xml);
-    const asLatin1 = Buffer.from(bytes).toString("latin1");
-    expect(asLatin1).toContain("<version>2.0</version>");
-    const formatIdx = asLatin1.indexOf("<format>");
-    const slice = bytes.subarray(formatIdx, formatIdx + 16);
-    // <format>L + Ö(0xD6) + NIN
-    expect([...slice]).toEqual([
-      0x3c, 0x66, 0x6f, 0x72, 0x6d, 0x61, 0x74, 0x3e, 0x4c, 0xd6, 0x4e, 0x49, 0x4e, 0x3c, 0x2f, 0x66,
-    ]);
+    expect(Buffer.from(bytes).toString("latin1")).toContain(
+      "<version>2.3</version>"
+    );
+    expect([...bytes].every((b) => b <= 0x7f)).toBe(true);
   });
 });
