@@ -118,14 +118,17 @@ async function assertIssueScopeUnlocked(boardId: string, issueId: string) {
 
 /** Fixed-price t-shirt: Done requires an approved scope (size + locked scope). */
 async function assertCanEnterFixedPriceDone(
-  board: { estimate_unit: string | null; fixed_price_enabled?: boolean },
+  board: {
+    estimate_unit?: string | null;
+    fixed_price_enabled?: boolean | null;
+  },
   boardId: string,
   issueId: string,
   targetIsDone: boolean
 ) {
   if (!targetIsDone) return;
   if (
-    parseWorkEstimateUnit(board.estimate_unit) !== "tshirt" ||
+    parseWorkEstimateUnit(board.estimate_unit ?? null) !== "tshirt" ||
     board.fixed_price_enabled !== true
   ) {
     return;
