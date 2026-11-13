@@ -179,9 +179,25 @@ export function WorkDescriptionEditor({
         class: "work-markdown work-description-editor focus:outline-none",
       },
       handlePaste: (_view, event) => {
-        const images = collectImageFiles(event.clipboardData);
+        const data = event.clipboardData;
+        if (!data) return false;
+        // Snipping Tool often puts a still + video together. Let the drawer
+        // own any paste that includes video / non-image files so a poster is
+        // stored; pure image pastes stay in the editor.
+        const items = Array.from(data.items || []);
+        const hasNonImageFile = items.some((item) => {
+          if (item.kind !== "file") return false;
+          const type = (item.type || "").toLowerCase();
+          if (!type) return true;
+          if (type.startsWith("video/")) return true;
+          return !type.startsWith("image/");
+        });
+        if (hasNonImageFile) return false;
+
+        const images = collectImageFiles(data);
         if (images.length === 0) return false;
         event.preventDefault();
+        event.stopPropagation();
         onPasteImagesRef.current?.(images);
         return true;
       },

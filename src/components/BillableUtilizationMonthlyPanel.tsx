@@ -20,6 +20,8 @@ import type {
   BillableUtilizationMonthPoint,
 } from "@/types/billableUtilizationReport";
 import { getBillableUtilizationMonthlyReportAction } from "@/app/(app)/reports/actions";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import { ListTableToolbar } from "@/components/ListTableToolbar";
 import type { ProbabilityDisplay } from "@/lib/allocationPageView";
 import { Panel, PanelSectionTitle, Select } from "@/components/ui";
 
@@ -141,7 +143,7 @@ export function BillableUtilizationMonthlyPanel({
   anchorMonth,
 }: Props) {
   const [data, setData] = useState(initialData);
-  const [teamId, setTeamId] = useState<string>("");
+  const [teamIds, setTeamIds] = useState<string[]>([]);
   const [probabilityDisplay, setProbabilityDisplay] =
     useState<ProbabilityDisplay>("weighted");
   const [offset, setOffset] = useState(0);
@@ -155,14 +157,14 @@ export function BillableUtilizationMonthlyPanel({
   const fetchData = useCallback(
     async (
       months: { year: number; month: number }[],
-      team: string | null,
+      teams: string[],
       probability: ProbabilityDisplay
     ) => {
       setLoading(true);
       try {
         const result = await getBillableUtilizationMonthlyReportAction(
           months,
-          team,
+          teams.length === 0 ? null : teams,
           probability
         );
         setData(result);
@@ -174,9 +176,9 @@ export function BillableUtilizationMonthlyPanel({
   );
 
   const onTeamChange = useCallback(
-    (value: string) => {
-      setTeamId(value);
-      fetchData(monthsForOffset, value === "" ? null : value, probabilityDisplay);
+    (value: string[]) => {
+      setTeamIds(value);
+      fetchData(monthsForOffset, value, probabilityDisplay);
     },
     [monthsForOffset, fetchData, probabilityDisplay]
   );
@@ -185,24 +187,24 @@ export function BillableUtilizationMonthlyPanel({
     (value: string) => {
       const next = value as ProbabilityDisplay;
       setProbabilityDisplay(next);
-      fetchData(monthsForOffset, teamId === "" ? null : teamId, next);
+      fetchData(monthsForOffset, teamIds, next);
     },
-    [monthsForOffset, fetchData, teamId]
+    [monthsForOffset, fetchData, teamIds]
   );
 
   const onPrev = useCallback(() => {
     const newOffset = offset - 1;
     setOffset(newOffset);
     const months = buildMonthsForOffset(anchorYear, anchorMonth, newOffset);
-    fetchData(months, teamId === "" ? null : teamId, probabilityDisplay);
-  }, [offset, anchorYear, anchorMonth, teamId, probabilityDisplay, fetchData]);
+    fetchData(months, teamIds, probabilityDisplay);
+  }, [offset, anchorYear, anchorMonth, teamIds, probabilityDisplay, fetchData]);
 
   const onNext = useCallback(() => {
     const newOffset = offset + 1;
     setOffset(newOffset);
     const months = buildMonthsForOffset(anchorYear, anchorMonth, newOffset);
-    fetchData(months, teamId === "" ? null : teamId, probabilityDisplay);
-  }, [offset, anchorYear, anchorMonth, teamId, probabilityDisplay, fetchData]);
+    fetchData(months, teamIds, probabilityDisplay);
+  }, [offset, anchorYear, anchorMonth, teamIds, probabilityDisplay, fetchData]);
 
   const chartData: ChartPoint[] = data.months.map((m, i) => ({
     ...m,
@@ -219,10 +221,7 @@ export function BillableUtilizationMonthlyPanel({
     }),
   }));
 
-  const teamOptions = [
-    { value: "", label: "All teams" },
-    ...teams.map((t) => ({ value: t.id, label: t.name })),
-  ];
+  const teamOptions = teams.map((t) => ({ id: t.id, name: t.name }));
 
   const maxRevenue = Math.max(
     0,
@@ -236,63 +235,61 @@ export function BillableUtilizationMonthlyPanel({
   return (
     <Panel>
       <PanelSectionTitle>BILLABLE UTILIZATION & REVENUE</PanelSectionTitle>
-      <div className="space-y-6 p-3 pt-0">
-        <p className="text-xs text-text-primary/75">
+      <div className="p-3 pt-0">
+        <p className="mb-4 text-xs text-text-primary/75">
           Utilization is billable hours ÷ capacity hours (calendar month × each consultant&apos;s
           capacity %; no overhead adjustment). Forecast uses planned allocation;
           outcome from time reports. View matches the allocation page for probability on
           forecast hours and revenue.
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            View
-          </span>
-          <Select
-            variant="filter"
-            value={probabilityDisplay}
-            onValueChange={onProbabilityChange}
-            options={[
-              { value: "weighted", label: "With probability" },
-              { value: "none", label: "Without probability" },
-            ]}
-            className="w-auto min-w-0"
-            triggerClassName={`min-w-[180px] ${probabilityDisplay === "weighted" ? "bg-brand-blue/25 text-text-primary" : ""}`}
-          />
-          <span
-            className="mx-1 h-4 w-px shrink-0 bg-[var(--color-border-subtle)]"
-            aria-hidden
-          />
-          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Filter
-          </span>
-          <Select
-            variant="filter"
-            value={teamId}
-            onValueChange={onTeamChange}
-            options={teamOptions}
-            placeholder="All teams"
-            className="w-auto min-w-0"
-            triggerClassName="min-w-[90px]"
-          />
-        </div>
-        <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={onPrev}
-            className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-            aria-label="Previous period"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onNext}
-            className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-            aria-label="Next period"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <ListTableToolbar
+          leading={
+            <Select
+              variant="filter"
+              value={probabilityDisplay}
+              onValueChange={onProbabilityChange}
+              options={[
+                { value: "weighted", label: "With probability" },
+                { value: "none", label: "Without probability" },
+              ]}
+              className="w-auto min-w-0"
+              triggerClassName={`h-7 min-w-[160px] ${probabilityDisplay === "weighted" ? "bg-brand-blue/25 text-text-primary" : ""}`}
+            />
+          }
+          trailing={
+            <>
+              <ListFilterMenu
+                ariaLabel="Filter billable utilization"
+                sections={[
+                  {
+                    id: "team",
+                    label: "Team",
+                    allLabel: "All teams",
+                    options: teamOptions,
+                    selectedIds: teamIds,
+                    onChange: onTeamChange,
+                  },
+                ]}
+              />
+              <button
+                type="button"
+                onClick={onPrev}
+                className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                aria-label="Previous period"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onNext}
+                className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                aria-label="Next period"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </>
+          }
+        />
 
         {loading ? (
           <p className="py-8 text-center text-sm text-text-primary opacity-70">
@@ -303,7 +300,7 @@ export function BillableUtilizationMonthlyPanel({
             No data for the selected period.
           </p>
         ) : (
-          <>
+          <div className="space-y-6">
             <div>
               <h3 className="mb-2 text-heading-xs text-text-muted">
                 Utilization (%)
@@ -488,7 +485,7 @@ export function BillableUtilizationMonthlyPanel({
                 ]}
               />
             </div>
-          </>
+          </div>
         )}
       </div>
     </Panel>

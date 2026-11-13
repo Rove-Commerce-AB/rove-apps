@@ -31,22 +31,30 @@ export default async function SupportIncidentsPage({ searchParams }: Props) {
     redirect("/access-denied");
   }
 
-  const selectedCustomerId =
+  const selectedCustomerIds =
     actor.role === "customer" && customers.length === 1
-      ? customers[0].id
+      ? [customers[0].id]
       : resolveSupportCustomerFilter({
           queryValue: params.customer,
           cookieValue: cookieStore.get(SUPPORT_CUSTOMER_FILTER_COOKIE)?.value,
           customers,
         });
 
-  const selectedCustomer = selectedCustomerId
-    ? customers.find((c) => c.id === selectedCustomerId) ?? null
+  const singleSelectedId =
+    selectedCustomerIds.length === 1 ? selectedCustomerIds[0]! : null;
+  const selectedCustomer = singleSelectedId
+    ? (customers.find((c) => c.id === singleSelectedId) ?? null)
     : null;
   const noContractSelected =
     selectedCustomer != null && !selectedCustomer.hasActiveContract;
 
   const eligibleCustomers = customers.filter((c) => c.hasActiveContract);
+  const scopedEligibleIds =
+    selectedCustomerIds.length === 0
+      ? eligibleCustomers.map((c) => c.id)
+      : eligibleCustomers
+          .filter((c) => selectedCustomerIds.includes(c.id))
+          .map((c) => c.id);
 
   let cases: Awaited<ReturnType<typeof listSupportCases>>["cases"] = [];
   let totalCount = 0;
@@ -54,11 +62,10 @@ export default async function SupportIncidentsPage({ searchParams }: Props) {
 
   if (!noContractSelected) {
     try {
-      const listed = selectedCustomerId
-        ? await listSupportCases(selectedCustomerId)
-        : await listSupportCasesForCustomers(
-            eligibleCustomers.map((c) => c.id)
-          );
+      const listed =
+        singleSelectedId != null
+          ? await listSupportCases(singleSelectedId)
+          : await listSupportCasesForCustomers(scopedEligibleIds);
       cases = listed.cases;
       totalCount = listed.totalCount;
     } catch (error) {
@@ -69,8 +76,12 @@ export default async function SupportIncidentsPage({ searchParams }: Props) {
 
   return (
     <SupportCasesClient
-      key={selectedCustomerId ?? "all"}
-      customerId={selectedCustomerId}
+      key={
+        selectedCustomerIds.length === 0
+          ? "all"
+          : selectedCustomerIds.slice().sort().join(",")
+      }
+      customerId={singleSelectedId}
       customerName={selectedCustomer?.name}
       customers={eligibleCustomers.map((c) => ({ id: c.id, name: c.name }))}
       cases={cases}
@@ -83,7 +94,7 @@ export default async function SupportIncidentsPage({ searchParams }: Props) {
       toolbar={
         <CustomerFilter
           customers={customers}
-          value={selectedCustomerId}
+          value={selectedCustomerIds}
           basePath={ROUTES.supportIncidents}
           cookieName={SUPPORT_CUSTOMER_FILTER_COOKIE}
           hideWhenSingle={actor.role === "customer"}

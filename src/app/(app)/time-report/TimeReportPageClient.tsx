@@ -9,6 +9,7 @@ import {
   Fragment,
   useMemo,
   memo,
+  type CSSProperties,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -224,6 +225,167 @@ function timeReportSumFigureClass(size: "week" | "month"): string {
     "inline-flex max-w-full items-center justify-center overflow-visible italic tabular-nums font-semibold text-text-secondary empty:hidden pl-px pr-1",
     size === "week" ? "text-xs leading-none" : "text-[12px] leading-tight",
   ].join(" ");
+}
+
+/**
+ * Column sizing: day cells stay compact (hour digits); extra viewport width
+ * goes to Project / Role / Description so labels stay readable on wide screens.
+ */
+const TR_META_COL_MIN_PX = [76, 168, 168, 200, 140] as const; // actions, project, role, desc, link
+const TR_META_COL_MAX_PX = [76, 260, 260, 360, 180] as const;
+const TR_META_FLEX_WEIGHTS = [0, 3, 3, 4, 1] as const;
+const TR_TOTAL_COL_WIDTH_PX = 56;
+const TR_WEEK_DAY_MIN_PX = 44;
+const TR_WEEK_DAY_MAX_PX = 52;
+const TR_MONTH_DAY_MIN_PX = 24;
+const TR_MONTH_DAY_MAX_PX = 32;
+
+function distributeExtraPx(
+  widths: number[],
+  maxWidths: readonly number[],
+  weights: readonly number[],
+  extra: number
+): number {
+  let remaining = extra;
+  while (remaining > 0) {
+    const open: number[] = [];
+    let weightSum = 0;
+    for (let i = 0; i < widths.length; i += 1) {
+      const room = maxWidths[i]! - widths[i]!;
+      const weight = weights[i] ?? 0;
+      if (room > 0 && weight > 0) {
+        open.push(i);
+        weightSum += weight;
+      }
+    }
+    if (open.length === 0 || weightSum <= 0) break;
+    let given = 0;
+    for (const i of open) {
+      const room = maxWidths[i]! - widths[i]!;
+      const share = Math.min(
+        room,
+        Math.max(1, Math.floor((remaining * (weights[i] ?? 0)) / weightSum))
+      );
+      widths[i]! += share;
+      given += share;
+    }
+    if (given <= 0) break;
+    remaining -= given;
+  }
+  return remaining;
+}
+
+function timeReportColWidthsPx(
+  dayCount: number,
+  dayMinPx: number,
+  dayMaxPx: number,
+  availableWidthPx: number | null
+): number[] {
+  const meta = [...TR_META_COL_MIN_PX];
+  if (dayCount <= 0) {
+    return [...meta, TR_TOTAL_COL_WIDTH_PX];
+  }
+
+  const metaMin = meta.reduce((sum, w) => sum + w, 0);
+  const minTotal = metaMin + dayCount * dayMinPx + TR_TOTAL_COL_WIDTH_PX;
+  const target = Math.max(availableWidthPx ?? minTotal, minTotal);
+  let extra = target - minTotal;
+
+  // 1) Grow day cols only up to a modest max (keep hour grid dense).
+  const dayCap = Math.max(dayMinPx, dayMaxPx);
+  const dayGrowPer = Math.min(dayCap - dayMinPx, Math.floor(extra / dayCount));
+  const dayWidths = Array.from({ length: dayCount }, () => dayMinPx + dayGrowPer);
+  extra -= dayGrowPer * dayCount;
+  while (extra > 0) {
+    let progressed = false;
+    for (let i = 0; i < dayCount && extra > 0; i += 1) {
+      if (dayWidths[i]! >= dayCap) continue;
+      dayWidths[i]! += 1;
+      extra -= 1;
+      progressed = true;
+    }
+    if (!progressed) break;
+  }
+
+  // 2) Remaining space → left text columns (project / role / description).
+  extra = distributeExtraPx(meta, TR_META_COL_MAX_PX, TR_META_FLEX_WEIGHTS, extra);
+
+  // 3) If still leftover after meta caps, nudge description further so the table fills.
+  if (extra > 0) {
+    const descIdx = 3;
+    meta[descIdx]! += extra;
+    extra = 0;
+  }
+
+  return [...meta, ...dayWidths, TR_TOTAL_COL_WIDTH_PX];
+}
+
+function timeReportTableWidthPx(widths: readonly number[]): number {
+  return widths.reduce((sum, w) => sum + w, 0);
+}
+
+function timeReportTableLayoutStyle(widths: readonly number[]): CSSProperties {
+  const total = timeReportTableWidthPx(widths);
+  return {
+    width: total,
+    minWidth: total,
+    maxWidth: total,
+    tableLayout: "fixed",
+  };
+}
+
+function TimeReportColgroup({ widths }: { widths: readonly number[] }) {
+  return (
+    <colgroup>
+      {widths.map((width, i) => (
+        <col
+          key={i}
+          style={{
+            width,
+            minWidth: width,
+            maxWidth: width,
+          }}
+        />
+      ))}
+    </colgroup>
+  );
+}
+
+function applyTimeReportTableWidths(
+  table: HTMLTableElement | null,
+  widths: readonly number[]
+) {
+  if (!table) return;
+  const total = timeReportTableWidthPx(widths);
+  table.style.width = `${total}px`;
+  table.style.minWidth = `${total}px`;
+  table.style.maxWidth = `${total}px`;
+  table.style.tableLayout = "fixed";
+  table.style.transform = "";
+  const cols = table.querySelectorAll("col");
+  widths.forEach((width, i) => {
+    const col = cols[i];
+    if (col) {
+      col.style.width = `${width}px`;
+      col.style.minWidth = `${width}px`;
+      col.style.maxWidth = `${width}px`;
+    }
+  });
+}
+
+/** Nudge body table so its left edge matches the header table (kills 1–2px gutter drift). */
+function alignTimeReportBodyToHeader(
+  headerTable: HTMLTableElement | null,
+  bodyTable: HTMLTableElement | null
+) {
+  if (!headerTable || !bodyTable) return;
+  bodyTable.style.transform = "";
+  const dx =
+    headerTable.getBoundingClientRect().left -
+    bodyTable.getBoundingClientRect().left;
+  if (Math.abs(dx) >= 0.5) {
+    bodyTable.style.transform = `translateX(${dx}px)`;
+  }
 }
 
 /** Ref must update synchronously: month save loops multiple ISO weeks in one run; the next `expected` revision must not lag React state. */
@@ -569,9 +731,6 @@ const EditableHourTd = memo(function EditableHourTd({
   colIndex,
 }: EditableHourTdProps) {
   const leftBorder = showLeftBorder ?? (dayIndex === 0 && !compact);
-  const cellW = compact
-    ? "min-w-0 w-full max-w-none"
-    : "w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem]";
   const rowH = compact ? "h-7" : "h-8";
   const grayBg = isGray ? (grayWeekend ? "bg-bg-muted/60" : "bg-bg-muted/51") : "";
   const commentPreview = internalCommentText?.trim();
@@ -579,7 +738,7 @@ const EditableHourTd = memo(function EditableHourTd({
   return (
     <td
       data-col-index={colIndex}
-      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "time-report-today-cell" : ""}`}
+      className={`relative ${rowH} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "time-report-today-cell" : ""}`}
     >
       <div
         role="button"
@@ -738,8 +897,16 @@ export function TimeReportPageClient({
   /** ISO week slice keys touched in month view — only these weeks are autosaved. */
   const dirtyWeekSliceKeysRef = useRef<Set<string>>(new Set());
   const viewModeRef = useRef(viewMode);
+  const tablesShellRef = useRef<HTMLDivElement>(null);
+  const tablesHScrollRef = useRef<HTMLDivElement>(null);
+  const tableHeaderPaneRef = useRef<HTMLDivElement>(null);
+  const tableBodyScrollRef = useRef<HTMLDivElement>(null);
+  const tableHeaderTableRef = useRef<HTMLTableElement>(null);
+  const tableBodyTableRef = useRef<HTMLTableElement>(null);
+  const [tablesViewportWidth, setTablesViewportWidth] = useState<number | null>(null);
   /** Serialize server saves so concurrent requests never reuse a stale expectedRevision (revision_conflict). */
   const saveQueueTailRef = useRef(Promise.resolve());
+
   const enqueueTimeReportSave = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
     const run = saveQueueTailRef.current.then(fn);
     saveQueueTailRef.current = run.then(() => {}).catch(() => {});
@@ -2724,6 +2891,83 @@ export function TimeReportPageClient({
 
   const monthTableColSpan = 5 + monthCalendarDates.length + 1;
 
+  useLayoutEffect(() => {
+    if (loadState === "loading") {
+      setTablesViewportWidth(null);
+      return;
+    }
+    const shell = tablesShellRef.current;
+    if (!shell) return;
+
+    // Measure the shell (stable) and subtract pane padding + scrollbar-gutter.
+    // Skipping the gutter made the table a few px too wide → needless h-scroll.
+    const measure = () => {
+      const padSample =
+        tableHeaderPaneRef.current ?? tableBodyScrollRef.current ?? shell;
+      const cs = getComputedStyle(padSample);
+      const pad =
+        (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      const body = tableBodyScrollRef.current;
+      // When the pane is at min-width:100%, offset−client ≈ stable scrollbar gutter.
+      let gutter = 0;
+      if (body && body.offsetWidth <= shell.clientWidth + 1) {
+        gutter = Math.max(0, body.offsetWidth - body.clientWidth);
+      }
+      const next = Math.max(0, Math.floor(shell.clientWidth - pad - gutter));
+      setTablesViewportWidth((prev) => (prev === next ? prev : next));
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(shell);
+    return () => ro.disconnect();
+  }, [loadState, viewMode]);
+
+  const tablesLayoutReady = tablesViewportWidth != null;
+
+  const activeColWidths = useMemo(
+    () =>
+      viewMode === "week"
+        ? timeReportColWidthsPx(
+            TIME_REPORT_DAY_LABELS.length,
+            TR_WEEK_DAY_MIN_PX,
+            TR_WEEK_DAY_MAX_PX,
+            tablesViewportWidth
+          )
+        : timeReportColWidthsPx(
+            monthCalendarDates.length,
+            TR_MONTH_DAY_MIN_PX,
+            TR_MONTH_DAY_MAX_PX,
+            tablesViewportWidth
+          ),
+    [viewMode, monthCalendarDates.length, tablesViewportWidth]
+  );
+
+  useLayoutEffect(() => {
+    if (loadState === "loading" || !tablesLayoutReady) return;
+    applyTimeReportTableWidths(tableHeaderTableRef.current, activeColWidths);
+    applyTimeReportTableWidths(tableBodyTableRef.current, activeColWidths);
+    alignTimeReportBodyToHeader(
+      tableHeaderTableRef.current,
+      tableBodyTableRef.current
+    );
+
+    // If we're only a couple of px over (subpixel / align nudge), clip instead of
+    // showing a horizontal scrollbar. Real overflow (narrow viewport) still scrolls.
+    const hscroll = tablesHScrollRef.current;
+    if (hscroll) {
+      const overflow = hscroll.scrollWidth - hscroll.clientWidth;
+      hscroll.style.overflowX = overflow > 0 && overflow <= 4 ? "hidden" : "";
+    }
+  }, [
+    loadState,
+    tablesLayoutReady,
+    viewMode,
+    activeColWidths,
+    customerGroups.length,
+    monthRowsByCustomer.length,
+  ]);
+
   const commentDialogWeekDayNumbers = useMemo(() => {
     if (!commentState || commentState.kind !== "week") return dayDates;
     return getWeekDates(commentState.weekYear, commentState.weekWeek).map((s) =>
@@ -2797,14 +3041,14 @@ export function TimeReportPageClient({
   }
 
   return (
-    <div className="time-report-font-12 flex min-w-0 flex-col gap-4">
+    <div className="time-report-font-12 flex min-h-0 min-w-0 flex-1 flex-col gap-4">
       <FloatingSaveStatus
         saveState={saveState}
         isDirty={isDirty}
         saveError={saveError}
       />
 
-      <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 shrink-0 flex-col gap-2">
         <div className="flex justify-end">
           <SegmentedControl
             aria-label="Time report view"
@@ -2909,7 +3153,7 @@ export function TimeReportPageClient({
       </div>
 
       {loadState === "loading" ? (
-        <div className="overflow-hidden rounded-lg bg-bg-default">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle bg-bg-default">
           <div className="h-0.5 w-full bg-brand-blue/70" />
           <div className="p-4">
             <div className="mb-3 flex items-center gap-2 text-xs text-text-secondary">
@@ -2924,19 +3168,24 @@ export function TimeReportPageClient({
           </div>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
           <div
-            className={
-              viewMode === "month"
-                ? "time-report-tables w-full min-w-0 rounded-lg"
-                : "time-report-tables rounded-lg"
-            }
+            ref={tablesShellRef}
+            className="time-report-tables flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-default"
+            style={{ visibility: tablesLayoutReady ? "visible" : "hidden" }}
           >
           {viewMode === "week" ? (
-          <table className="w-full min-w-[66rem] table-fixed border-collapse text-xs">
+          <div ref={tablesHScrollRef} className="time-report-tables-hscroll">
+          <div ref={tableHeaderPaneRef} className="time-report-tables-frozen">
+          <table
+            ref={tableHeaderTableRef}
+            className="text-xs"
+            style={timeReportTableLayoutStyle(activeColWidths)}
+          >
+            <TimeReportColgroup widths={activeColWidths} />
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
-                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5">
+                <th className="border-l-[4px] border-transparent px-0 py-1.5">
                   <div className="flex items-center justify-center">
                     <IconButton
                       aria-label="Copy whole week to next week"
@@ -2952,23 +3201,23 @@ export function TimeReportPageClient({
                     </IconButton>
                   </div>
                 </th>
-                <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
+                <th className="px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
-                <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
+                <th className="px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Role
                 </th>
-                <th className="w-[clamp(8.5rem,15vw,11.25rem)] min-w-[8.5rem] max-w-[11.25rem] px-1.5 py-1.5 text-left font-medium text-text-secondary">
+                <th className="px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Description
                 </th>
-                <th className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1.5 text-left font-medium text-text-secondary" scope="col" title="Jira / DevOps / ClickUp / Work">
+                <th className="px-1 py-1.5 text-left font-medium text-text-secondary" scope="col" title="Jira / DevOps / ClickUp / Work">
                   <Link className="inline-block h-4 w-4 text-text-muted" aria-hidden />
                 </th>
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
                     data-col-index={i}
-                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
+                    className={`border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
                     title={isTodayColumn(i) ? "Today" : undefined}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
@@ -2979,11 +3228,50 @@ export function TimeReportPageClient({
                     </div>
                   </th>
                 ))}
-                <th className="w-[3.5rem] min-w-[3.5rem] px-0.5 py-1.5">
+                <th className="px-0.5 py-1.5">
                   <span className="sr-only">Row total</span>
                 </th>
               </tr>
             </thead>
+            {customerGroups.length > 0 ? (
+              <tbody>
+                <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
+                  <td
+                    colSpan={5}
+                    className="border-l-[4px] border-transparent px-1.5 py-1 text-left text-text-primary"
+                  />
+                  {totalHoursPerDay.map((h, i) => (
+                    <td
+                      key={i}
+                      data-col-index={i}
+                      className={`h-8 border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                    >
+                      <div className="flex h-full w-full items-center justify-center">
+                        <span className={timeReportSumFigureClass("week")}>
+                          {h > 0 ? String(h) : ""}
+                        </span>
+                      </div>
+                    </td>
+                  ))}
+                  <td className="relative px-0.5 py-1 align-middle">
+                    <div className="flex min-h-8 w-full items-center justify-center pr-7">
+                      <span className={timeReportSumFigureClass("week")}>
+                        {weekTotalDisplay}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            ) : null}
+          </table>
+          </div>
+          <div ref={tableBodyScrollRef} className="time-report-tables-scroll">
+          <table
+            ref={tableBodyTableRef}
+            className="text-xs"
+            style={timeReportTableLayoutStyle(activeColWidths)}
+          >
+            <TimeReportColgroup widths={activeColWidths} />
             <tbody>
               {customerGroups.length === 0 ? (
                 <tr className="border-b border-border-subtle bg-bg-default">
@@ -2996,31 +3284,6 @@ export function TimeReportPageClient({
                 </tr>
               ) : (
                 <>
-                  <tr
-                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium`}
-                  >
-                    <td colSpan={5} className="px-1.5 py-1 text-left text-text-primary" />
-                    {totalHoursPerDay.map((h, i) => (
-                      <td
-                        key={i}
-                        data-col-index={i}
-                        className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
-                      >
-                        <div className="flex h-full w-full items-center justify-center">
-                          <span className={timeReportSumFigureClass("week")}>
-                            {h > 0 ? String(h) : ""}
-                          </span>
-                        </div>
-                      </td>
-                    ))}
-                    <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
-                      <div className="flex min-h-8 w-full items-center justify-center pr-7">
-                        <span className={timeReportSumFigureClass("week")}>
-                          {weekTotalDisplay}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
                   {customerGroups.map((group, groupIndex) => {
                 const customer = customerById.get(group.customerId);
                 const name = customer?.name ?? "—";
@@ -3039,7 +3302,7 @@ export function TimeReportPageClient({
                       className={`border-b border-border-subtle bg-bg-muted/40`}
                     >
                       <td
-                        className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
+                        className="border-l-[4px] border-solid px-0 py-0.5 align-middle"
                         style={{ borderLeftColor: color }}
                       >
                         <button
@@ -3061,7 +3324,7 @@ export function TimeReportPageClient({
                         <td
                           key={i}
                           data-col-index={i}
-                          className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                          className={`border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <span className={timeReportSumFigureClass("week")}>
@@ -3070,7 +3333,7 @@ export function TimeReportPageClient({
                           </div>
                         </td>
                       ))}
-                      <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                      <td className="relative px-0.5 py-0.5 align-middle">
                         <div className="flex min-h-8 w-full items-center justify-center pr-7">
                           <span className={timeReportSumFigureClass("week")}>
                             {customerWeekTotal > 0 ? String(customerWeekTotal) : ""}
@@ -3084,7 +3347,7 @@ export function TimeReportPageClient({
                           className={`border-b border-border-subtle bg-bg-default`}
                         >
                           <td
-                            className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-1"
+                            className="border-l-[4px] border-solid px-0 py-1"
                             style={{ borderLeftColor: color }}
                           >
                             <div className="flex items-center justify-center gap-0.5">
@@ -3132,7 +3395,7 @@ export function TimeReportPageClient({
                               </IconButton>
                             </div>
                           </td>
-                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
+                          <td className="px-1.5 py-1">
                             <div
                               className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.projectId ? "ring-2 ring-danger ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
@@ -3156,7 +3419,7 @@ export function TimeReportPageClient({
                               />
                             </div>
                           </td>
-                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
+                          <td className="px-1.5 py-1">
                             <div
                               className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.roleId ? "ring-2 ring-danger ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
@@ -3179,7 +3442,7 @@ export function TimeReportPageClient({
                               />
                             </div>
                           </td>
-                          <td className="w-[clamp(8.5rem,15vw,11.25rem)] min-w-[8.5rem] max-w-[11.25rem] px-1.5 py-1">
+                          <td className="px-1.5 py-1">
                             <input
                               type="text"
                               value={entry.task ?? ""}
@@ -3191,7 +3454,7 @@ export function TimeReportPageClient({
                               className="h-7 w-full min-w-0 rounded border border-form bg-bg-default px-1.5 py-0.5 text-xs text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
                             />
                           </td>
-                          <td className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1 align-middle">
+                          <td className="px-1 py-1 align-middle">
                             {entry.jiraDevOpsValue ? (() => {
                               const opt = resolveLinkOption(
                                 entry.projectId,
@@ -3321,7 +3584,7 @@ export function TimeReportPageClient({
                               colIndex={dayIndex}
                             />
                           ))}
-                          <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
+                          <td className="relative px-0.5 py-1 align-middle">
                             <div className="flex min-h-8 w-full items-center justify-center pr-7">
                               <span
                                 className={timeReportSumFigureClass("week")}
@@ -3354,22 +3617,20 @@ export function TimeReportPageClient({
               )}
             </tbody>
           </table>
+          </div>
+          </div>
           ) : (
-          <table className="w-full min-w-[62rem] table-fixed border-collapse text-[12px]">
-            <colgroup>
-              <col style={{ width: "4.75rem" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "7%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "clamp(8rem,12vw,12rem)" }} />
-              {monthCalendarDates.map((d) => (
-                <col key={d} style={{ width: "clamp(1rem,1.8vw,1.28rem)" }} />
-              ))}
-              <col style={{ width: "3.5rem" }} />
-            </colgroup>
+          <div ref={tablesHScrollRef} className="time-report-tables-hscroll">
+          <div ref={tableHeaderPaneRef} className="time-report-tables-frozen">
+          <table
+            ref={tableHeaderTableRef}
+            className="text-[12px]"
+            style={timeReportTableLayoutStyle(activeColWidths)}
+          >
+            <TimeReportColgroup widths={activeColWidths} />
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
-                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5">
+                <th className="border-l-[4px] border-transparent px-0 py-1.5">
                   <div className="flex items-center justify-center">
                     <IconButton
                       aria-label="Copy whole month to next month"
@@ -3385,17 +3646,17 @@ export function TimeReportPageClient({
                     </IconButton>
                   </div>
                 </th>
-                <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
+                <th className="px-1 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
-                <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
+                <th className="px-1 py-1.5 text-left font-medium text-text-secondary">
                   Role
                 </th>
-                <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
+                <th className="px-1 py-1.5 text-left font-medium text-text-secondary">
                   Description
                 </th>
                 <th
-                  className="w-[clamp(8rem,14vw,13rem)] min-w-[8rem] max-w-[13rem] px-1 py-1.5 text-left font-medium text-text-secondary"
+                  className="px-1 py-1.5 text-left font-medium text-text-secondary"
                   scope="col"
                   title="Jira / DevOps / ClickUp / Work"
                 >
@@ -3415,25 +3676,67 @@ export function TimeReportPageClient({
                     <th
                       key={dateStr}
                       data-col-index={dateIdx}
-                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
+                      className={`border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
                       title={
                         isTodayHeader
                           ? `Today — ${longDow} ${dom} (${dateStr})`
                           : `${longDow} ${dom} (${dateStr})`
                       }
                     >
-                      <div className="flex flex-col items-center justify-center gap-0.5 px-0.5 py-0.5">
-                        <span className="text-[12px] leading-tight">{label}</span>
-                        <span className="text-[12px] leading-tight text-text-muted tabular-nums">{dom}</span>
+                      <div className="flex w-full flex-col items-center justify-center overflow-hidden leading-none">
+                        <span className="text-[10px] leading-none">{label}</span>
+                        <span className="text-[10px] leading-none text-text-muted tabular-nums">{dom}</span>
                       </div>
                     </th>
                   );
                 })}
-                <th className="w-[3.5rem] min-w-[3.5rem] px-0.5 py-1.5">
+                <th className="px-0.5 py-1.5">
                   <span className="sr-only">Row total</span>
                 </th>
               </tr>
             </thead>
+            {monthRowsByCustomer.length > 0 ? (
+              <tbody>
+                <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
+                  <td
+                    colSpan={5}
+                    className="border-l-[4px] border-transparent px-1 py-0.5 text-left text-text-primary"
+                  />
+                  {monthDateDayTotals.map((h, dateIdx) => {
+                    const dateStr = monthCalendarDates[dateIdx]!;
+                    return (
+                      <td
+                        key={dateStr}
+                        data-col-index={dateIdx}
+                        className={`h-7 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
+                      >
+                        <div className="flex h-full w-full items-center justify-center">
+                          <span className={timeReportSumFigureClass("month")}>
+                            {h > 0 ? String(h) : ""}
+                          </span>
+                        </div>
+                      </td>
+                    );
+                  })}
+                  <td className="relative px-0.5 py-0.5 align-middle">
+                    <div className="flex min-h-7 w-full items-center justify-center pr-7">
+                      <span className={timeReportSumFigureClass("month")}>
+                        {monthGridTotalDisplay}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            ) : null}
+          </table>
+          </div>
+          <div ref={tableBodyScrollRef} className="time-report-tables-scroll">
+          <table
+            ref={tableBodyTableRef}
+            className="text-[12px]"
+            style={timeReportTableLayoutStyle(activeColWidths)}
+          >
+            <TimeReportColgroup widths={activeColWidths} />
             <tbody>
               {monthRowsByCustomer.length === 0 ? (
                 <tr className="border-b border-border-subtle bg-bg-default">
@@ -3446,34 +3749,6 @@ export function TimeReportPageClient({
                 </tr>
               ) : (
                 <>
-                  <tr
-                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium`}
-                  >
-                    <td colSpan={5} className="px-1 py-0.5 text-left text-text-primary" />
-                    {monthDateDayTotals.map((h, dateIdx) => {
-                      const dateStr = monthCalendarDates[dateIdx]!;
-                      return (
-                        <td
-                          key={dateStr}
-                          data-col-index={dateIdx}
-                          className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
-                        >
-                          <div className="flex h-full w-full items-center justify-center">
-                            <span className={timeReportSumFigureClass("month")}>
-                              {h > 0 ? String(h) : ""}
-                            </span>
-                          </div>
-                        </td>
-                      );
-                    })}
-                    <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
-                      <div className="flex min-h-7 w-full items-center justify-center pr-7">
-                        <span className={timeReportSumFigureClass("month")}>
-                          {monthGridTotalDisplay}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
                   {monthRowsByCustomer.map(({ customerId, rows }, groupIndex) => {
                     const customer = customerById.get(customerId);
                     const name = customer?.name ?? "—";
@@ -3496,7 +3771,7 @@ export function TimeReportPageClient({
                           className={`border-b border-border-subtle bg-bg-muted/40`}
                         >
                           <td
-                            className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
+                            className="border-l-[4px] border-solid px-0 py-0.5 align-middle"
                             style={{ borderLeftColor: color }}
                           >
                             <button
@@ -3529,7 +3804,7 @@ export function TimeReportPageClient({
                               </div>
                             </td>
                           ))}
-                          <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                          <td className="relative px-0.5 py-0.5 align-middle">
                             <div className="flex min-h-7 w-full items-center justify-center pr-7">
                               <span className={timeReportSumFigureClass("month")}>
                                 {customerMonthTotal > 0 ? String(customerMonthTotal) : ""}
@@ -3544,7 +3819,7 @@ export function TimeReportPageClient({
                               className={`border-b border-border-subtle bg-bg-default`}
                             >
                               <td
-                                className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5"
+                                className="border-l-[4px] border-solid px-0 py-0.5"
                                 style={{ borderLeftColor: color }}
                               >
                                 <div className="flex items-center justify-center gap-0.5">
@@ -3648,7 +3923,7 @@ export function TimeReportPageClient({
                                   className="h-6 w-full min-w-0 rounded border border-form bg-bg-default px-1 py-0.5 text-[10px] text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
                                 />
                               </td>
-                              <td className="w-[clamp(8rem,14vw,13rem)] min-w-[8rem] max-w-[13rem] px-0.5 py-0.5 align-middle">
+                              <td className="px-0.5 py-0.5 align-middle">
                                 {row.jiraDevOpsValue ? (() => {
                                   const opt = resolveLinkOption(
                                     row.projectId,
@@ -3803,7 +4078,7 @@ export function TimeReportPageClient({
                                   colIndex={dateIdx}
                                 />
                               ))}
-                              <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                              <td className="relative px-0.5 py-0.5 align-middle">
                                 <div className="flex min-h-7 w-full items-center justify-center pr-7">
                                   <span
                                     className={timeReportSumFigureClass("month")}
@@ -3840,9 +4115,11 @@ export function TimeReportPageClient({
               )}
             </tbody>
           </table>
+          </div>
+          </div>
           )}
           </div>
-          <div className="flex justify-start">
+          <div className="flex shrink-0 justify-start">
             <Button
               variant="secondary"
               size="sm"

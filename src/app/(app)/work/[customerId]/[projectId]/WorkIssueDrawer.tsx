@@ -39,8 +39,23 @@ import {
   workFileImageHref,
 } from "@/lib/workInlineImages";
 import {
+  collectClipboardFiles,
+  collectClipboardMediaFilesAsync,
+  extractVideoPosterJpegOrFallback,
+  imageBlobToJpegPoster,
+  isImageFile,
+  isImageMime,
+  isVideoFile,
+  isVideoMime,
+  isVideoPosterFileName,
+  withGuessedMediaType,
+  withSniffedMediaType,
+  videoPosterFileName,
+} from "@/lib/workMedia";
+import {
   WORK_FILE_MAX_BYTES,
   type WorkBoardView,
+  type WorkFile,
   type WorkIssue,
   type WorkIssuePriority,
   type WorkPerson,
@@ -165,29 +180,6 @@ const AutosizeTextarea = forwardRef<
   );
 });
 
-function isImageMime(mimeType: string) {
-  return mimeType.toLowerCase().startsWith("image/");
-}
-
-function pasteFileName(file: File, index: number) {
-  const ext =
-    file.type === "image/png"
-      ? "png"
-      : file.type === "image/jpeg"
-        ? "jpg"
-        : file.type === "image/gif"
-          ? "gif"
-          : file.type === "image/webp"
-            ? "webp"
-            : file.name.includes(".")
-              ? file.name.split(".").pop()!
-              : "png";
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return file.name && !file.name.startsWith("image")
-    ? file.name
-    : `paste-${stamp}${index > 0 ? `-${index + 1}` : ""}.${ext}`;
-}
-
 function workFileHref(fileId: string) {
   return workFileImageHref(fileId);
 }
@@ -197,6 +189,8 @@ type PasteZone = "description" | "comment";
 type InlinePasteThumb = {
   localId: string;
   previewUrl: string;
+  /** Open target when preview is a poster still (video file URL). */
+  href?: string | null;
   fileId: string | null;
   uploading: boolean;
   revokeOnClear: boolean;
@@ -217,6 +211,36 @@ function thumbsFromFileIds(fileIds: string[]): InlinePasteThumb[] {
     uploading: false,
     revokeOnClear: false,
   }));
+}
+
+/** Rebuild description video previews from persisted video + poster files. */
+function videoThumbsFromFiles(files: WorkFile[]): InlinePasteThumb[] {
+  const posters = new Map<string, WorkFile>();
+  for (const file of files) {
+    if (isImageMime(file.mimeType) && isVideoPosterFileName(file.fileName)) {
+      posters.set(file.fileName.toLowerCase(), file);
+    }
+  }
+  const out: InlinePasteThumb[] = [];
+  for (const file of files) {
+    const isVideo =
+      isVideoMime(file.mimeType) ||
+      /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.fileName);
+    if (!isVideo) continue;
+    const poster = posters.get(
+      videoPosterFileName(file.fileName).toLowerCase()
+    );
+    if (!poster) continue;
+    out.push({
+      localId: `video-preview:${file.id}`,
+      previewUrl: workFileImageHref(poster.id),
+      href: workFileHref(file.id),
+      fileId: null,
+      uploading: false,
+      revokeOnClear: false,
+    });
+  }
+  return out;
 }
 
 function localTodayYmd(): string {
@@ -434,7 +458,10 @@ export function WorkIssueDrawer({
     () => mentionPlainText(splitWorkInlineImages(issue.description).text)
   );
   const [descriptionThumbs, setDescriptionThumbs] = useState<InlinePasteThumb[]>(
-    () => thumbsFromFileIds(splitWorkInlineImages(issue.description).fileIds)
+    () => [
+      ...thumbsFromFileIds(splitWorkInlineImages(issue.description).fileIds),
+      ...videoThumbsFromFiles(issue.files),
+    ]
   );
   const [currentState, setCurrentState] = useState(issue.currentState);
   const [nextStep, setNextStep] = useState(issue.nextStep);
@@ -514,6 +541,7 @@ export function WorkIssueDrawer({
   descriptionRef.current = description;
   const issueDescriptionRef = useRef(issue.description);
   issueDescriptionRef.current = issue.description;
+  const issueFilesRef = useRef(issue.files);
 
   function clearThumbs(thumbs: InlinePasteThumb[]) {
     for (const thumb of thumbs) {
@@ -535,15 +563,32 @@ export function WorkIssueDrawer({
     );
   }
 
+  function patchLocalFiles(added: WorkFile[]) {
+    const next = [
+      ...added,
+      ...issueFilesRef.current.filter(
+        (existing) => !added.some((row) => row.id === existing.id)
+      ),
+    ];
+    issueFilesRef.current = next;
+    onIssuePatch({ files: next });
+  }
+
+  useEffect(() => {
+    issueFilesRef.current = issue.files;
+  }, [issue.files]);
+
   useEffect(() => {
     const split = splitWorkInlineImages(issue.description);
     setTitle(issue.title);
     setDescription(mentionPlainText(split.text));
     setDescriptionThumbs((prev) => {
       const fromServer = thumbsFromFileIds(split.fileIds);
+      // Keep video previews (and in-flight uploads); files-effect rebuilds them.
       const pending = prev.filter(
         (thumb) =>
           thumb.uploading ||
+          (thumb.href != null && thumb.fileId == null) ||
           (thumb.fileId != null && !split.fileIds.includes(thumb.fileId))
       );
       for (const thumb of prev) {
@@ -589,6 +634,36 @@ export function WorkIssueDrawer({
     issue.dueDate,
     estimateFocused,
   ]);
+
+  // Rebuild description video thumbs when files arrive (open card / after upload).
+  useEffect(() => {
+    const fromVideos = videoThumbsFromFiles(issue.files);
+    setDescriptionThumbs((prev) => {
+      const kept = prev.filter((thumb) => {
+        if (thumb.localId.startsWith("video-preview:")) return false;
+        if (thumb.href != null && thumb.fileId == null && !thumb.uploading) {
+          return !fromVideos.some((row) => row.href === thumb.href);
+        }
+        return true;
+      });
+      for (const thumb of prev) {
+        if (
+          thumb.revokeOnClear &&
+          !kept.some((row) => row.localId === thumb.localId)
+        ) {
+          URL.revokeObjectURL(thumb.previewUrl);
+        }
+      }
+      if (
+        fromVideos.length === 0 &&
+        kept.length === prev.length &&
+        kept.every((thumb, index) => thumb === prev[index])
+      ) {
+        return prev;
+      }
+      return [...kept, ...fromVideos];
+    });
+  }, [issue.id, issue.files]);
 
   useEffect(() => {
     uploadingCountRef.current = 0;
@@ -724,9 +799,8 @@ export function WorkIssueDrawer({
   function pasteDescriptionImages(files: File[]) {
     if (pending || files.length === 0) return;
     files.forEach((image, index) => {
-      const named = new File([image], pasteFileName(image, index), {
-        type: image.type || "image/png",
-      });
+      const named = withGuessedMediaType(image, index);
+      if (!isImageMime(named.type)) return;
       const localId = crypto.randomUUID();
       const previewUrl = URL.createObjectURL(named);
       const thumb: InlinePasteThumb = {
@@ -924,16 +998,7 @@ export function WorkIssueDrawer({
     );
   }
 
-  function uploadFile(
-    file: File,
-    options?: { zone?: PasteZone; localId?: string; previewUrl?: string }
-  ) {
-    if (file.size > WORK_FILE_MAX_BYTES) {
-      onError("File must be 8 MB or smaller");
-      return;
-    }
-    const formData = new FormData();
-    formData.set("file", file);
+  function beginUploadTracking() {
     if (uploadingCountRef.current === 0) {
       uploadStartedAtRef.current = Date.now();
       if (uploadHideTimeoutRef.current) {
@@ -944,38 +1009,140 @@ export function WorkIssueDrawer({
     }
     uploadingCountRef.current += 1;
     setUploadingCount(uploadingCountRef.current);
-    void uploadWorkIssueFileAction(board.id, issue.id, formData).then(
-      (result) => {
-        uploadingCountRef.current = Math.max(0, uploadingCountRef.current - 1);
-        setUploadingCount(uploadingCountRef.current);
-        if (uploadingCountRef.current === 0) {
-          const elapsed = Date.now() - uploadStartedAtRef.current;
-          const remaining = Math.max(0, 500 - elapsed);
-          uploadHideTimeoutRef.current = setTimeout(() => {
-            setUploadBarVisible(false);
-            uploadHideTimeoutRef.current = null;
-          }, remaining);
-        }
-        if (!result.ok) {
-          onError(result.error);
-          if (options?.zone && options.localId) {
-            const setThumbs =
-              options.zone === "description"
-                ? setDescriptionThumbs
-                : setCommentThumbs;
-            setThumbs((prev) => {
-              const row = prev.find((thumb) => thumb.localId === options.localId);
-              if (row?.revokeOnClear) URL.revokeObjectURL(row.previewUrl);
-              return prev.filter((thumb) => thumb.localId !== options.localId);
-            });
+  }
+
+  function endUploadTracking() {
+    uploadingCountRef.current = Math.max(0, uploadingCountRef.current - 1);
+    setUploadingCount(uploadingCountRef.current);
+    if (uploadingCountRef.current === 0) {
+      const elapsed = Date.now() - uploadStartedAtRef.current;
+      const remaining = Math.max(0, 500 - elapsed);
+      uploadHideTimeoutRef.current = setTimeout(() => {
+        setUploadBarVisible(false);
+        uploadHideTimeoutRef.current = null;
+      }, remaining);
+    }
+  }
+
+  async function uploadOneFile(file: File): Promise<
+    { ok: true; id: string } | { ok: false; error: string }
+  > {
+    const formData = new FormData();
+    formData.set("file", file);
+    beginUploadTracking();
+    try {
+      return await uploadWorkIssueFileAction(board.id, issue.id, formData);
+    } finally {
+      endUploadTracking();
+    }
+  }
+
+  function removeLocalFiles(fileIds: string[]) {
+    if (fileIds.length === 0) return;
+    const remove = new Set(fileIds);
+    const next = issueFilesRef.current.filter((file) => !remove.has(file.id));
+    issueFilesRef.current = next;
+    onIssuePatch({ files: next });
+  }
+
+  function uploadFile(
+    file: File,
+    options?: {
+      zone?: PasteZone;
+      localId?: string;
+      previewUrl?: string;
+      /** Prefer this still (e.g. Snipping Tool preview) over frame capture. */
+      posterBlob?: Blob | null;
+    }
+  ) {
+    if (file.size > WORK_FILE_MAX_BYTES) {
+      onError("File must be 8 MB or smaller");
+      return;
+    }
+    void (async () => {
+      const upload = isVideoFile(file)
+        ? await withSniffedMediaType(file)
+        : withGuessedMediaType(file);
+
+      let posterRecord: WorkFile | null = null;
+      // Always store a JPEG poster for video so the Files tab has a thumb.
+      if (isVideoFile(upload)) {
+        const posterBlob =
+          options?.posterBlob ??
+          (await extractVideoPosterJpegOrFallback(upload));
+        if (posterBlob) {
+          const poster = new File(
+            [posterBlob],
+            videoPosterFileName(upload.name),
+            { type: "image/jpeg" }
+          );
+          if (poster.size <= WORK_FILE_MAX_BYTES) {
+            const posterResult = await uploadOneFile(poster);
+            if (posterResult.ok) {
+              posterRecord = {
+                id: posterResult.id,
+                fileName: poster.name,
+                mimeType: "image/jpeg",
+                byteSize: poster.size,
+                createdAt: new Date().toISOString(),
+              };
+            } else {
+              onError(posterResult.error);
+            }
           }
-          return;
         }
+      }
+
+      const result = await uploadOneFile(upload);
+      if (!result.ok) {
+        onError(result.error);
         if (options?.zone && options.localId) {
           const setThumbs =
             options.zone === "description"
               ? setDescriptionThumbs
               : setCommentThumbs;
+          setThumbs((prev) => {
+            const row = prev.find((thumb) => thumb.localId === options.localId);
+            if (row?.revokeOnClear) URL.revokeObjectURL(row.previewUrl);
+            return prev.filter((thumb) => thumb.localId !== options.localId);
+          });
+        }
+        return;
+      }
+
+      const uploadedRecord: WorkFile = {
+        id: result.id,
+        fileName: upload.name,
+        mimeType: upload.type || "application/octet-stream",
+        byteSize: upload.size,
+        createdAt: new Date().toISOString(),
+      };
+      // Optimistic Files list so the poster is visible before router.refresh.
+      // Use a ref so a later image upload cannot wipe a prior video+poster.
+      const added = posterRecord
+        ? [uploadedRecord, posterRecord]
+        : [uploadedRecord];
+      patchLocalFiles(added);
+
+      if (options?.zone && options.localId) {
+        const setThumbs =
+          options.zone === "description"
+            ? setDescriptionThumbs
+            : setCommentThumbs;
+        if (isVideoFile(upload)) {
+          // Keep the same blob preview (avoids a reload blink) and link to the video.
+          setThumbs((prev) =>
+            prev.map((thumb) => {
+              if (thumb.localId !== options.localId) return thumb;
+              return {
+                ...thumb,
+                href: workFileHref(result.id),
+                fileId: null,
+                uploading: false,
+              };
+            })
+          );
+        } else {
           setThumbs((prev) => {
             const next = prev.map((thumb) => {
               if (thumb.localId !== options.localId) return thumb;
@@ -994,57 +1161,134 @@ export function WorkIssueDrawer({
             return next;
           });
         }
-        onChanged();
       }
-    );
+      // Delay refresh so optimistic Files UI is not remounted mid-paint.
+      window.setTimeout(() => onChanged(), 750);
+    })();
   }
 
   function handlePaste(event: ClipboardEvent) {
     if (pending) return;
-    const items = event.clipboardData?.items;
-    if (!items?.length) return;
-    const images: File[] = [];
-    for (const item of items) {
-      if (!item.type.startsWith("image/")) continue;
-      const blob = item.getAsFile();
-      if (blob) images.push(blob);
-    }
-    if (images.length === 0) return;
-    event.preventDefault();
     const zone = pasteZoneFromTarget(event.target);
-    images.forEach((image, index) => {
-      const named = new File([image], pasteFileName(image, index), {
-        type: image.type || "image/png",
-      });
-      if (zone) {
-        const localId = crypto.randomUUID();
-        const previewUrl = URL.createObjectURL(named);
-        const thumb: InlinePasteThumb = {
-          localId,
-          previewUrl,
-          fileId: null,
-          uploading: true,
-          revokeOnClear: true,
-        };
-        if (zone === "description") {
-          setDescriptionThumbs((prev) => [...prev, thumb]);
-        } else {
-          setCommentThumbs((prev) => [...prev, thumb]);
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+
+    const syncFiles = collectClipboardFiles(clipboard);
+    const hasFileItems =
+      syncFiles.length > 0 ||
+      Array.from(clipboard.items || []).some((item) => item.kind === "file");
+    if (!hasFileItems) return;
+
+    if (zone === "description" || zone === "comment") {
+      // Pure image pastes belong to the zone editors (avoid double-upload).
+      // [].every(...) is vacuously true — only defer when we actually have images.
+      const onlyClearImages =
+        syncFiles.length > 0 &&
+        syncFiles.every((file) => isImageFile(file) && !isVideoFile(file));
+      if (onlyClearImages) return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    void (async () => {
+      const media = await collectClipboardMediaFilesAsync(clipboard);
+      if (media.length === 0) return;
+
+      const videos: File[] = [];
+      const images: File[] = [];
+      for (let index = 0; index < media.length; index += 1) {
+        const named = await withSniffedMediaType(media[index]!, index);
+        if (isVideoFile(named)) videos.push(named);
+        else if (isImageMime(named.type)) images.push(named);
+      }
+
+      // Snipping Tool often includes a PNG still with the recording — prefer it
+      // as the Files thumbnail when frame capture is slow or fails.
+      const clipboardStill = images[0] ?? null;
+      let stillBlob: Blob | null = null;
+      if (clipboardStill && videos.length > 0) {
+        stillBlob =
+          (await imageBlobToJpegPoster(clipboardStill)) ?? clipboardStill;
+      }
+
+      if (zone === "description" || zone === "comment") {
+        for (const video of videos) {
+          const localId = crypto.randomUUID();
+          const previewSource =
+            stillBlob ?? (await extractVideoPosterJpegOrFallback(video));
+          const previewUrl = URL.createObjectURL(previewSource ?? video);
+          const thumb: InlinePasteThumb = {
+            localId,
+            previewUrl,
+            fileId: null,
+            uploading: true,
+            revokeOnClear: true,
+          };
+          if (zone === "description") {
+            setDescriptionThumbs((prev) => [...prev, thumb]);
+          } else {
+            setCommentThumbs((prev) => [...prev, thumb]);
+          }
+          uploadFile(video, {
+            zone,
+            localId,
+            previewUrl,
+            posterBlob: stillBlob,
+          });
         }
-        uploadFile(named, { zone, localId, previewUrl });
         return;
       }
-      uploadFile(named);
-    });
+
+      for (const video of videos) {
+        uploadFile(video, { posterBlob: stillBlob });
+      }
+      // Outside description/comment, also accept pasted images.
+      for (const image of images) {
+        // Skip the still we already used as a video poster (avoid duplicate).
+        if (videos.length > 0 && image === clipboardStill) continue;
+        uploadFile(image);
+      }
+    })();
   }
 
   const imageFiles = useMemo(
-    () => issue.files.filter((file) => isImageMime(file.mimeType)),
+    () =>
+      issue.files.filter(
+        (file) =>
+          isImageMime(file.mimeType) && !isVideoPosterFileName(file.fileName)
+      ),
     [issue.files]
   );
-  const otherFiles = useMemo(
-    () => issue.files.filter((file) => !isImageMime(file.mimeType)),
+  const videoFiles = useMemo(
+    () =>
+      issue.files.filter(
+        (file) =>
+          isVideoMime(file.mimeType) ||
+          /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.fileName)
+      ),
     [issue.files]
+  );
+  const videoPosterByName = useMemo(() => {
+    const map = new Map<string, WorkFile>();
+    for (const file of issue.files) {
+      if (isImageMime(file.mimeType) && isVideoPosterFileName(file.fileName)) {
+        map.set(file.fileName.toLowerCase(), file);
+      }
+    }
+    return map;
+  }, [issue.files]);
+  const videoFileIdSet = useMemo(
+    () => new Set(videoFiles.map((file) => file.id)),
+    [videoFiles]
+  );
+  const otherFiles = useMemo(
+    () =>
+      issue.files.filter(
+        (file) =>
+          !isImageMime(file.mimeType) && !videoFileIdSet.has(file.id)
+      ),
+    [issue.files, videoFileIdSet]
   );
 
   const deletingTimeEntry =
@@ -1435,7 +1679,9 @@ export function WorkIssueDrawer({
                   items={descriptionThumbs.map((thumb) => ({
                     key: thumb.localId,
                     src: thumb.previewUrl,
+                    href: thumb.href ?? thumb.previewUrl,
                     uploading: thumb.uploading,
+                    title: thumb.href ? "Open video" : "Open image",
                   }))}
                   onRemove={
                     scopeLocked
@@ -2261,7 +2507,7 @@ export function WorkIssueDrawer({
                 </span>
                 <input
                   type="file"
-                  accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.csv,.zip"
+                  accept="image/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.csv,.zip"
                   disabled={pending}
                   className="text-sm text-text-secondary"
                   onChange={(event) => {
@@ -2273,14 +2519,14 @@ export function WorkIssueDrawer({
                 />
               </label>
               <p className="text-xs text-text-tertiary">
-                Max 8 MB. Paste images from the clipboard anywhere in this
-                issue.
+                Max 8 MB. Paste images or video clips from the clipboard
+                anywhere in this issue.
               </p>
             </div>
 
             {issue.files.length === 0 ? (
               <p className="text-sm text-text-secondary">
-                No files yet. Paste a screenshot or upload a file.
+                No files yet. Paste a screenshot or video, or upload a file.
               </p>
             ) : (
               <div className="space-y-4">
@@ -2318,21 +2564,117 @@ export function WorkIssueDrawer({
                             type="button"
                             disabled={pending}
                             className="shrink-0 text-label-s text-text-secondary hover:text-danger"
-                            onClick={() =>
+                            onClick={() => {
+                              removeLocalFiles([file.id]);
                               run(() =>
                                 deleteWorkIssueFileAction(
                                   board.id,
                                   issue.id,
                                   file.id
                                 )
-                              )
-                            }
+                              );
+                            }}
                           >
                             Remove
                           </button>
                         </div>
                       </li>
                     ))}
+                  </ul>
+                ) : null}
+
+                {videoFiles.length > 0 ? (
+                  <ul className="grid grid-cols-2 gap-2">
+                    {videoFiles.map((file) => {
+                      const poster =
+                        videoPosterByName.get(
+                          videoPosterFileName(file.fileName).toLowerCase()
+                        ) ?? null;
+                      return (
+                        <li
+                          key={file.id}
+                          className="group relative overflow-hidden rounded-lg border border-border-subtle bg-bg-muted"
+                        >
+                          <a
+                            href={workFileHref(file.id)}
+                            download={file.fileName}
+                            className="relative block"
+                            title={`Download ${file.fileName}`}
+                          >
+                            {poster ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={workFileHref(poster.id)}
+                                alt=""
+                                draggable={false}
+                                className="pointer-events-none aspect-[4/3] w-full object-cover"
+                              />
+                            ) : (
+                              <video
+                                src={workFileHref(file.id)}
+                                muted
+                                playsInline
+                                preload="metadata"
+                                className="pointer-events-none aspect-[4/3] w-full bg-text-primary/90 object-cover"
+                                aria-label={file.fileName}
+                              />
+                            )}
+                            <span
+                              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                              aria-hidden
+                            >
+                              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white shadow-sm">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="ml-0.5 h-5 w-5 fill-current"
+                                  aria-hidden
+                                >
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </span>
+                            </span>
+                          </a>
+                          <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                            <a
+                              href={workFileHref(file.id)}
+                              download={file.fileName}
+                              className="min-w-0 truncate text-label-s text-text-secondary hover:text-text-primary hover:underline"
+                            >
+                              {file.fileName}
+                            </a>
+                            <button
+                              type="button"
+                              disabled={pending}
+                              className="shrink-0 text-label-s text-text-secondary hover:text-danger"
+                              onClick={() => {
+                                const posterId = poster?.id;
+                                removeLocalFiles(
+                                  [file.id, posterId].filter(
+                                    (id): id is string => Boolean(id)
+                                  )
+                                );
+                                void run(async () => {
+                                  if (posterId) {
+                                    await deleteWorkIssueFileAction(
+                                      board.id,
+                                      issue.id,
+                                      posterId
+                                    );
+                                  }
+                                  return deleteWorkIssueFileAction(
+                                    board.id,
+                                    issue.id,
+                                    file.id
+                                  );
+                                });
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : null}
 
@@ -2356,15 +2698,16 @@ export function WorkIssueDrawer({
                           type="button"
                           disabled={pending}
                           className="text-label-s text-text-secondary hover:text-danger"
-                          onClick={() =>
+                          onClick={() => {
+                            removeLocalFiles([file.id]);
                             run(() =>
                               deleteWorkIssueFileAction(
                                 board.id,
                                 issue.id,
                                 file.id
                               )
-                            )
-                          }
+                            );
+                          }}
                         >
                           Remove
                         </button>
@@ -2544,7 +2887,9 @@ export function WorkIssueDrawer({
                 items={commentThumbs.map((thumb) => ({
                   key: thumb.localId,
                   src: thumb.previewUrl,
+                  href: thumb.href ?? thumb.previewUrl,
                   uploading: thumb.uploading,
+                  title: thumb.href ? "Open video" : "Open image",
                 }))}
                 onRemove={(key) => {
                   setCommentThumbs((prev) => {

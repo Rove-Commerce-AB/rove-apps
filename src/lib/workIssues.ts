@@ -10,6 +10,10 @@ import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { WorkInputError } from "@/lib/workErrors";
 import { workIssueKey } from "@/lib/workIssueKey";
 import {
+  insertWorkIssueScopeApprovalIfPriced,
+  reverseActiveWorkIssueScopeApproval,
+} from "@/lib/workIssueScopeApprovalsQueries";
+import {
   addWorkIssueAssignee,
   deleteWorkIssueFile,
   fetchWorkIssueNotifyMeta,
@@ -75,6 +79,7 @@ import {
 } from "@/lib/workIssueRelations";
 import { USER_NOTIFICATION_KIND } from "@/lib/userNotificationKinds";
 import { insertUserNotification } from "@/lib/userNotifications";
+import { guessMimeFromNameAndBytes } from "@/lib/workMedia";
 import {
   WORK_FILE_MAX_BYTES,
   type WorkComponent,
@@ -686,14 +691,40 @@ export async function setWorkIssueScopeApproved(
       throw new WorkInputError("Set a size before approving scope.");
     }
     if (state.scopeApproved) return { scopeApproved: true };
-    const ok = await updateWorkIssueScopeApproved(
-      boardId,
-      issueId,
-      true,
-      actor.id
+    const ok = await withCloudSqlTransaction(
+      "work-scope-approve",
+      async (client) => {
+        const updated = await updateWorkIssueScopeApproved(
+          boardId,
+          issueId,
+          true,
+          actor.id,
+          client
+        );
+        if (!updated) return false;
+        const recorded = await insertWorkIssueScopeApprovalIfPriced(
+          client,
+          boardId,
+          issueId
+        );
+        if (!recorded) {
+          throw new WorkInputError(
+            "Set a size price (customer or project) before approving scope."
+          );
+        }
+        await insertWorkIssueEvent(
+          {
+            issueId,
+            actorAppUserId: actor.id,
+            kind: "scope",
+            summary: "approved the scope",
+          },
+          client
+        );
+        return true;
+      }
     );
     if (!ok) throw new WorkInputError("Issue not found in this project.");
-    await logEvent(issueId, actor.id, "scope", "approved the scope");
     return { scopeApproved: true };
   }
 
@@ -703,14 +734,31 @@ export async function setWorkIssueScopeApproved(
       "Can't unlock scope while the issue is Done or has an active delivery."
     );
   }
-  const ok = await updateWorkIssueScopeApproved(
-    boardId,
-    issueId,
-    false,
-    actor.id
+  const ok = await withCloudSqlTransaction(
+    "work-scope-unapprove",
+    async (client) => {
+      const updated = await updateWorkIssueScopeApproved(
+        boardId,
+        issueId,
+        false,
+        actor.id,
+        client
+      );
+      if (!updated) return false;
+      await reverseActiveWorkIssueScopeApproval(client, issueId);
+      await insertWorkIssueEvent(
+        {
+          issueId,
+          actorAppUserId: actor.id,
+          kind: "scope",
+          summary: "unlocked the scope",
+        },
+        client
+      );
+      return true;
+    }
   );
   if (!ok) throw new WorkInputError("Issue not found in this project.");
-  await logEvent(issueId, actor.id, "scope", "unlocked the scope");
   return { scopeApproved: false };
 }
 
@@ -1052,10 +1100,15 @@ export async function uploadIssueFile(
   if (file.size > WORK_FILE_MAX_BYTES) {
     throw new Error("File must be 8 MB or smaller");
   }
+  const mimeType = guessMimeFromNameAndBytes(
+    fileName,
+    file.bytes,
+    file.type
+  );
   const fileId = await insertWorkIssueFile({
     issueId,
     fileName,
-    mimeType: file.type || "application/octet-stream",
+    mimeType,
     byteSize: file.size,
     content: Buffer.from(file.bytes),
     uploadedByAppUserId: actor.id,

@@ -16,8 +16,8 @@ import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards"
 
 export async function getOccupancyReportDataAction(
   weeks: { year: number; week: number }[],
-  roleId: string | null,
-  teamId?: string | null
+  roleId: string | string[] | null,
+  teamId?: string | string[] | null
 ): Promise<OccupancyReportResult> {
   await assertNotSubcontractorForWrite();
   return getOccupancyReportData(weeks, roleId, teamId);
@@ -25,7 +25,7 @@ export async function getOccupancyReportDataAction(
 
 export async function getBillableUtilizationMonthlyReportAction(
   months: { year: number; month: number }[],
-  teamId?: string | null,
+  teamId?: string | string[] | null,
   probabilityDisplay: ProbabilityDisplay = "weighted"
 ): Promise<BillableUtilizationMonthlyReportResult> {
   await assertNotSubcontractorForWrite();

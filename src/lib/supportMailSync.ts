@@ -3,7 +3,10 @@ import "server-only";
 import { cloudSqlPool, withCloudSqlClient } from "@/lib/cloudSqlPool";
 import { getCustomerById } from "@/lib/customers";
 import { ensureSupportWorkProject } from "@/lib/supportBoard";
-import { notifySupportCaseCreated } from "@/lib/supportCaseSlack";
+import {
+  notifySupportCaseCreated,
+  notifySupportCaseCustomerReply,
+} from "@/lib/supportCaseSlack";
 import { fetchActiveSupportContractForCustomer } from "@/lib/supportContractsQueries";
 import {
   applySupportMailLabel,
@@ -26,6 +29,7 @@ import {
   buildSupportCaseAckBody,
   clearSupportAckSent,
   markSupportAckSent,
+  supportCaseViewUrl,
   withSupportCaseRefInSubject,
 } from "@/lib/supportCaseRef";
 import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
@@ -80,23 +84,39 @@ function caseDescription(msg: GmailParsedMessage): string {
   return lines.join("\n").slice(0, 50_000);
 }
 
-async function findIssueForThread(
-  threadId: string
-): Promise<{ issueId: string; boardId: string } | null> {
+async function findIssueForThread(threadId: string): Promise<{
+  issueId: string;
+  boardId: string;
+  customerId: string;
+  customerName: string;
+  title: string;
+} | null> {
   const { rows } = await cloudSqlPool.query<{
     work_issue_id: string;
     project_id: string;
+    customer_id: string;
+    customer_name: string | null;
+    title: string;
   }>(
-    `SELECT m.work_issue_id, i.project_id
+    `SELECT m.work_issue_id, i.project_id, p.customer_id, c.name AS customer_name, i.title
      FROM support_mail_messages m
      JOIN work_issues i ON i.id = m.work_issue_id
+     JOIN work_projects p ON p.id = i.project_id
+     LEFT JOIN customers c ON c.id = p.customer_id
      WHERE m.gmail_thread_id = $1
      ORDER BY m.created_at ASC
      LIMIT 1`,
     [threadId]
   );
-  if (!rows[0]) return null;
-  return { issueId: rows[0].work_issue_id, boardId: rows[0].project_id };
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    issueId: row.work_issue_id,
+    boardId: row.project_id,
+    customerId: row.customer_id,
+    customerName: row.customer_name?.trim() || "Unknown customer",
+    title: row.title,
+  };
 }
 
 async function messageAlreadyProcessed(messageId: string): Promise<boolean> {
@@ -193,6 +213,8 @@ async function sendNewCaseAck(input: {
   issueId: string;
   message: GmailParsedMessage;
   mappedCustomerId: string | null;
+  /** Customer id for the Support app case link (mapped or board/inbox). */
+  linkCustomerId: string;
   supportCaseRef: string;
   actorAppUserId: string;
   boardId: string;
@@ -209,7 +231,8 @@ async function sendNewCaseAck(input: {
       input.message.subject || headers.subject || "(no subject)",
       input.supportCaseRef
     );
-    const bodyText = buildSupportCaseAckBody(input.supportCaseRef);
+    const caseUrl = supportCaseViewUrl(input.linkCustomerId, input.issueId);
+    const bodyText = buildSupportCaseAckBody(input.supportCaseRef, caseUrl);
 
     const sent = await sendGmailThreadReply({
       threadId: input.message.threadId,
@@ -304,6 +327,7 @@ async function createCaseFromMessage(input: {
       issueId,
       message: input.message,
       mappedCustomerId: input.mappedCustomerId,
+      linkCustomerId: input.mappedCustomerId ?? input.customerId,
       supportCaseRef,
       actorAppUserId: input.actorAppUserId,
       boardId: input.boardId,
@@ -427,6 +451,15 @@ export async function syncSupportMail(input?: {
             existingThread.issueId,
             message.receivedAt ?? new Date()
           );
+          await notifySupportCaseCustomerReply({
+            customerId: existingThread.customerId,
+            customerName: existingThread.customerName,
+            issueId: existingThread.issueId,
+            title: existingThread.title,
+            repliedByName: `Mail (${message.fromEmail})`,
+            channel: "mail",
+            body: message.bodyText || message.snippet || message.subject,
+          });
           if (labelId) {
             await applySupportMailLabel(item.id, labelId);
             result.labeled += 1;

@@ -137,16 +137,31 @@ async function getOccupancyBaseData(
   return getCachedOccupancyBaseData(weeks);
 }
 
+function normalizeIdFilter(
+  value: string | string[] | null | undefined
+): string[] {
+  if (value == null || value === "") return [];
+  return Array.isArray(value) ? value.filter(Boolean) : [value];
+}
+
 function buildOccupancyPointsForFilter(
   weeks: { year: number; week: number }[],
   baseData: OccupancyBaseData,
-  roleId: string | null | undefined,
-  teamId?: string | null
+  roleId: string | string[] | null | undefined,
+  teamId?: string | string[] | null
 ): OccupancyDataPoint[] {
+  const roleIds = normalizeIdFilter(roleId);
+  const teamIds = normalizeIdFilter(teamId);
   const consultantIds = baseData.consultantsRaw
     .filter((c) => !(c as { is_external?: boolean }).is_external)
-    .filter((c) => (roleId == null || c.role_id === roleId))
-    .filter((c) => (teamId == null || teamId === "" || (c as { team_id?: string | null }).team_id === teamId))
+    .filter((c) => roleIds.length === 0 || roleIds.includes(c.role_id))
+    .filter(
+      (c) =>
+        teamIds.length === 0 ||
+        teamIds.includes(
+          (c as { team_id?: string | null }).team_id ?? ""
+        )
+    )
     .map((c) => c.id);
   const consultantIdSet = new Set(consultantIds);
 
@@ -241,8 +256,8 @@ function buildOccupancyPointsForFilter(
  */
 export async function getOccupancyReportData(
   weeks: { year: number; week: number }[],
-  roleId: string | null | undefined,
-  teamId?: string | null
+  roleId: string | string[] | null | undefined,
+  teamId?: string | string[] | null
 ): Promise<OccupancyReportResult> {
   const weeksWithLabel: OccupancyWeek[] = weeks.map((w) => ({
     year: w.year,

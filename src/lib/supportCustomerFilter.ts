@@ -83,7 +83,7 @@ export function resolveSupportCustomerFilter(args: {
   queryValue: string | null | undefined;
   cookieValue: string | null | undefined;
   customers: readonly SupportFilterCustomer[];
-}): string | null {
+}): string[] {
   return resolveCustomerFilterSelection({
     queryValue: args.queryValue,
     persistedValue: args.cookieValue,

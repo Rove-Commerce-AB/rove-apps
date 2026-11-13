@@ -91,4 +91,47 @@ describe("mergeIssuesFromServer", () => {
     expect(merged[0]?.sortOrder).toBe(3);
     expect(merged[0]?.title).toBe("Remote");
   });
+
+  it("keeps optimistic file uploads when server refresh is stale", () => {
+    const uploaded = {
+      id: "f-new",
+      fileName: "clip.mp4",
+      mimeType: "video/mp4",
+      byteSize: 100,
+      createdAt: "2026-11-13T00:00:00.000Z",
+    };
+    const poster = {
+      id: "f-poster",
+      fileName: "thumb__clip.mp4.jpg",
+      mimeType: "image/jpeg",
+      byteSize: 20,
+      createdAt: "2026-11-13T00:00:00.000Z",
+    };
+    const local = [issue({ id: "a", files: [uploaded, poster] })];
+    const server = [issue({ id: "a", files: [] })];
+    const merged = mergeIssuesFromServer(local, server);
+    expect(merged[0]?.files.map((file) => file.id)).toEqual([
+      "f-new",
+      "f-poster",
+    ]);
+  });
+
+  it("drops local-only files once server includes them", () => {
+    const uploaded = {
+      id: "f-new",
+      fileName: "clip.mp4",
+      mimeType: "video/mp4",
+      byteSize: 100,
+      createdAt: "2026-11-13T00:00:00.000Z",
+    };
+    const local = [issue({ id: "a", files: [uploaded] })];
+    const server = [
+      issue({
+        id: "a",
+        files: [{ ...uploaded, byteSize: 100 }],
+      }),
+    ];
+    const merged = mergeIssuesFromServer(local, server);
+    expect(merged[0]?.files).toEqual(server[0]?.files);
+  });
 });

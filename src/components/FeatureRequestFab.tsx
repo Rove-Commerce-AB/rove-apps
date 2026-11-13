@@ -11,6 +11,13 @@ import {
 import { useRouter } from "next/navigation";
 import { Check, MessageCirclePlus, X } from "lucide-react";
 import { createFeatureRequest } from "@/lib/featureRequests";
+import {
+  collectClipboardMediaFiles,
+  extractVideoPosterJpeg,
+  isVideoFile,
+  videoPosterFileName,
+  withGuessedMediaType,
+} from "@/lib/workMedia";
 import { WORK_FILE_MAX_BYTES, type WorkIssueType } from "@/lib/workTypes";
 import { WorkIssueTypePicker } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueTypeIcon";
 import { WorkInlineImageThumbs } from "@/app/(app)/work/[customerId]/[projectId]/WorkCommentComposer";
@@ -18,6 +25,8 @@ import { WorkInlineImageThumbs } from "@/app/(app)/work/[customerId]/[projectId]
 type PendingShot = {
   localId: string;
   file: File;
+  /** Optional JPEG poster uploaded with videos for Work Files thumbnails. */
+  posterFile?: File;
   previewUrl: string;
 };
 
@@ -28,25 +37,6 @@ const SENT_WIDTH = 112;
 const OPEN_WIDTH = 320;
 
 type ComposerPhase = "closed" | "open" | "sent";
-
-function pasteFileName(file: File, index: number) {
-  const ext =
-    file.type === "image/png"
-      ? "png"
-      : file.type === "image/jpeg"
-        ? "jpg"
-        : file.type === "image/gif"
-          ? "gif"
-          : file.type === "image/webp"
-            ? "webp"
-            : file.name.includes(".")
-              ? file.name.split(".").pop()!
-              : "png";
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return file.name && !file.name.startsWith("image")
-    ? file.name
-    : `paste-${stamp}${index > 0 ? `-${index + 1}` : ""}.${ext}`;
-}
 
 export function FeatureRequestFab() {
   const [phase, setPhase] = useState<ComposerPhase>("closed");
@@ -154,50 +144,58 @@ export function FeatureRequestFab() {
     setError(null);
   }
 
-  function addImages(files: File[]) {
+  async function addMedia(files: File[]) {
     if (files.length === 0) return;
     setError(null);
-    setShots((prev) => {
-      const room = MAX_SCREENSHOTS - prev.length;
-      if (room <= 0) {
-        setError(`You can attach at most ${MAX_SCREENSHOTS} screenshots`);
-        return prev;
+    const room = MAX_SCREENSHOTS - shotsRef.current.length;
+    if (room <= 0) {
+      setError(`You can attach at most ${MAX_SCREENSHOTS} files`);
+      return;
+    }
+    if (files.length > room) {
+      setError(`You can attach at most ${MAX_SCREENSHOTS} files`);
+    }
+    const nextRows: PendingShot[] = [];
+    for (const file of files.slice(0, room)) {
+      const named = withGuessedMediaType(
+        file,
+        shotsRef.current.length + nextRows.length
+      );
+      if (file.size > WORK_FILE_MAX_BYTES) {
+        setError("Each attachment must be 8 MB or smaller");
+        continue;
       }
-      const next = [...prev];
-      for (const file of files.slice(0, room)) {
-        if (!file.type.toLowerCase().startsWith("image/")) continue;
-        if (file.size > WORK_FILE_MAX_BYTES) {
-          setError("Each screenshot must be 8 MB or smaller");
-          continue;
+      let previewUrl = URL.createObjectURL(named);
+      let posterFile: File | undefined;
+      if (isVideoFile(named)) {
+        const posterBlob = await extractVideoPosterJpeg(named);
+        if (posterBlob) {
+          URL.revokeObjectURL(previewUrl);
+          previewUrl = URL.createObjectURL(posterBlob);
+          posterFile = new File(
+            [posterBlob],
+            videoPosterFileName(named.name),
+            { type: "image/jpeg" }
+          );
         }
-        const named = new File([file], pasteFileName(file, next.length), {
-          type: file.type || "image/png",
-        });
-        next.push({
-          localId: crypto.randomUUID(),
-          file: named,
-          previewUrl: URL.createObjectURL(named),
-        });
       }
-      if (files.length > room) {
-        setError(`You can attach at most ${MAX_SCREENSHOTS} screenshots`);
-      }
-      return next;
-    });
+      nextRows.push({
+        localId: crypto.randomUUID(),
+        file: named,
+        posterFile,
+        previewUrl,
+      });
+    }
+    if (nextRows.length > 0) {
+      setShots((prev) => [...prev, ...nextRows]);
+    }
   }
 
   function handlePaste(event: ClipboardEvent) {
-    const items = event.clipboardData?.items;
-    if (!items?.length) return;
-    const images: File[] = [];
-    for (const item of items) {
-      if (!item.type.startsWith("image/")) continue;
-      const blob = item.getAsFile();
-      if (blob) images.push(blob);
-    }
-    if (images.length === 0) return;
+    const media = collectClipboardMediaFiles(event.clipboardData);
+    if (media.length === 0) return;
     event.preventDefault();
-    addImages(images);
+    void addMedia(media);
   }
 
   function removeShot(localId: string) {
@@ -220,6 +218,9 @@ export function FeatureRequestFab() {
       formData.set("issueType", issueType === "bug" ? "bug" : "issue");
       for (const shot of shots) {
         formData.append("screenshots", shot.file);
+        if (shot.posterFile && shot.posterFile.size <= WORK_FILE_MAX_BYTES) {
+          formData.append("posters", shot.posterFile);
+        }
       }
       await createFeatureRequest(formData);
       resetForm();
@@ -346,7 +347,8 @@ export function FeatureRequestFab() {
                 onRemove={submitting ? undefined : removeShot}
               />
               <p className="mt-1.5 text-[11px] text-text-secondary">
-                Paste screenshots from the clipboard (max {MAX_SCREENSHOTS}).
+                Paste screenshots or video clips (max {MAX_SCREENSHOTS}, 8 MB
+                each).
               </p>
             </div>
             <div className="flex justify-end">

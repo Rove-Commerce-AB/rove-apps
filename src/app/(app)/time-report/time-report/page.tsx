@@ -37,8 +37,8 @@ export default async function TimeReportPage() {
   const customers = await getCustomersByIds(customerIds);
 
   return (
-    <div>
-      <PageHeader title="Time report" className="mb-6" />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PageHeader title="Time report" className="mb-4 shrink-0" />
       <TimeReportWithColumnHighlight
         consultant={consultant}
         customers={customers.map((c) => ({

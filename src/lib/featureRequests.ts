@@ -3,6 +3,7 @@
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { joinWorkInlineImages } from "@/lib/workInlineImages";
+import { isVideoPosterFileName } from "@/lib/workMedia";
 import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
 
 const FEATURE_REQUEST_BOARD_TITLE = "Rove Apps";
@@ -72,22 +73,37 @@ async function resolveFeatureRequestBoard(): Promise<{
   return { boardId, requestStatusId };
 }
 
-function collectScreenshotFiles(formData: FormData): File[] {
+function collectMediaFiles(formData: FormData): File[] {
   const files = formData
     .getAll("screenshots")
     .filter((entry): entry is File => entry instanceof File && entry.size > 0);
   if (files.length > MAX_SCREENSHOTS) {
-    throw new Error(`You can attach at most ${MAX_SCREENSHOTS} screenshots`);
+    throw new Error(`You can attach at most ${MAX_SCREENSHOTS} files`);
   }
   for (const file of files) {
-    if (!file.type.toLowerCase().startsWith("image/")) {
-      throw new Error("Screenshots must be images");
+    const mime = file.type.toLowerCase();
+    if (!mime.startsWith("image/") && !mime.startsWith("video/")) {
+      throw new Error("Attachments must be images or videos");
     }
     if (file.size > WORK_FILE_MAX_BYTES) {
-      throw new Error("Each screenshot must be 8 MB or smaller");
+      throw new Error("Each attachment must be 8 MB or smaller");
     }
   }
-  return files;
+  const posters = formData
+    .getAll("posters")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  for (const file of posters) {
+    if (!file.type.toLowerCase().startsWith("image/")) {
+      throw new Error("Video posters must be images");
+    }
+    if (file.size > WORK_FILE_MAX_BYTES) {
+      throw new Error("Each attachment must be 8 MB or smaller");
+    }
+    if (!isVideoPosterFileName(file.name)) {
+      throw new Error("Invalid video poster name");
+    }
+  }
+  return [...files, ...posters];
 }
 
 /**
@@ -102,7 +118,7 @@ export async function createFeatureRequest(
   const trimmed = String(formData.get("content") ?? "").trim();
   if (!trimmed) throw new Error("Content is required");
   const type = formData.get("issueType") === "bug" ? "bug" : "issue";
-  const screenshots = collectScreenshotFiles(formData);
+  const screenshots = collectMediaFiles(formData);
 
   const user = await getCurrentAppUser();
   if (!user?.id) throw new Error("Unauthorized");
@@ -185,10 +201,19 @@ export async function createFeatureRequest(
       );
     }
 
-    if (fileIds.length > 0) {
+    // Only embed user images in the description; videos + posters stay as Files.
+    const imageFileIds = fileIds.filter((_, index) => {
+      const file = screenshotBytes[index];
+      if (!file) return false;
+      return (
+        file.mimeType.toLowerCase().startsWith("image/") &&
+        !isVideoPosterFileName(file.name)
+      );
+    });
+    if (imageFileIds.length > 0) {
       await client.query(
         `UPDATE work_issues SET description = $2 WHERE id = $1`,
-        [issueId, joinWorkInlineImages(baseDescription, fileIds)]
+        [issueId, joinWorkInlineImages(baseDescription, imageFileIds)]
       );
     }
 

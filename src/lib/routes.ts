@@ -21,6 +21,8 @@ export const ROUTES = {
   timeReportHome: "/time-report",
   timeReportOverview: "/time-report/overview",
   timeApproval: "/time-report/approval",
+  travelExpense: "/time-report/travel-expense",
+  travelExpenseNew: "/time-report/travel-expense/new",
   insights: "/insights",
   insightsOverview: "/insights/overview",
   work: "/work",
@@ -45,6 +47,10 @@ export function allocationHref(params: {
   to: number;
 }): string {
   return `${ROUTES.allocation}?year=${params.year}&from=${params.from}&to=${params.to}`;
+}
+
+export function travelExpenseDetailHref(id: string): string {
+  return `${ROUTES.travelExpense}/${id}`;
 }
 
 export function customerHref(id: string): string {

@@ -16,7 +16,10 @@ import {
   getSupportActor,
   linkedSupportCustomerIdsForActor,
 } from "@/lib/supportActor";
-import { notifySupportCaseCreated } from "@/lib/supportCaseSlack";
+import {
+  notifySupportCaseCreated,
+  notifySupportCaseCustomerReply,
+} from "@/lib/supportCaseSlack";
 import {
   customerHasActiveSupportContract,
   fetchCustomerIdsWithActiveSupportContract,
@@ -29,10 +32,14 @@ import {
 } from "@/lib/supportMailGmail";
 import {
   fetchSupportCaseRef,
+  supportCaseViewUrl,
   withSupportCaseRefInSubject,
+  withSupportCaseViewLink,
 } from "@/lib/supportCaseRef";
 import { createWorkIssue } from "@/lib/workIssues";
 import { WorkInputError } from "@/lib/workErrors";
+import { isImageMime, isVideoMime } from "@/lib/workMedia";
+import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
 import {
   fetchWorkBoardById,
   fetchWorkBoardStatuses,
@@ -814,6 +821,29 @@ export async function addSupportCaseComment(
     );
   } else if (isStaffSupportRole(actor.role)) {
     await clearSupportAwaitingStaff(issueId);
+  } else if (actor.role === "customer") {
+    const [customer, user, issueMeta] = await Promise.all([
+      getCustomerById(customerId),
+      getCurrentAppUser(),
+      cloudSqlPool.query<{ title: string }>(
+        `SELECT title FROM work_issues WHERE id = $1::uuid LIMIT 1`,
+        [issueId]
+      ),
+    ]);
+    const customerName = customer?.name?.trim() || "Unknown customer";
+    const repliedByName = user?.name?.trim() || user?.email || "Customer";
+    const title = issueMeta.rows[0]?.title?.trim() || "Support case";
+    after(() => {
+      void notifySupportCaseCustomerReply({
+        customerId,
+        customerName,
+        issueId,
+        title,
+        repliedByName,
+        channel: "comment",
+        body: trimmed,
+      });
+    });
   }
 
   revalidateSupportIncidents();
@@ -822,11 +852,13 @@ export async function addSupportCaseComment(
 /**
  * Staff reply via support@ into the linked Gmail thread.
  * Also stores a public case comment + support_mail_messages row.
+ * Optional image/video attachments (max 8 MB each, same as Work files).
  */
 export async function replySupportCaseEmail(
   customerId: string,
   issueId: string,
-  body: string
+  body: string,
+  attachments?: File[]
 ): Promise<void> {
   const { actor, projectId } = await requireIssueCasesContext(
     customerId,
@@ -837,6 +869,31 @@ export async function replySupportCaseEmail(
   }
   const trimmed = body.trim();
   if (!trimmed) throw new WorkInputError("Reply body is required.");
+
+  const files = attachments ?? [];
+  if (files.length > 8) {
+    throw new WorkInputError("You can attach at most 8 files to an email reply.");
+  }
+  const outgoing: {
+    fileName: string;
+    mimeType: string;
+    content: Buffer;
+  }[] = [];
+  for (const file of files) {
+    const mime = (file.type || "application/octet-stream").toLowerCase();
+    if (!isImageMime(mime) && !isVideoMime(mime)) {
+      throw new WorkInputError("Email attachments must be images or videos.");
+    }
+    if (file.size <= 0) continue;
+    if (file.size > WORK_FILE_MAX_BYTES) {
+      throw new WorkInputError("Each attachment must be 8 MB or smaller.");
+    }
+    outgoing.push({
+      fileName: file.name.trim() || (isVideoMime(mime) ? "video.mp4" : "image.png"),
+      mimeType: mime,
+      content: Buffer.from(await file.arrayBuffer()),
+    });
+  }
 
   const { rows: mailRows } = await cloudSqlPool.query<{
     gmail_thread_id: string;
@@ -873,21 +930,28 @@ export async function replySupportCaseEmail(
   const subject = supportCaseRef
     ? withSupportCaseRefInSubject(rawSubject, supportCaseRef)
     : rawSubject;
+  const caseUrl = supportCaseViewUrl(customerId, issueId);
+  const bodyText = withSupportCaseViewLink(trimmed, caseUrl);
   const sent = await sendGmailThreadReply({
     threadId: first.gmail_thread_id,
     toEmail,
     subject,
-    bodyText: trimmed,
+    bodyText,
     inReplyToMessageId: headers.messageIdHeader,
     references: headers.references,
+    attachments: outgoing,
   });
 
+  const attachNote =
+    outgoing.length > 0
+      ? `\n\nAttachments: ${outgoing.map((f) => f.fileName).join(", ")}`
+      : "";
   const commentBody = [
     `${MAIL_OUT_PREFIX}${toEmail}`,
     `Subject: ${/^re:/i.test(subject) ? subject : `Re: ${subject}`}`,
     `From: ${supportMailboxAddress()}`,
     "",
-    trimmed,
+    bodyText + attachNote,
   ].join("\n");
 
   const commentId = await insertWorkIssueComment({

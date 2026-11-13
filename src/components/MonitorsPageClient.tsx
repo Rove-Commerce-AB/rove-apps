@@ -2,14 +2,17 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { MonitorFormDrawer } from "@/components/MonitorFormDrawer";
 import { MonitorGroupList } from "@/components/MonitorGroupList";
 import { MonitorsIncidentExportControls } from "@/components/MonitorsIncidentExportControls";
 import {
+  ListSearchInput,
+  ListTableToolbar,
+} from "@/components/ListTableToolbar";
+import {
   Button,
   ConfirmModal,
-  Input,
   PageHeader,
   Panel,
 } from "@/components/ui";
@@ -137,45 +140,47 @@ export function MonitorsPageClient({
           {loadError || error}
         </p>
       )}
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="relative w-full sm:w-72">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary"
-            aria-hidden
-          />
-          <Input
-            id="monitor-search"
-            type="search"
-            placeholder="Search monitors…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            aria-label="Search monitors"
-            className="pl-9"
-          />
-        </div>
-        <label className="inline-flex h-10 items-center gap-2 text-xs text-text-secondary">
-          <input
-            type="checkbox"
-            checked={downOnly}
-            onChange={(event) => setDownOnly(event.target.checked)}
-          />
-          Down only
-        </label>
-        <MonitorsIncidentExportControls customerId={fixedCustomerId} />
-        {toolbar ? <div className="ml-auto shrink-0 self-center">{toolbar}</div> : null}
-      </div>
-      <Panel>
-        <MonitorGroupList
-          monitors={monitors}
-          search={search}
-          downOnly={downOnly}
-          canMutate={canMutate}
-          pending={pending}
-          onEdit={(monitor) => openForm(monitor)}
-          onToggleEnabled={toggle}
-          onDelete={setDeleteTarget}
+      <div>
+        <ListTableToolbar
+          leading={
+            <div className="flex flex-wrap items-center gap-3">
+              <ListSearchInput
+                id="monitor-search"
+                placeholder="Search monitors…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search monitors"
+              />
+              <label className="inline-flex h-7 items-center gap-2 text-[13px] text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={downOnly}
+                  onChange={(event) => setDownOnly(event.target.checked)}
+                />
+                Down only
+              </label>
+            </div>
+          }
+          trailing={
+            <div className="contents">
+              <MonitorsIncidentExportControls customerId={fixedCustomerId} />
+              {toolbar}
+            </div>
+          }
         />
-      </Panel>
+        <Panel>
+          <MonitorGroupList
+            monitors={monitors}
+            search={search}
+            downOnly={downOnly}
+            canMutate={canMutate}
+            pending={pending}
+            onEdit={(monitor) => openForm(monitor)}
+            onToggleEnabled={toggle}
+            onDelete={setDeleteTarget}
+          />
+        </Panel>
+      </div>
       {canMutate ? (
         <MonitorFormDrawer
           open={editing !== null}

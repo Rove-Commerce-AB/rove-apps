@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import { ListTableToolbar } from "@/components/ListTableToolbar";
 import { Button, Input, PageHeader, Panel, Select } from "@/components/ui";
 import { SupportCaseDrawer } from "@/components/SupportCaseDrawer";
 import {
@@ -10,6 +12,11 @@ import {
 } from "@/lib/supportCases";
 
 type CustomerOption = { id: string; name: string };
+
+const STATUS_FILTER_OPTIONS = [
+  { id: "open", name: "Open" },
+  { id: "done", name: "Done" },
+];
 
 type Props = {
   /** Selected filter customer, or null for All. */
@@ -44,9 +51,8 @@ export function SupportCasesClient({
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"open" | "done" | "all">(
-    "open"
-  );
+  /** Empty = all. Default open only. */
+  const [statusFilterIds, setStatusFilterIds] = useState<string[]>(["open"]);
   const [createCustomerId, setCreateCustomerId] = useState(
     customerId ?? customers[0]?.id ?? ""
   );
@@ -66,17 +72,18 @@ export function SupportCasesClient({
 
   const visibleCases = useMemo(() => {
     const filtered =
-      statusFilter === "all"
+      statusFilterIds.length === 0
         ? cases
-        : statusFilter === "done"
-          ? cases.filter((item) => item.isDone)
-          : cases.filter((item) => !item.isDone);
+        : cases.filter((item) => {
+            const status = item.isDone ? "done" : "open";
+            return statusFilterIds.includes(status);
+          });
     if (isCustomerUser) return filtered;
     return [...filtered].sort((a, b) => {
       if (a.awaitingStaff === b.awaitingStaff) return 0;
       return a.awaitingStaff ? -1 : 1;
     });
-  }, [cases, statusFilter, isCustomerUser]);
+  }, [cases, statusFilterIds, isCustomerUser]);
 
   const effectiveCreateCustomerId = customerId ?? createCustomerId;
   const canCreate =
@@ -185,28 +192,32 @@ export function SupportCasesClient({
               </Button>
             </form>
           </Panel>
-          <div className="flex flex-wrap items-center gap-3">
-            <Select
-              variant="filter"
-              value={statusFilter}
-              onValueChange={(value) =>
-                setStatusFilter(value as "open" | "done" | "all")
+          <div>
+            <ListTableToolbar
+              trailing={
+                <div className="contents">
+                  {truncated && totalCount != null ? (
+                    <p className="mr-1 text-xs text-text-tertiary">
+                      Showing latest {cases.length} of {totalCount} cases.
+                    </p>
+                  ) : null}
+                  <ListFilterMenu
+                    ariaLabel="Filter cases"
+                    sections={[
+                      {
+                        id: "status",
+                        label: "Status",
+                        allLabel: "All statuses",
+                        options: STATUS_FILTER_OPTIONS,
+                        selectedIds: statusFilterIds,
+                        onChange: setStatusFilterIds,
+                      },
+                    ]}
+                  />
+                </div>
               }
-              options={[
-                { value: "open", label: "Open" },
-                { value: "done", label: "Done" },
-                { value: "all", label: "All" },
-              ]}
-              className="w-auto min-w-0"
-              triggerClassName="min-w-[120px]"
             />
-            {truncated && totalCount != null ? (
-              <p className="text-xs text-text-tertiary">
-                Showing latest {cases.length} of {totalCount} cases.
-              </p>
-            ) : null}
-          </div>
-          <Panel>
+            <Panel>
             {visibleCases.length === 0 ? (
               <p className="p-6 text-sm text-text-secondary">
                 No cases yet.
@@ -263,7 +274,8 @@ export function SupportCasesClient({
                 ))}
               </ul>
             )}
-          </Panel>
+            </Panel>
+          </div>
         </>
       )}
 

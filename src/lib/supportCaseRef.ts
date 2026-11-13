@@ -1,6 +1,39 @@
 import "server-only";
 
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { supportIncidentsHref } from "@/lib/routes";
+
+function appOrigin(): string | null {
+  const raw = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+  if (!raw?.trim()) return null;
+  try {
+    return new URL(raw.trim()).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Absolute URL to the Support incidents list focused on a case (requires login). */
+export function supportCaseViewUrl(
+  customerId: string,
+  issueId: string
+): string | null {
+  const origin = appOrigin();
+  if (!origin || !customerId || !issueId) return null;
+  const base = supportIncidentsHref(customerId);
+  const sep = base.includes("?") ? "&" : "?";
+  return `${origin}${base}${sep}case=${encodeURIComponent(issueId)}`;
+}
+
+/** Append a "View your case" line when a URL is available. */
+export function withSupportCaseViewLink(
+  body: string,
+  caseUrl: string | null | undefined
+): string {
+  const trimmed = body.trimEnd();
+  if (!caseUrl?.trim()) return trimmed;
+  return `${trimmed}\n\nView your case: ${caseUrl.trim()}`;
+}
 
 /** Display form for a stable Support case number. */
 export function formatSupportCaseRef(number: number): string {
@@ -83,14 +116,19 @@ export async function clearSupportAckSent(issueId: string): Promise<void> {
   );
 }
 
-export function buildSupportCaseAckBody(ref: string): string {
-  return [
+export function buildSupportCaseAckBody(
+  ref: string,
+  caseUrl?: string | null
+): string {
+  const lines = [
     "Thank you for your email.",
     "",
     `We have registered your request as ${ref}.`,
     "We will get back to you as soon as we can.",
-    "",
-    "—",
-    "Rove Support",
-  ].join("\n");
+  ];
+  if (caseUrl?.trim()) {
+    lines.push("", `View your case: ${caseUrl.trim()}`);
+  }
+  lines.push("", "—", "Rove Support");
+  return lines.join("\n");
 }

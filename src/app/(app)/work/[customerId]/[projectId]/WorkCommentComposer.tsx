@@ -23,7 +23,14 @@ export function WorkInlineImageThumbs({
   items,
   onRemove,
 }: {
-  items: { key: string; src: string; uploading?: boolean }[];
+  items: {
+    key: string;
+    src: string;
+    /** Open/download target; defaults to `src` (use video URL when `src` is a poster). */
+    href?: string;
+    uploading?: boolean;
+    title?: string;
+  }[];
   onRemove?: (key: string) => void;
 }) {
   if (items.length === 0) return null;
@@ -32,13 +39,13 @@ export function WorkInlineImageThumbs({
       {items.map((item) => (
         <li key={item.key} className="group relative">
           <a
-            href={item.src}
+            href={item.href ?? item.src}
             target="_blank"
             rel="noreferrer"
             className={`block overflow-hidden rounded border border-border-subtle bg-bg-muted ${
               item.uploading ? "opacity-60" : ""
             }`}
-            title="Open image"
+            title={item.title ?? "Open image"}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

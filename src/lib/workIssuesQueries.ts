@@ -4,6 +4,10 @@ import {
   reverseActiveWorkIssueDelivery,
   syncWorkIssueDeliveryOnStatusChange,
 } from "@/lib/workIssueDeliveriesQueries";
+import {
+  insertWorkIssueScopeApprovalIfPriced,
+  reverseActiveWorkIssueScopeApproval,
+} from "@/lib/workIssueScopeApprovalsQueries";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkIssueDetailsInput, WorkLabel } from "@/lib/workTypes";
 
@@ -627,9 +631,11 @@ export async function updateWorkIssueScopeApproved(
   boardId: string,
   issueId: string,
   approved: boolean,
-  actorAppUserId: string
+  actorAppUserId: string,
+  client?: PoolClient
 ): Promise<boolean> {
-  const result = await cloudSqlPool.query(
+  const db = client ?? cloudSqlPool;
+  const result = await db.query(
     approved
       ? `UPDATE work_issues
          SET scope_approved_at = now(),
@@ -1747,8 +1753,16 @@ export async function moveWorkIssueToProject(input: {
       [input.issueId]
     );
 
-    // Fixed-price delivery belongs to the source board snapshot; reverse before move.
+    // Fixed-price delivery/approval belong to the source board snapshot; reverse before move.
     await reverseActiveWorkIssueDelivery(client, input.issueId);
+    await reverseActiveWorkIssueScopeApproval(client, input.issueId);
+
+    const { rows: scopeRows } = await client.query<{
+      scope_approved_at: Date | string | null;
+    }>(`SELECT scope_approved_at FROM work_issues WHERE id = $1`, [
+      input.issueId,
+    ]);
+    const stillApproved = scopeRows[0]?.scope_approved_at != null;
 
     await client.query(
       `UPDATE work_issues
@@ -1768,6 +1782,15 @@ export async function moveWorkIssueToProject(input: {
         orderRows[0]?.next ?? 0,
       ]
     );
+
+    // Re-commit approval against the destination board (new Looker approved event).
+    if (stillApproved) {
+      await insertWorkIssueScopeApprovalIfPriced(
+        client,
+        input.toProjectId,
+        input.issueId
+      );
+    }
 
     await client.query(
       `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)

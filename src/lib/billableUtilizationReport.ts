@@ -130,7 +130,7 @@ function allocationHoursForView(
 
 export async function getBillableUtilizationMonthlyReport(
   calendarMonths: { year: number; month: number }[],
-  teamId?: string | null,
+  teamId?: string | string[] | null,
   probabilityDisplay: ProbabilityDisplay = "weighted"
 ): Promise<BillableUtilizationMonthlyReportResult> {
   const months: BillableUtilizationMonth[] = calendarMonths.map((m) => ({
@@ -158,11 +158,20 @@ export async function getBillableUtilizationMonthlyReport(
     }
   }
 
+  const teamIds =
+    teamId == null || teamId === ""
+      ? []
+      : Array.isArray(teamId)
+        ? teamId.filter(Boolean)
+        : [teamId];
   const consultantsRaw = await getCachedConsultantsRaw();
   const consultants = consultantsRaw.filter(
     (c) =>
       !(c as { is_external?: boolean }).is_external &&
-      (teamId == null || (c as { team_id?: string | null }).team_id === teamId)
+      (teamIds.length === 0 ||
+        teamIds.includes(
+          (c as { team_id?: string | null }).team_id ?? ""
+        ))
   );
   const consultantIds = consultants.map((c) => c.id);
   const consultantById = new Map(consultants.map((c) => [c.id, c]));

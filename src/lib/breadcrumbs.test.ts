@@ -136,4 +136,26 @@ describe("breadcrumbsForPathname", () => {
       { label: "Overview" },
     ]);
   });
+
+  it("shows Travel expense under Time report", () => {
+    expect(breadcrumbsForPathname("/time-report/travel-expense")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Time report", href: "/time-report/overview" },
+      { label: "Travel expense" },
+    ]);
+    expect(breadcrumbsForPathname("/time-report/travel-expense/new")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Time report", href: "/time-report/overview" },
+      { label: "Travel expense", href: "/time-report/travel-expense" },
+      { label: "New" },
+    ]);
+    expect(
+      breadcrumbsForPathname("/time-report/travel-expense/abc")
+    ).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Time report", href: "/time-report/overview" },
+      { label: "Travel expense", href: "/time-report/travel-expense" },
+      { label: "Edit" },
+    ]);
+  });
 });

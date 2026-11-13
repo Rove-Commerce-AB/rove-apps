@@ -779,6 +779,14 @@ export function Sidebar({
                 indent
                 onNavigate={markPending}
               />
+              <NavLink
+                href={ROUTES.travelExpense}
+                label="Travel expense"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
               {showTimeApproval && (
                 <NavLink
                   href={ROUTES.timeApproval}

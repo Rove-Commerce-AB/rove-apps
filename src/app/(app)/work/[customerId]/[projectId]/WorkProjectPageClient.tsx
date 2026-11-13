@@ -1536,7 +1536,13 @@ export function WorkBoardPageClient({
         </div>
       </header>
 
-      <div className="mb-4 flex shrink-0 items-center gap-3">
+      {error ? (
+        <p className="mb-1.5 shrink-0 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mb-1.5 flex shrink-0 flex-wrap items-center gap-3">
         <WorkBoardMembers
           members={members}
           people={board.people}
@@ -1555,24 +1561,15 @@ export function WorkBoardPageClient({
             className="h-7 py-0 pl-8 text-[13px]"
           />
         </div>
-      </div>
-
-      {error ? (
-        <p className="mb-3 shrink-0 text-sm text-danger" role="alert">
-          {error}
-        </p>
-      ) : null}
-
-      {boardMode === "board" ? (
-        <div className="mb-1.5 flex shrink-0 items-center gap-3">
-          {orderedSprints.length > 0 ? (
-            <WorkSprintPicker
-              sprints={orderedSprints}
-              selectedIds={sprintFilterIds}
-              onChange={setSprintFilterIds}
-              multi
-            />
-          ) : null}
+        {boardMode === "board" && orderedSprints.length > 0 ? (
+          <WorkSprintPicker
+            sprints={orderedSprints}
+            selectedIds={sprintFilterIds}
+            onChange={setSprintFilterIds}
+            multi
+          />
+        ) : null}
+        {boardMode === "board" ? (
           <div className="ml-auto flex items-center gap-1">
             <WorkBoardViewControls
               people={ownerPeople}
@@ -1589,8 +1586,8 @@ export function WorkBoardPageClient({
               onGroupByChange={setGroupBy}
             />
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {boardMode === "sprint" ? (
         <WorkSprintView
@@ -2143,7 +2140,9 @@ export function WorkBoardPageClient({
                       className={`relative cursor-pointer select-none overflow-hidden rounded-lg border bg-bg-default p-3 shadow-sm ${
                         selectedIssueId === issue.id
                           ? "border-accent-primary"
-                          : "border-border-subtle hover:border-border-default"
+                          : issue.scopeApproved
+                            ? "border-[color:var(--color-green-500)] dark:border-[color:var(--color-green-400)]"
+                            : "border-border-subtle hover:border-border-default"
                       } ${landingIssueId === issue.id ? "opacity-0" : ""}`}
                     >
                       <div className="text-left">

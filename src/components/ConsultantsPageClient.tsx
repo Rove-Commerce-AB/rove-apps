@@ -2,18 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { AddConsultantModal } from "./AddConsultantModal";
 import { ConsultantDetailClient } from "./ConsultantDetailClient";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import {
+  ListSearchInput,
+  ListTableToolbar,
+} from "@/components/ListTableToolbar";
 import {
   Button,
   CapacityBar,
   DataTable,
   EmptyState,
   InitialsAvatar,
-  Input,
   PageHeader,
-  SegmentedControl,
   SideDrawer,
   Tabs,
   TabsContent,
@@ -30,7 +33,7 @@ type Props = {
   isAdmin?: boolean;
 };
 
-type TeamFilter = "all" | "external" | string;
+const EXTERNAL_TEAM_FILTER = "__external__";
 type SortKey = "name" | "team" | "role" | "capacity" | "overhead";
 type SortDirection = "asc" | "desc";
 
@@ -74,7 +77,7 @@ export function ConsultantsPageClient({
   const [openId, setOpenId] = useState<string | null>(routeId);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [teamFilter, setTeamFilter] = useState<TeamFilter>("all");
+  const [teamFilterIds, setTeamFilterIds] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
@@ -104,10 +107,12 @@ export function ConsultantsPageClient({
   const visibleConsultants = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = activeConsultants.filter((c) => {
-      if (teamFilter === "external") {
-        if (!c.isExternal) return false;
-      } else if (teamFilter !== "all" && c.team_id !== teamFilter) {
-        return false;
+      if (teamFilterIds.length > 0) {
+        const matchTeam =
+          Boolean(c.team_id) && teamFilterIds.includes(c.team_id!);
+        const matchExternal =
+          teamFilterIds.includes(EXTERNAL_TEAM_FILTER) && c.isExternal;
+        if (!matchTeam && !matchExternal) return false;
       }
       if (!q) return true;
       return (
@@ -137,7 +142,7 @@ export function ConsultantsPageClient({
           return dir * a.name.localeCompare(b.name);
       }
     });
-  }, [activeConsultants, search, teamFilter, sortKey, sortDirection]);
+  }, [activeConsultants, search, teamFilterIds, sortKey, sortDirection]);
 
   const selectedConsultant =
     openId == null ? null : consultants.find((c) => c.id === openId) ?? null;
@@ -194,15 +199,16 @@ export function ConsultantsPageClient({
 
   const teamFilterOptions = useMemo(
     () => [
-      { value: "all" as const, label: "All", count: activeConsultants.length },
       ...teamFilters.map((team) => ({
-        value: team.id,
-        label: team.name,
-        count: team.count,
+        id: team.id,
+        name: team.name,
       })),
-      { value: "external" as const, label: "External resources" },
+      {
+        id: EXTERNAL_TEAM_FILTER,
+        name: "External resources",
+      },
     ],
-    [activeConsultants.length, teamFilters]
+    [teamFilters]
   );
 
   function openConsultant(id: string) {
@@ -254,27 +260,32 @@ export function ConsultantsPageClient({
         )}
 
         {!error && consultants.length > 0 && (
-          <>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="relative w-full sm:w-72">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-                <Input
-                  type="search"
+          <div>
+            <ListTableToolbar
+              leading={
+                <ListSearchInput
                   placeholder="Search consultants…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   aria-label="Search consultants"
-                  className="pl-9"
                 />
-              </div>
-              <SegmentedControl
-                className="min-w-0 flex-1"
-                aria-label="Filter by team"
-                value={teamFilter}
-                onChange={setTeamFilter}
-                options={teamFilterOptions}
-              />
-            </div>
+              }
+              trailing={
+                <ListFilterMenu
+                  ariaLabel="Filter consultants"
+                  sections={[
+                    {
+                      id: "team",
+                      label: "Team",
+                      allLabel: "All teams",
+                      options: teamFilterOptions,
+                      selectedIds: teamFilterIds,
+                      onChange: setTeamFilterIds,
+                    },
+                  ]}
+                />
+              }
+            />
 
             {visibleConsultants.length === 0 ? (
               <p className="px-1 py-6 text-sm text-text-secondary">
@@ -294,7 +305,7 @@ export function ConsultantsPageClient({
                 }}
               />
             )}
-          </>
+          </div>
         )}
       </div>
 

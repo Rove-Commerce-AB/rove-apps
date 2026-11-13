@@ -220,8 +220,8 @@ function AllocationPageClientImpl({
   const [filters, setFilters] = useState<AllocationFiltersState>(
     () =>
       initialFilters ?? {
-        team: null,
-        role: null,
+        team: [],
+        role: [],
         prob: "weighted",
         projects: "all",
         unbooked: false,
@@ -229,10 +229,10 @@ function AllocationPageClientImpl({
   );
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
-  const [embedTeamFilterId, setEmbedTeamFilterId] = useState<string | null>(null);
-  const [embedDefaultRoleFilterId, setEmbedDefaultRoleFilterId] = useState<
-    string | null
-  >(null);
+  const [embedTeamFilterIds, setEmbedTeamFilterIds] = useState<string[]>([]);
+  const [embedDefaultRoleFilterIds, setEmbedDefaultRoleFilterIds] = useState<
+    string[]
+  >([]);
   const [embedProbabilityDisplay, setEmbedProbabilityDisplay] =
     useState<ProbabilityDisplay>("weighted");
   const [embedProjectVisibility, setEmbedProjectVisibility] =
@@ -252,9 +252,9 @@ function AllocationPageClientImpl({
     );
   }, [embedMode, searchParams]);
 
-  const teamFilterId = embedMode ? embedTeamFilterId : filters.team;
-  const defaultRoleFilterId = embedMode
-    ? embedDefaultRoleFilterId
+  const teamFilterIds = embedMode ? embedTeamFilterIds : filters.team;
+  const defaultRoleFilterIds = embedMode
+    ? embedDefaultRoleFilterIds
     : filters.role;
   const probabilityDisplay = embedMode
     ? embedProbabilityDisplay
@@ -269,8 +269,9 @@ function AllocationPageClientImpl({
   const replaceAllocationFilters = useCallback(
     (patch: AllocationFilterParams) => {
       if (embedMode) {
-        if (patch.team !== undefined) setEmbedTeamFilterId(patch.team);
-        if (patch.role !== undefined) setEmbedDefaultRoleFilterId(patch.role);
+        if (patch.team !== undefined) setEmbedTeamFilterIds(patch.team ?? []);
+        if (patch.role !== undefined)
+          setEmbedDefaultRoleFilterIds(patch.role ?? []);
         if (patch.prob !== undefined && patch.prob) {
           setEmbedProbabilityDisplay(patch.prob);
         }
@@ -284,8 +285,8 @@ function AllocationPageClientImpl({
       }
       const prev = filtersRef.current;
       const nextState: AllocationFiltersState = {
-        team: patch.team !== undefined ? patch.team : prev.team,
-        role: patch.role !== undefined ? patch.role : prev.role,
+        team: patch.team !== undefined ? (patch.team ?? []) : prev.team,
+        role: patch.role !== undefined ? (patch.role ?? []) : prev.role,
         prob:
           patch.prob !== undefined && patch.prob != null
             ? patch.prob
@@ -309,12 +310,12 @@ function AllocationPageClientImpl({
     [embedMode, pathname, router, year, weekFrom, weekTo]
   );
 
-  const setTeamFilterId = useCallback(
-    (value: string | null) => replaceAllocationFilters({ team: value }),
+  const setTeamFilterIds = useCallback(
+    (value: string[]) => replaceAllocationFilters({ team: value }),
     [replaceAllocationFilters]
   );
-  const setDefaultRoleFilterId = useCallback(
-    (value: string | null) => replaceAllocationFilters({ role: value }),
+  const setDefaultRoleFilterIds = useCallback(
+    (value: string[]) => replaceAllocationFilters({ role: value }),
     [replaceAllocationFilters]
   );
   const setProbabilityDisplay = useCallback(
@@ -452,8 +453,8 @@ function AllocationPageClientImpl({
 
   const filteredData = useAllocationFilteredData(
     data,
-    teamFilterId,
-    defaultRoleFilterId
+    teamFilterIds,
+    defaultRoleFilterIds
   );
 
   const handleSuccess = async () => {
@@ -1138,10 +1139,10 @@ function AllocationPageClientImpl({
               <AllocationViewControls
                 teams={data.teams}
                 roles={data.roles}
-                teamFilterId={teamFilterId}
-                onTeamFilterChange={setTeamFilterId}
-                roleFilterId={defaultRoleFilterId}
-                onRoleFilterChange={setDefaultRoleFilterId}
+                teamFilterIds={teamFilterIds}
+                onTeamFilterChange={setTeamFilterIds}
+                roleFilterIds={defaultRoleFilterIds}
+                onRoleFilterChange={setDefaultRoleFilterIds}
                 showUnbookedToggle={!embedMode && activeTab === "project"}
                 showProjectsWithoutBooking={showProjectsWithoutBooking}
                 onShowProjectsWithoutBookingChange={

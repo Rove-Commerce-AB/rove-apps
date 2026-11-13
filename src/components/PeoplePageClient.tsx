@@ -12,7 +12,6 @@ import {
   MessageCircle,
   FileDown,
   Plus,
-  Search,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -25,6 +24,11 @@ import { PersonCustomersTab, type PersonCustomerOption } from "@/components/Pers
 import { PersonMcpAccessTab } from "@/components/PersonMcpAccessTab";
 import { PersonLoginHistory } from "@/components/PersonLoginHistory";
 import { TemporaryPasswordReveal } from "@/components/TemporaryPasswordReveal";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import {
+  ListSearchInput,
+  ListTableToolbar,
+} from "@/components/ListTableToolbar";
 import {
   createConsultantProfileForUser,
   createUserPerson,
@@ -98,7 +102,6 @@ type Props = {
   error: string | null;
 };
 
-type PeopleFilter = "all" | "consultant" | "subcontractor" | "customer";
 type PersonKind = "consultant" | "subcontractor" | "customer" | "user";
 type SortKey = "name" | "team" | "type" | "capacity" | "overhead" | "apps";
 type SortDirection = "asc" | "desc";
@@ -1338,8 +1341,9 @@ export function PeoplePageClient({
   }, [pathname]);
 
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<PeopleFilter>("all");
-  const [teamFilterId, setTeamFilterId] = useState("");
+  /** Empty = all types. */
+  const [typeFilterIds, setTypeFilterIds] = useState<string[]>([]);
+  const [teamFilterIds, setTeamFilterIds] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [chooseTypeOpen, setChooseTypeOpen] = useState(false);
@@ -1360,10 +1364,17 @@ export function PeoplePageClient({
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = people.filter((person) => {
-      if (filter !== "all" && personKind(person) !== filter) {
+      if (
+        typeFilterIds.length > 0 &&
+        !typeFilterIds.includes(personKind(person))
+      ) {
         return false;
       }
-      if (teamFilterId && person.consultant?.team_id !== teamFilterId) {
+      if (
+        teamFilterIds.length > 0 &&
+        (!person.consultant?.team_id ||
+          !teamFilterIds.includes(person.consultant.team_id))
+      ) {
         return false;
       }
       if (!query) return true;
@@ -1404,7 +1415,7 @@ export function PeoplePageClient({
         direction * compareTextSv(left, right) || compareTextSv(a.name, b.name)
       );
     });
-  }, [filter, people, search, sortDirection, sortKey, teamFilterId]);
+  }, [typeFilterIds, people, search, sortDirection, sortKey, teamFilterIds]);
 
   const columns: DataTableColumn<PersonListItem>[] = [
     {
@@ -1474,10 +1485,9 @@ export function PeoplePageClient({
   ];
 
   const typeFilterOptions = [
-    { value: "all", label: "All types" },
-    { value: "consultant", label: "Consultant" },
-    { value: "subcontractor", label: "Subcontractor" },
-    { value: "customer", label: "Customer" },
+    { id: "consultant", name: "Consultant" },
+    { id: "subcontractor", name: "Subcontractor" },
+    { id: "customer", name: "Customer" },
   ];
 
   const teamFilterOptions = useMemo(() => {
@@ -1488,12 +1498,9 @@ export function PeoplePageClient({
       if (!teamId || !teamName) continue;
       teams.set(teamId, teamName.replace(/^Team\s+/i, ""));
     }
-    return [
-      { value: "", label: "All teams" },
-      ...[...teams.entries()]
-        .sort(([, a], [, b]) => compareTextSv(a, b))
-        .map(([id, name]) => ({ value: id, label: name })),
-    ];
+    return [...teams.entries()]
+      .sort(([, a], [, b]) => compareTextSv(a, b))
+      .map(([id, name]) => ({ id, name }));
   }, [people]);
 
   function handleSort(columnId: string) {
@@ -1549,41 +1556,40 @@ export function PeoplePageClient({
         ) : null}
 
         {!error && people.length > 0 ? (
-          <>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="relative w-full sm:w-72">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-                <Input
-                  type="search"
+          <div>
+            <ListTableToolbar
+              leading={
+                <ListSearchInput
                   placeholder="Search people…"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  className="pl-9"
                   aria-label="Search people"
                 />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-                  Filter
-                </span>
-                <Select
-                  variant="filter"
-                  value={filter}
-                  onValueChange={(value) => setFilter(value as PeopleFilter)}
-                  options={typeFilterOptions}
-                  className="w-auto min-w-0"
-                  triggerClassName="min-w-[160px]"
+              }
+              trailing={
+                <ListFilterMenu
+                  ariaLabel="Filter people"
+                  sections={[
+                    {
+                      id: "type",
+                      label: "Type",
+                      allLabel: "All types",
+                      options: typeFilterOptions,
+                      selectedIds: typeFilterIds,
+                      onChange: setTypeFilterIds,
+                    },
+                    {
+                      id: "team",
+                      label: "Team",
+                      allLabel: "All teams",
+                      options: teamFilterOptions,
+                      selectedIds: teamFilterIds,
+                      onChange: setTeamFilterIds,
+                    },
+                  ]}
                 />
-                <Select
-                  variant="filter"
-                  value={teamFilterId}
-                  onValueChange={setTeamFilterId}
-                  options={teamFilterOptions}
-                  className="w-auto min-w-0"
-                  triggerClassName="min-w-[160px]"
-                />
-              </div>
-            </div>
+              }
+            />
             {visible.length ? (
               <DataTable
                 className="table-fixed"
@@ -1605,7 +1611,7 @@ export function PeoplePageClient({
                 No people match this filter.
               </p>
             )}
-          </>
+          </div>
         ) : null}
       </div>
 

@@ -22,7 +22,9 @@ import type {
   OccupancyWeek,
 } from "@/types/occupancyReport";
 import { getOccupancyReportDataAction } from "@/app/(app)/reports/actions";
-import { Panel, PanelSectionTitle, Select } from "@/components/ui";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import { ListTableToolbar } from "@/components/ListTableToolbar";
+import { Panel, PanelSectionTitle } from "@/components/ui";
 
 const WINDOW_SIZE = 28;
 const STEP_WEEKS = 4;
@@ -115,8 +117,8 @@ export function OccupancyChartPanel({
   currentWeek,
 }: Props) {
   const [data, setData] = useState<OccupancyReportResult>(initialData);
-  const [roleId, setRoleId] = useState<string>("");
-  const [teamId, setTeamId] = useState<string>("");
+  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [teamIds, setTeamIds] = useState<string[]>([]);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -128,12 +130,16 @@ export function OccupancyChartPanel({
   const fetchData = useCallback(
     async (
       weeks: { year: number; week: number }[],
-      role: string | null,
-      team: string | null
+      roles: string[],
+      teams: string[]
     ) => {
       setLoading(true);
       try {
-        const result = await getOccupancyReportDataAction(weeks, role, team);
+        const result = await getOccupancyReportDataAction(
+          weeks,
+          roles.length === 0 ? null : roles,
+          teams.length === 0 ? null : teams
+        );
         setData(result);
       } finally {
         setLoading(false);
@@ -143,50 +149,34 @@ export function OccupancyChartPanel({
   );
 
   const onRoleChange = useCallback(
-    (value: string) => {
-      setRoleId(value);
-      fetchData(
-        weeksForOffset,
-        value === "" ? null : value,
-        teamId === "" ? null : teamId
-      );
+    (value: string[]) => {
+      setRoleIds(value);
+      fetchData(weeksForOffset, value, teamIds);
     },
-    [weeksForOffset, fetchData, teamId]
+    [weeksForOffset, fetchData, teamIds]
   );
 
   const onTeamChange = useCallback(
-    (value: string) => {
-      setTeamId(value);
-      fetchData(
-        weeksForOffset,
-        roleId === "" ? null : roleId,
-        value === "" ? null : value
-      );
+    (value: string[]) => {
+      setTeamIds(value);
+      fetchData(weeksForOffset, roleIds, value);
     },
-    [weeksForOffset, fetchData, roleId]
+    [weeksForOffset, fetchData, roleIds]
   );
 
   const onPrev = useCallback(() => {
     const newOffset = offset - 1;
     setOffset(newOffset);
     const weeks = buildWeeksForOffset(currentYear, currentWeek, newOffset);
-    fetchData(
-      weeks,
-      roleId === "" ? null : roleId,
-      teamId === "" ? null : teamId
-    );
-  }, [offset, currentYear, currentWeek, roleId, teamId, fetchData]);
+    fetchData(weeks, roleIds, teamIds);
+  }, [offset, currentYear, currentWeek, roleIds, teamIds, fetchData]);
 
   const onNext = useCallback(() => {
     const newOffset = offset + 1;
     setOffset(newOffset);
     const weeks = buildWeeksForOffset(currentYear, currentWeek, newOffset);
-    fetchData(
-      weeks,
-      roleId === "" ? null : roleId,
-      teamId === "" ? null : teamId
-    );
-  }, [offset, currentYear, currentWeek, roleId, teamId, fetchData]);
+    fetchData(weeks, roleIds, teamIds);
+  }, [offset, currentYear, currentWeek, roleIds, teamIds, fetchData]);
 
   const chartData: ChartPoint[] = data.weeks.map((w, i) => {
     const p = data.points[i];
@@ -213,60 +203,56 @@ export function OccupancyChartPanel({
     (p) => p.year === currentYear && p.week === currentWeek
   )?.label;
 
-  const roleOptions = [
-    { value: "", label: "All roles" },
-    ...roles.map((r) => ({ value: r.id, label: r.name })),
-  ];
-  const teamOptions = [
-    { value: "", label: "All teams" },
-    ...teams.map((t) => ({ value: t.id, label: t.name })),
-  ];
+  const roleOptions = roles.map((r) => ({ id: r.id, name: r.name }));
+  const teamOptions = teams.map((t) => ({ id: t.id, name: t.name }));
 
   return (
     <Panel>
       <PanelSectionTitle>OCCUPANCY</PanelSectionTitle>
       <div className="p-3 pt-0">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Filter
-          </span>
-          <Select
-            variant="filter"
-            value={roleId}
-            onValueChange={onRoleChange}
-            options={roleOptions}
-            placeholder="All roles"
-            className="w-auto min-w-0"
-            triggerClassName="min-w-[90px]"
-          />
-          <Select
-            variant="filter"
-            value={teamId}
-            onValueChange={onTeamChange}
-            options={teamOptions}
-            placeholder="All teams"
-            className="w-auto min-w-0"
-            triggerClassName="min-w-[90px]"
-          />
-        </div>
-        <div className="mb-2 flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={onPrev}
-            className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-            aria-label="Previous period"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onNext}
-            className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-            aria-label="Next period"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <ListTableToolbar
+          trailing={
+            <>
+              <ListFilterMenu
+                ariaLabel="Filter occupancy"
+                sections={[
+                  {
+                    id: "role",
+                    label: "Role",
+                    allLabel: "All roles",
+                    options: roleOptions,
+                    selectedIds: roleIds,
+                    onChange: onRoleChange,
+                  },
+                  {
+                    id: "team",
+                    label: "Team",
+                    allLabel: "All teams",
+                    options: teamOptions,
+                    selectedIds: teamIds,
+                    onChange: onTeamChange,
+                  },
+                ]}
+              />
+              <button
+                type="button"
+                onClick={onPrev}
+                className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                aria-label="Previous period"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onNext}
+                className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                aria-label="Next period"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </>
+          }
+        />
         {loading ? (
           <p className="py-8 text-center text-sm text-text-primary opacity-70">
             Loading…

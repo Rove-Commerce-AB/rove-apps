@@ -35,9 +35,9 @@ export default async function SupportMonitorsPage({ searchParams }: Props) {
     redirect("/access-denied");
   }
 
-  const selectedCustomerId =
+  const selectedCustomerIds =
     actor.role === "customer" && customers.length === 1
-      ? customers[0].id
+      ? [customers[0].id]
       : resolveSupportCustomerFilter({
           queryValue: params.customer,
           cookieValue: cookieStore.get(SUPPORT_CUSTOMER_FILTER_COOKIE)?.value,
@@ -45,20 +45,25 @@ export default async function SupportMonitorsPage({ searchParams }: Props) {
         });
 
   const canManage = canManageSupportMonitorsPage(actor);
-  const selectedCustomer = selectedCustomerId
-    ? customers.find((c) => c.id === selectedCustomerId)
-    : null;
+  const singleSelectedId =
+    selectedCustomerIds.length === 1 ? selectedCustomerIds[0]! : null;
+  const selectedCustomers = customers.filter((c) =>
+    selectedCustomerIds.includes(c.id)
+  );
 
   let monitors: Awaited<ReturnType<typeof getMonitorsOverview>> = [];
   let slackNotifications: Awaited<ReturnType<typeof getSlackNotifications>> =
     [];
   let loadError: string | undefined;
   try {
-    const monitorsPromise = selectedCustomerId
-      ? getMonitorsForCustomer(selectedCustomerId)
-      : canSeeSupportOverview(actor)
-        ? getMonitorsOverview()
-        : getMonitorsForCustomers(customers.map((c) => c.id));
+    const monitorsPromise =
+      selectedCustomerIds.length === 1
+        ? getMonitorsForCustomer(selectedCustomerIds[0]!)
+        : selectedCustomerIds.length > 1
+          ? getMonitorsForCustomers(selectedCustomerIds)
+          : canSeeSupportOverview(actor)
+            ? getMonitorsOverview()
+            : getMonitorsForCustomers(customers.map((c) => c.id));
 
     [monitors, slackNotifications] = await Promise.all([
       monitorsPromise,
@@ -69,20 +74,25 @@ export default async function SupportMonitorsPage({ searchParams }: Props) {
       error instanceof Error ? error.message : "Failed to load monitors";
   }
 
-  const description = selectedCustomer
-    ? canManage
-      ? `HTTP monitors for ${selectedCustomer.name}.`
-      : `Status for ${selectedCustomer.name}’s monitored URLs.`
-    : canManage
-      ? "HTTP monitors across customers."
-      : "Status for monitored URLs.";
+  const description =
+    selectedCustomers.length === 1
+      ? canManage
+        ? `HTTP monitors for ${selectedCustomers[0]!.name}.`
+        : `Status for ${selectedCustomers[0]!.name}’s monitored URLs.`
+      : selectedCustomers.length > 1
+        ? canManage
+          ? `HTTP monitors for ${selectedCustomers.length} customers.`
+          : `Status for ${selectedCustomers.length} customers’ monitored URLs.`
+        : canManage
+          ? "HTTP monitors across customers."
+          : "Status for monitored URLs.";
 
   return (
     <MonitorsPageClient
       monitors={monitors}
       customers={customers.map((c) => ({ id: c.id, name: c.name }))}
       slackNotifications={slackNotifications}
-      fixedCustomerId={selectedCustomerId ?? undefined}
+      fixedCustomerId={singleSelectedId ?? undefined}
       readOnly={!canManage}
       loadError={loadError}
       title="Monitors"
@@ -90,7 +100,7 @@ export default async function SupportMonitorsPage({ searchParams }: Props) {
       toolbar={
         <CustomerFilter
           customers={customers}
-          value={selectedCustomerId}
+          value={selectedCustomerIds}
           basePath={ROUTES.supportMonitors}
           cookieName={SUPPORT_CUSTOMER_FILTER_COOKIE}
           hideWhenSingle={actor.role === "customer"}

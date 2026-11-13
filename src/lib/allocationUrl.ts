@@ -2,10 +2,11 @@ import type {
   ProbabilityDisplay,
   ProjectVisibility,
 } from "@/lib/allocationPageView";
+import { formatIdListParam, parseIdListParam } from "@/lib/idListFilter";
 
 export type AllocationFilterParams = {
-  team?: string | null;
-  role?: string | null;
+  team?: string[] | null;
+  role?: string[] | null;
   prob?: ProbabilityDisplay | null;
   projects?: ProjectVisibility | null;
   unbooked?: boolean | null;
@@ -48,11 +49,13 @@ export function applyAllocationFilters(
   filters: AllocationFilterParams
 ): void {
   if (filters.team !== undefined) {
-    if (filters.team) params.set("team", filters.team);
+    const encoded = formatIdListParam(filters.team ?? []);
+    if (encoded) params.set("team", encoded);
     else params.delete("team");
   }
   if (filters.role !== undefined) {
-    if (filters.role) params.set("role", filters.role);
+    const encoded = formatIdListParam(filters.role ?? []);
+    if (encoded) params.set("role", encoded);
     else params.delete("role");
   }
   if (filters.prob !== undefined) {
@@ -78,14 +81,14 @@ export function applyAllocationFilters(
 export function readAllocationFilters(
   searchParams: URLSearchParams | { get(name: string): string | null }
 ): {
-  team: string | null;
-  role: string | null;
+  team: string[];
+  role: string[];
   prob: ProbabilityDisplay;
   projects: ProjectVisibility;
   unbooked: boolean;
 } {
-  const team = searchParams.get("team") || null;
-  const role = searchParams.get("role") || null;
+  const team = parseIdListParam(searchParams.get("team"));
+  const role = parseIdListParam(searchParams.get("role"));
   const probRaw = searchParams.get("prob");
   const prob: ProbabilityDisplay = probRaw === "none" ? "none" : "weighted";
   const projectsRaw = searchParams.get("projects");
@@ -113,8 +116,8 @@ export function readAllocationFiltersFromRecord(
 
 export function allocationFiltersKey(filters: AllocationFiltersState): string {
   return [
-    filters.team ?? "",
-    filters.role ?? "",
+    filters.team.join(","),
+    filters.role.join(","),
     filters.prob,
     filters.projects,
     filters.unbooked ? "1" : "0",

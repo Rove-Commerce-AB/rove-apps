@@ -7,6 +7,7 @@ import type {
   ProbabilityDisplay,
   ProjectVisibility,
 } from "@/lib/allocationPageView";
+import { toggleIdInList } from "@/lib/idListFilter";
 
 type Menu = {
   kind: "filter" | "view";
@@ -33,10 +34,12 @@ type NamedOption = { id: string; name: string };
 type Props = {
   teams: NamedOption[];
   roles: NamedOption[];
-  teamFilterId: string | null;
-  onTeamFilterChange: (id: string | null) => void;
-  roleFilterId: string | null;
-  onRoleFilterChange: (id: string | null) => void;
+  /** Empty = all teams. */
+  teamFilterIds: string[];
+  onTeamFilterChange: (ids: string[]) => void;
+  /** Empty = all roles. */
+  roleFilterIds: string[];
+  onRoleFilterChange: (ids: string[]) => void;
   showUnbookedToggle?: boolean;
   showProjectsWithoutBooking?: boolean;
   onShowProjectsWithoutBookingChange?: (value: boolean) => void;
@@ -51,9 +54,9 @@ type Props = {
 export function AllocationViewControls({
   teams,
   roles,
-  teamFilterId,
+  teamFilterIds,
   onTeamFilterChange,
-  roleFilterId,
+  roleFilterIds,
   onRoleFilterChange,
   showUnbookedToggle = false,
   showProjectsWithoutBooking = false,
@@ -67,20 +70,19 @@ export function AllocationViewControls({
   const [menu, setMenu] = useState<Menu | null>(null);
 
   const filterActive =
-    teamFilterId != null ||
-    roleFilterId != null ||
+    teamFilterIds.length > 0 ||
+    roleFilterIds.length > 0 ||
     (showUnbookedToggle && showProjectsWithoutBooking);
 
   const viewActive =
     showView &&
-    (probabilityDisplay !== "weighted" ||
-      projectVisibility !== "all");
+    (probabilityDisplay !== "weighted" || projectVisibility !== "all");
 
   const filterLabel = filterSummary(
     teams,
     roles,
-    teamFilterId,
-    roleFilterId,
+    teamFilterIds,
+    roleFilterIds,
     showUnbookedToggle && showProjectsWithoutBooking
   );
 
@@ -164,18 +166,20 @@ export function AllocationViewControls({
                         Team
                       </p>
                       <MenuRow
-                        selected={teamFilterId == null}
-                        onSelect={() => {
-                          onTeamFilterChange(null);
-                        }}
+                        selected={teamFilterIds.length === 0}
+                        onSelect={() => onTeamFilterChange([])}
                       >
                         <span className="min-w-0 truncate">All teams</span>
                       </MenuRow>
                       {teams.map((team) => (
                         <MenuRow
                           key={team.id}
-                          selected={teamFilterId === team.id}
-                          onSelect={() => onTeamFilterChange(team.id)}
+                          selected={teamFilterIds.includes(team.id)}
+                          onSelect={() =>
+                            onTeamFilterChange(
+                              toggleIdInList(teamFilterIds, team.id)
+                            )
+                          }
                         >
                           <span className="min-w-0 truncate">{team.name}</span>
                         </MenuRow>
@@ -194,16 +198,20 @@ export function AllocationViewControls({
                         Role
                       </p>
                       <MenuRow
-                        selected={roleFilterId == null}
-                        onSelect={() => onRoleFilterChange(null)}
+                        selected={roleFilterIds.length === 0}
+                        onSelect={() => onRoleFilterChange([])}
                       >
                         <span className="min-w-0 truncate">All roles</span>
                       </MenuRow>
                       {roles.map((role) => (
                         <MenuRow
                           key={role.id}
-                          selected={roleFilterId === role.id}
-                          onSelect={() => onRoleFilterChange(role.id)}
+                          selected={roleFilterIds.includes(role.id)}
+                          onSelect={() =>
+                            onRoleFilterChange(
+                              toggleIdInList(roleFilterIds, role.id)
+                            )
+                          }
                         >
                           <span className="min-w-0 truncate">{role.name}</span>
                         </MenuRow>
@@ -234,8 +242,8 @@ export function AllocationViewControls({
                       type="button"
                       className="mt-1 flex w-full border-t border-border-subtle px-3 py-1.5 text-left text-body-m text-text-secondary hover:bg-bg-muted hover:text-text-primary"
                       onClick={() => {
-                        onTeamFilterChange(null);
-                        onRoleFilterChange(null);
+                        onTeamFilterChange([]);
+                        onRoleFilterChange([]);
                         onShowProjectsWithoutBookingChange?.(false);
                         setMenu(null);
                       }}
@@ -324,16 +332,20 @@ export function AllocationViewControls({
 function filterSummary(
   teams: NamedOption[],
   roles: NamedOption[],
-  teamFilterId: string | null,
-  roleFilterId: string | null,
+  teamFilterIds: string[],
+  roleFilterIds: string[],
   unbooked: boolean
 ) {
   const parts: string[] = [];
-  if (teamFilterId) {
-    parts.push(teams.find((t) => t.id === teamFilterId)?.name ?? "Team");
+  if (teamFilterIds.length === 1) {
+    parts.push(teams.find((t) => t.id === teamFilterIds[0])?.name ?? "Team");
+  } else if (teamFilterIds.length > 1) {
+    parts.push(`${teamFilterIds.length} teams`);
   }
-  if (roleFilterId) {
-    parts.push(roles.find((r) => r.id === roleFilterId)?.name ?? "Role");
+  if (roleFilterIds.length === 1) {
+    parts.push(roles.find((r) => r.id === roleFilterIds[0])?.name ?? "Role");
+  } else if (roleFilterIds.length > 1) {
+    parts.push(`${roleFilterIds.length} roles`);
   }
   if (unbooked) parts.push("Unbooked");
   if (parts.length === 0) return "Filter";

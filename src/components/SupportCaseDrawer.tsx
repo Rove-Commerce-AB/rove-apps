@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { Mail } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ClipboardEvent,
+} from "react";
+import { Mail, X } from "lucide-react";
 import {
   Button,
   ConfirmModal,
@@ -27,7 +33,13 @@ import {
   type SupportCaseCommentKind,
   type SupportCaseDetail,
 } from "@/lib/supportCases";
-import type { WorkPerson } from "@/lib/workTypes";
+import {
+  extractVideoPosterJpeg,
+  isImageMime,
+  isVideoMime,
+  pasteMediaFileName,
+} from "@/lib/workMedia";
+import { WORK_FILE_MAX_BYTES, type WorkPerson } from "@/lib/workTypes";
 
 type Props = {
   customerId: string;
@@ -42,6 +54,15 @@ type Props = {
 
 type ComposeMode = "comment" | "internal" | "email";
 type DrawerTab = "conversation" | "danger";
+
+type MailAttach = {
+  localId: string;
+  file: File;
+  previewUrl: string;
+  revokePreview: boolean;
+};
+
+const MAX_MAIL_ATTACHMENTS = 8;
 
 const propertyChipClass =
   "inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-text-primary/[0.06]";
@@ -152,9 +173,27 @@ export function SupportCaseDrawer({
   const [tab, setTab] = useState<DrawerTab>("conversation");
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mailAttachments, setMailAttachments] = useState<MailAttach[]>([]);
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(false);
   const highlightRef = useRef<HTMLLIElement | null>(null);
+  const mailAttachmentsRef = useRef(mailAttachments);
+  mailAttachmentsRef.current = mailAttachments;
+
+  function clearMailAttachments() {
+    for (const row of mailAttachmentsRef.current) {
+      if (row.revokePreview) URL.revokeObjectURL(row.previewUrl);
+    }
+    setMailAttachments([]);
+  }
+
+  useEffect(() => {
+    return () => {
+      for (const row of mailAttachmentsRef.current) {
+        if (row.revokePreview) URL.revokeObjectURL(row.previewUrl);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!open || !issueId) {
@@ -165,6 +204,7 @@ export function SupportCaseDrawer({
       setComposeMode("comment");
       setTab("conversation");
       setConfirmDelete(false);
+      clearMailAttachments();
       return;
     }
     let cancelled = false;
@@ -212,14 +252,84 @@ export function SupportCaseDrawer({
     });
   }
 
+  async function addMailMedia(files: File[]) {
+    if (files.length === 0) return;
+    setError(null);
+    const room = MAX_MAIL_ATTACHMENTS - mailAttachmentsRef.current.length;
+    if (room <= 0) {
+      setError(`You can attach at most ${MAX_MAIL_ATTACHMENTS} files`);
+      return;
+    }
+    const accepted = files.slice(0, room);
+    const nextRows: MailAttach[] = [];
+    for (let i = 0; i < accepted.length; i += 1) {
+      const file = accepted[i]!;
+      const mime = (file.type || "").toLowerCase();
+      if (!isImageMime(mime) && !isVideoMime(mime)) continue;
+      if (file.size > WORK_FILE_MAX_BYTES) {
+        setError("Each attachment must be 8 MB or smaller");
+        continue;
+      }
+      const named = new File([file], pasteMediaFileName(file, i), {
+        type: file.type || (isVideoMime(mime) ? "video/mp4" : "image/png"),
+      });
+      let previewUrl = URL.createObjectURL(named);
+      let revokePreview = true;
+      if (isVideoMime(named.type)) {
+        const poster = await extractVideoPosterJpeg(named);
+        if (poster) {
+          URL.revokeObjectURL(previewUrl);
+          previewUrl = URL.createObjectURL(poster);
+        }
+      }
+      nextRows.push({
+        localId: crypto.randomUUID(),
+        file: named,
+        previewUrl,
+        revokePreview,
+      });
+    }
+    if (files.length > room) {
+      setError(`You can attach at most ${MAX_MAIL_ATTACHMENTS} files`);
+    }
+    if (nextRows.length > 0) {
+      setMailAttachments((prev) => [...prev, ...nextRows]);
+    }
+  }
+
+  function removeMailAttachment(localId: string) {
+    setMailAttachments((prev) => {
+      const row = prev.find((item) => item.localId === localId);
+      if (row?.revokePreview) URL.revokeObjectURL(row.previewUrl);
+      return prev.filter((item) => item.localId !== localId);
+    });
+  }
+
+  function handleMailPaste(event: ClipboardEvent) {
+    if (composeMode !== "email" || pending) return;
+    const items = event.clipboardData?.items;
+    if (!items?.length) return;
+    const media: File[] = [];
+    for (const item of items) {
+      if (!isImageMime(item.type) && !isVideoMime(item.type)) continue;
+      const blob = item.getAsFile();
+      if (blob) media.push(blob);
+    }
+    if (media.length === 0) return;
+    event.preventDefault();
+    void addMailMedia(media);
+  }
+
   function submitComposer(event: React.FormEvent) {
     event.preventDefault();
     if (!issueId || !comment.trim() || pending) return;
     setError(null);
+    const files = mailAttachments.map((row) => row.file);
     startTransition(async () => {
       try {
         if (composeMode === "email") {
-          await replySupportCaseEmail(customerId, issueId, comment);
+          await replySupportCaseEmail(customerId, issueId, comment, files);
+          clearMailAttachments();
         } else {
           await addSupportCaseComment(customerId, issueId, comment, {
             internal: composeMode === "internal",
@@ -525,18 +635,25 @@ export function SupportCaseDrawer({
             <form
               className="shrink-0 space-y-2 border-t border-border-subtle px-6 py-4"
               onSubmit={submitComposer}
+              onPaste={handleMailPaste}
             >
               {allowInternalComments || detail.canReplyByEmail ? (
                 <div className="flex flex-wrap gap-1">
                   <ModeChip
                     active={composeMode === "comment"}
-                    onClick={() => setComposeMode("comment")}
+                    onClick={() => {
+                      setComposeMode("comment");
+                      clearMailAttachments();
+                    }}
                     label="Comment"
                   />
                   {allowInternalComments ? (
                     <ModeChip
                       active={composeMode === "internal"}
-                      onClick={() => setComposeMode("internal")}
+                      onClick={() => {
+                        setComposeMode("internal");
+                        clearMailAttachments();
+                      }}
                       label="Internal"
                     />
                   ) : null}
@@ -568,6 +685,54 @@ export function SupportCaseDrawer({
                   }
                 />
               </label>
+              {composeMode === "email" ? (
+                <div className="space-y-2">
+                  <label className="block text-xs text-text-secondary">
+                    Attach image or video (max 8 MB each)
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      disabled={pending}
+                      className="mt-1 block w-full text-xs text-text-secondary"
+                      onChange={(event) => {
+                        const list = event.target.files
+                          ? Array.from(event.target.files)
+                          : [];
+                        event.target.value = "";
+                        void addMailMedia(list);
+                      }}
+                    />
+                  </label>
+                  {mailAttachments.length > 0 ? (
+                    <ul className="flex flex-wrap gap-1.5">
+                      {mailAttachments.map((row) => (
+                        <li key={row.localId} className="group relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={row.previewUrl}
+                            alt={row.file.name}
+                            title={row.file.name}
+                            className="h-12 w-12 rounded border border-border-subtle object-cover"
+                          />
+                          <button
+                            type="button"
+                            className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-bg-default text-text-secondary opacity-0 shadow-sm ring-1 ring-border-subtle group-hover:opacity-100 hover:text-danger"
+                            aria-label={`Remove ${row.file.name}`}
+                            onClick={() => removeMailAttachment(row.localId)}
+                          >
+                            <X className="h-2.5 w-2.5" aria-hidden />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[11px] text-text-tertiary">
+                      Paste a screenshot or video clip, or choose files.
+                    </p>
+                  )}
+                </div>
+              ) : null}
               {error && tab === "conversation" ? (
                 <p role="alert" className="text-sm text-danger">
                   {error}

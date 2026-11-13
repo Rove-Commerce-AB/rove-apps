@@ -312,11 +312,70 @@ textarea.border-form {
   background: var(--color-brand-signal);
 }
 
-/* Time report tables: freeze top row like Excel. */
-.time-report-tables thead th {
-  position: sticky;
-  top: 0;
-  z-index: 10;
+/*
+ * Time report: one shared horizontal scroller wraps frozen header + body.
+ * Body only scrolls vertically. Header uses overflow-y:scroll (scrollbar hidden)
+ * so scrollbar-gutter matches the body pane — otherwise columns drift 1–2px.
+ * Column widths are applied in px via JS. Do not put width utilities on td/th.
+ */
+.time-report-tables-hscroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.time-report-tables-frozen,
+.time-report-tables-scroll {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  scrollbar-gutter: stable;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+.time-report-tables-frozen {
+  /* Same overflow/gutter path as body; hide the unused vertical scrollbar. */
+  overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-width: none;
+  background: var(--color-bg-muted);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex-shrink: 0;
+}
+.time-report-tables-frozen::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.time-report-tables-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 0;
+  padding-bottom: 0.5rem;
+}
+.time-report-tables table {
+  table-layout: fixed !important;
+  /* separate avoids collapse border quirks that shift dual tables by 1–2px */
+  border-collapse: separate;
+  border-spacing: 0;
+  transition: none;
+}
+.time-report-tables col {
+  box-sizing: border-box;
+  transition: none;
+}
+.time-report-tables th,
+.time-report-tables td {
+  box-sizing: border-box;
+  overflow: hidden;
+  vertical-align: middle;
+  transition: none;
+}
+.time-report-tables-frozen thead th,
+.time-report-tables-frozen tbody td {
   background: var(--color-bg-muted);
 }
 
@@ -747,6 +806,21 @@ table thead th.time-grid-header-column-active {
   ) !important;
   box-shadow: none !important;
   outline: none !important;
+}
+/* Dark: need a clearly readable column wash on zinc surfaces. */
+html.dark .time-report-tables th.time-report-today-header {
+  background: color-mix(
+    in srgb,
+    var(--color-brand-signal) 52%,
+    var(--color-bg-muted)
+  ) !important;
+}
+html.dark .time-report-tables td.time-report-today-cell {
+  background: color-mix(
+    in srgb,
+    var(--color-brand-signal) 40%,
+    var(--color-bg-default)
+  ) !important;
 }
 /* Keep today cells on the normal grid border color (not signal). */
 .time-report-tables th.time-report-today-header,

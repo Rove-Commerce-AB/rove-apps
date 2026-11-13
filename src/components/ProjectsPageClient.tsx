@@ -4,8 +4,12 @@ import dynamic from "next/dynamic";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { revalidateProjects } from "@/app/(app)/projects/actions";
-import { Search, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { ProjectsPageHeader } from "./ProjectsPageHeader";
+import {
+  ListSearchInput,
+  ListTableToolbar,
+} from "@/components/ListTableToolbar";
 import { EmptyState, Panel, Badge } from "@/components/ui";
 import type { ProjectWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
@@ -146,32 +150,27 @@ export function ProjectsPageClient({ projects, error }: Props) {
       )}
 
       {!error && projects.length > 0 && (
-        <>
-          <div
-            className="mt-6 rounded-panel border border-form p-4"
-            style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
-          >
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-primary opacity-50" />
-              <input
-                type="search"
+        <div className="mt-6">
+          <ListTableToolbar
+            leading={
+              <ListSearchInput
                 placeholder="Search projects…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-form py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                aria-label="Search projects"
               />
-            </div>
-          </div>
+            }
+          />
 
           {filteredProjects.length === 0 ? (
             <div
-              className="mt-6 rounded-panel border p-12 text-center text-sm text-text-primary opacity-70"
+              className="rounded-panel border p-12 text-center text-sm text-text-primary opacity-70"
               style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
             >
               No projects match &quot;{search}&quot;
             </div>
           ) : (
-            <Panel className="mt-6">
+            <Panel>
               <h2
                 className="ds-shadow-sm bg-bg-muted/40 px-4 py-3 text-heading-m text-text-primary"
               >
@@ -332,7 +331,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
               )}
             </Panel>
           )}
-        </>
+        </div>
       )}
     </>
   );

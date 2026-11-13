@@ -1,4 +1,18 @@
-import type { WorkIssue } from "@/lib/workTypes";
+import type { WorkFile, WorkIssue } from "@/lib/workTypes";
+
+/**
+ * Prefer server files, but keep local-only rows (optimistic uploads) until a
+ * refresh actually returns them — a stale router.refresh must not blank thumbs.
+ */
+export function mergeIssueFiles(
+  local: WorkFile[] | undefined,
+  remote: WorkFile[]
+): WorkFile[] {
+  const remoteIds = new Set(remote.map((file) => file.id));
+  const pending = (local ?? []).filter((file) => !remoteIds.has(file.id));
+  if (pending.length === 0) return remote;
+  return [...pending, ...remote];
+}
 
 /** Fields commonly updated via optimistic drawer/board patches. */
 export type WorkIssueOptimisticPatch = Partial<
@@ -27,13 +41,43 @@ export type WorkIssueOptimisticPatch = Partial<
 
 export type OptimisticIssuePatches = Map<string, WorkIssueOptimisticPatch>;
 
+const OPTIMISTIC_PATCH_KEYS = new Set<keyof WorkIssueOptimisticPatch>([
+  "title",
+  "description",
+  "currentState",
+  "nextStep",
+  "outOfScope",
+  "priority",
+  "issueType",
+  "component",
+  "estimateHours",
+  "estimateSize",
+  "scopeApproved",
+  "owner",
+  "assignees",
+  "labels",
+  "sprintId",
+  "startDate",
+  "dueDate",
+  "loggedHours",
+]);
+
 export function noteOptimisticIssuePatch(
   patches: OptimisticIssuePatches,
   issueId: string,
   patch: WorkIssueOptimisticPatch
 ): void {
+  const filtered: WorkIssueOptimisticPatch = {};
+  for (const [key, value] of Object.entries(patch) as [
+    keyof WorkIssueOptimisticPatch,
+    WorkIssueOptimisticPatch[keyof WorkIssueOptimisticPatch],
+  ][]) {
+    if (!OPTIMISTIC_PATCH_KEYS.has(key)) continue;
+    filtered[key] = value as never;
+  }
+  if (Object.keys(filtered).length === 0) return;
   const prev = patches.get(issueId) ?? {};
-  patches.set(issueId, { ...prev, ...patch });
+  patches.set(issueId, { ...prev, ...filtered });
 }
 
 export function clearOptimisticIssuePatch(
@@ -80,10 +124,13 @@ export function mergeIssuesFromServer(
         ? current.sortOrder
         : remote.sortOrder;
 
+    const files = mergeIssueFiles(current.files, remote.files);
+
     const patch = optimisticPatches?.get(remote.id);
     if (!patch || Object.keys(patch).length === 0) {
       return {
         ...remote,
+        files,
         status,
         sortOrder,
       };
@@ -112,6 +159,7 @@ export function mergeIssuesFromServer(
     return {
       ...remote,
       ...overlay,
+      files,
       status,
       sortOrder,
     };

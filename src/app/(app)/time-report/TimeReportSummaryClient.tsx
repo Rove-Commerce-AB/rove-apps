@@ -34,8 +34,7 @@ const MONTH_LABELS = [
   "Dec",
 ];
 
-const TYPE_FILTERS: { value: "all" | ProjectType; label: string }[] = [
-  { value: "all", label: "All" },
+const TYPE_FILTERS: { value: ProjectType; label: string }[] = [
   { value: "customer", label: "Customer" },
   { value: "internal", label: "Internal" },
   { value: "absence", label: "Absence" },
@@ -74,7 +73,8 @@ type Props = {
 export function TimeReportSummaryClient({ initial }: Props) {
   const router = useRouter();
   const [data, setData] = useState(initial);
-  const [typeFilter, setTypeFilter] = useState<"all" | ProjectType>("all");
+  /** Empty = all types. */
+  const [typeFilterIds, setTypeFilterIds] = useState<ProjectType[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [monthFilter, setMonthFilter] = useState<number | null>(null);
@@ -82,11 +82,16 @@ export function TimeReportSummaryClient({ initial }: Props) {
 
   const typeScoped = useMemo(() => {
     return data.buckets.filter((b) => {
-      if (typeFilter !== "all" && b.projectType !== typeFilter) return false;
+      if (
+        typeFilterIds.length > 0 &&
+        !typeFilterIds.includes(b.projectType)
+      ) {
+        return false;
+      }
       if (monthFilter != null && b.month !== monthFilter) return false;
       return true;
     });
-  }, [data.buckets, typeFilter, monthFilter]);
+  }, [data.buckets, typeFilterIds, monthFilter]);
 
   const scoped = useMemo(() => {
     return data.buckets.filter((b) => {
@@ -149,12 +154,31 @@ export function TimeReportSummaryClient({ initial }: Props) {
   /** Month chart ignores monthFilter so all bars stay visible while one is selected. */
   const monthChartBuckets = useMemo(() => {
     return data.buckets.filter((b) => {
-      if (typeFilter !== "all" && b.projectType !== typeFilter) return false;
+      if (
+        typeFilterIds.length > 0 &&
+        !typeFilterIds.includes(b.projectType)
+      ) {
+        return false;
+      }
       if (customerId && b.customerId !== customerId) return false;
       if (projectId && b.projectId !== projectId) return false;
       return true;
     });
-  }, [data.buckets, typeFilter, customerId, projectId]);
+  }, [data.buckets, typeFilterIds, customerId, projectId]);
+
+  const showAbsencePanel =
+    typeFilterIds.length === 0 || typeFilterIds.includes("absence");
+  const showCustomerPanel =
+    typeFilterIds.length === 0 ||
+    typeFilterIds.some((t) => t === "customer" || t === "internal");
+
+  function toggleTypeFilter(value: ProjectType) {
+    setTypeFilterIds((prev) =>
+      prev.includes(value)
+        ? prev.filter((item) => item !== value)
+        : [...prev, value]
+    );
+  }
 
   const byMonth = useMemo(() => {
     const hours = Array.from({ length: 12 }, () => 0);
@@ -250,12 +274,18 @@ export function TimeReportSummaryClient({ initial }: Props) {
         />
       </PageHeader>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
+      <div className="mb-1.5 flex flex-wrap gap-1.5">
+        <FilterChip
+          selected={typeFilterIds.length === 0}
+          onClick={() => setTypeFilterIds([])}
+        >
+          All
+        </FilterChip>
         {TYPE_FILTERS.map((f) => (
           <FilterChip
             key={f.value}
-            selected={typeFilter === f.value}
-            onClick={() => setTypeFilter(f.value)}
+            selected={typeFilterIds.includes(f.value)}
+            onClick={() => toggleTypeFilter(f.value)}
           >
             {f.label}
           </FilterChip>
@@ -298,7 +328,7 @@ export function TimeReportSummaryClient({ initial }: Props) {
         </p>
       ) : (
         <div className="space-y-4">
-          {typeFilter === "all" || typeFilter === "absence" ? (
+          {showAbsencePanel ? (
             <Panel>
               <PanelSectionTitle>Absence</PanelSectionTitle>
               <div className="px-1 pb-1">
@@ -383,7 +413,7 @@ export function TimeReportSummaryClient({ initial }: Props) {
             </div>
           </Panel>
 
-          {typeFilter !== "absence" ? (
+          {showCustomerPanel ? (
             <Panel>
               <PanelSectionTitle>By customer</PanelSectionTitle>
               <div className="px-1 pb-1">

@@ -50,6 +50,22 @@ export function breadcrumbsForPathname(
     ];
   }
 
+  if (pathname.startsWith(ROUTES.travelExpense)) {
+    const timeReport: Breadcrumb = {
+      label: "Time report",
+      href: ROUTES.timeReportOverview,
+    };
+    if (pathname === ROUTES.travelExpense) {
+      return [root, timeReport, { label: "Travel expense" }];
+    }
+    return [
+      root,
+      timeReport,
+      { label: "Travel expense", href: ROUTES.travelExpense },
+      { label: pathname === ROUTES.travelExpenseNew ? "New" : "Edit" },
+    ];
+  }
+
   if (
     pathname === ROUTES.timeReportHome ||
     pathname.startsWith(ROUTES.timeReportOverview)

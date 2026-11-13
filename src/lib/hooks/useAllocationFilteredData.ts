@@ -1,17 +1,18 @@
 import { useMemo } from "react";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
+import { matchesIdListFilter } from "@/lib/idListFilter";
 
 export function useAllocationFilteredData(
   data: AllocationPageData | null,
-  teamFilterId: string | null,
-  defaultRoleFilterId: string | null
+  teamFilterIds: readonly string[],
+  defaultRoleFilterIds: readonly string[]
 ): AllocationPageData | null {
   return useMemo(() => {
     if (data === null) return null;
     return {
       consultants: data.consultants.filter((c) => {
-        if (teamFilterId !== null && c.teamId !== teamFilterId) return false;
-        if (defaultRoleFilterId !== null && c.defaultRoleId !== defaultRoleFilterId)
+        if (!matchesIdListFilter(teamFilterIds, c.teamId)) return false;
+        if (!matchesIdListFilter(defaultRoleFilterIds, c.defaultRoleId))
           return false;
         return true;
       }),
@@ -25,5 +26,5 @@ export function useAllocationFilteredData(
       weekTo: data.weekTo,
       weeks: data.weeks ?? [],
     };
-  }, [data, teamFilterId, defaultRoleFilterId]);
+  }, [data, teamFilterIds, defaultRoleFilterIds]);
 }

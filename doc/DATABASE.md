@@ -117,6 +117,32 @@ fallback. Revocation deletes the token row and preserves app permission settings
 
 ---
 
+## travel_expenses
+
+Staff travel expense claims (Reseräkning) under Time report. Owned by
+`app_user_id`; each user only sees and edits their own rows in the app.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE CASCADE |
+| destination | text | NOT NULL, default `''`; denormalized for list |
+| purpose | text | NOT NULL, default `''`; denormalized for list |
+| departure_date | date | nullable; denormalized from form |
+| return_date | date | nullable; denormalized from form |
+| form_data | jsonb | NOT NULL, default `{}`; full claim payload (no fixed unit rates in v1) |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Indexes: `(app_user_id, updated_at DESC)`, `(app_user_id, departure_date DESC)`.
+
+Trigger `trg_travel_expenses_updated_at` → `set_updated_at()`.
+
+Added by
+[`scripts/20261113_travel_expenses.sql`](../scripts/20261113_travel_expenses.sql).
+
+---
+
 ## app_user_shortcuts
 
 Per-user sidebar shortcuts. Each row stores a display name and a full app
@@ -1127,6 +1153,50 @@ Indexes: `(app_user_id, created_at DESC)`;
 
 ---
 
+## work_issue_deliveries
+
+Fixed-price (t-shirt) **Done** snapshots. One active row per issue; `reversed_at`
+set when the issue leaves Done.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| issue_id | uuid | NOT NULL, FK → `work_issues.id` |
+| work_project_id | uuid | NOT NULL, FK → `work_projects.id` |
+| size | text | `xs`…`xl` |
+| amount | numeric(12,2) | snapshot price at deliver |
+| currency | text | default `SEK` |
+| delivered_at | timestamptz | NOT NULL |
+| reversed_at | timestamptz | nullable |
+| created_at | timestamptz | NOT NULL |
+
+DDL: [`scripts/20261112_work_issue_deliveries.sql`](../scripts/20261112_work_issue_deliveries.sql).
+
+## work_issue_scope_approvals
+
+Fixed-price (t-shirt) **scope approval** snapshots. One active row per issue;
+`reversed_at` set on unapprove (or board move). Amount is resolved from
+`project_size_prices` / `customer_size_prices` at approve time.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| issue_id | uuid | NOT NULL, FK → `work_issues.id` |
+| work_project_id | uuid | NOT NULL, FK → `work_projects.id` |
+| size | text | `xs`…`xl` |
+| amount | numeric(12,2) | snapshot price at approve |
+| currency | text | default `SEK` |
+| approved_at | timestamptz | NOT NULL |
+| reversed_at | timestamptz | nullable |
+| created_at | timestamptz | NOT NULL |
+
+Unique partial index on `issue_id` where `reversed_at IS NULL`.
+
+DDL + Looker view refresh + backfill:
+[`scripts/20261113_work_issue_scope_approvals_looker.sql`](../scripts/20261113_work_issue_scope_approvals_looker.sql).
+
+---
+
 ## Views
 
 Read models (column lists from the live catalog).
@@ -1157,6 +1227,28 @@ in production; may be absent in some dev snapshots.
 
 Join of `v_consultant_util` and `v_consultant_forecast`. Present in
 production; may be absent in some dev snapshots.
+
+### v_work_delivered_looker
+
+Fixed-price t-shirt **value events** for Looker (one row per signed event).
+
+`EventType`: `approved` / `unapproved` (from `work_issue_scope_approvals`) and
+`delivered` / `reversed` (from `work_issue_deliveries`). `SignedAmount` is
+`+CatalogAmount` or `−CatalogAmount`. Filter by `EventType` for delivery vs
+commitment period sums. Live dimensions: `ScopeApproved`, `IsDone`,
+`StatusName` (current issue state — not frozen at event time).
+
+Also exposes `EventId` (alias `DeliveryId`), `EventSource`
+(`scope_approval` \| `delivery`), customer/project/issue/owner fields.
+
+Apply / refresh:
+[`scripts/20261113_work_issue_scope_approvals_looker.sql`](../scripts/20261113_work_issue_scope_approvals_looker.sql).
+Prior: [`scripts/20261112_work_issue_deliveries.sql`](../scripts/20261112_work_issue_deliveries.sql).
+
+### v_work_delivered_consultant_looker
+
+Same events as `v_work_delivered_looker`, split by consultant hours linked to
+the Work issue (`AllocatedSignedAmount`). Null allocation when no linked time.
 
 ### v_time_report_looker
 
@@ -1197,7 +1289,7 @@ Customer currency DDL: [`scripts/20261005_customer_billing_currency.sql`](../scr
 
 | Function | Used by |
 |----------|---------|
-| `set_updated_at()` | BEFORE UPDATE on allocations, calendars, calendar_holidays, consultants, customer_rates, customers, projects, roles, teams, work_projects, work_issues |
+| `set_updated_at()` | BEFORE UPDATE on allocations, calendars, calendar_holidays, consultants, customer_rates, customers, projects, roles, teams, travel_expenses, work_projects, work_issues |
 | `enforce_customer_user_rules()` | BEFORE INSERT/UPDATE on `app_users`, `app_user_apps`, `consultants`, `customer_app_users`, `customers` |
 | `clear_customer_contact_on_unlink()` | AFTER DELETE on `customer_app_users` |
 
@@ -1212,6 +1304,7 @@ Those are not part of the application model.
 - **app_users** ↔ **apps** via **app_user_apps**; Rove accounts must have one or more apps; `customer` accounts may have Work only
 - **work_projects** belong to **customers**; visibility is **work_project_members**; **work_issues** belong to a project (`prefix` + per-project `number`) with owner, assignees, labels, comments, events, and files
 - **app_users** → zero or one **consultants** profile via `consultants.app_user_id` (not allowed when `role = customer`)
+- **app_users** → **travel_expenses** (own claims only; Time report staff)
 - **consultants** ↔ **customers** via **customer_consultants**
 - **customer** role **app_users** ↔ **customers** via **customer_app_users**; `customers.contact_app_user_id` picks one of those users
 - **time_report_entry_lines** (week row) → **time_report_entries** (day cells) + **time_report_week_revisions**

@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Search } from "lucide-react";
 import { MonitorGroupList } from "@/components/MonitorGroupList";
-import { Input, PageHeader, Panel } from "@/components/ui";
+import {
+  ListSearchInput,
+  ListTableToolbar,
+} from "@/components/ListTableToolbar";
+import { PageHeader, Panel } from "@/components/ui";
 import type { Monitor } from "@/lib/monitors";
 import { monitorTone } from "@/lib/monitorStatus";
 import { SupportOverviewCaseQueues } from "@/components/SupportOverviewCaseQueues";
@@ -101,40 +104,37 @@ export function SupportOverviewClient({
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="relative w-full sm:w-72">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary"
-            aria-hidden
-          />
-          <Input
-            id="overview-monitor-search"
-            type="search"
-            placeholder="Search monitors…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            aria-label="Search monitors"
-            className="pl-9"
-          />
-        </div>
-        <label className="inline-flex items-center gap-2 text-xs text-text-secondary">
-          <input
-            type="checkbox"
-            checked={downOnly}
-            onChange={(event) => setDownOnly(event.target.checked)}
-          />
-          Down only
-        </label>
-      </div>
-
-      <Panel>
-        <MonitorGroupList
-          monitors={monitors}
-          search={search}
-          downOnly={downOnly}
-          showRowMenu={false}
+      <div>
+        <ListTableToolbar
+          leading={
+            <div className="flex flex-wrap items-center gap-3">
+              <ListSearchInput
+                id="overview-monitor-search"
+                placeholder="Search monitors…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search monitors"
+              />
+              <label className="inline-flex h-7 items-center gap-2 text-[13px] text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={downOnly}
+                  onChange={(event) => setDownOnly(event.target.checked)}
+                />
+                Down only
+              </label>
+            </div>
+          }
         />
-      </Panel>
+        <Panel>
+          <MonitorGroupList
+            monitors={monitors}
+            search={search}
+            downOnly={downOnly}
+            showRowMenu={false}
+          />
+        </Panel>
+      </div>
     </div>
   );
 }

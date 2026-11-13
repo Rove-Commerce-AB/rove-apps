@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import { Button, Input } from "@/components/ui";
 
 type Props = {
   /** When set, export is scoped to that customer; otherwise all visible monitors. */
   customerId?: string | null;
 };
+
+const dateInputClass =
+  "box-border h-7 w-[9.25rem] rounded-md border border-border-subtle bg-bg-default px-2 text-[13px] text-text-primary outline-none transition-colors hover:border-border-default focus:border-border-default focus:ring-1 focus:ring-border-default";
 
 function stockholmToday(): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -41,35 +43,36 @@ export function MonitorsIncidentExportControls({ customerId }: Props) {
   }, [from, to, customerId]);
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
-      <label className="block text-xs text-text-secondary">
-        From
-        <Input
+    <div className="flex flex-wrap items-center gap-1">
+      <label className="inline-flex h-7 items-center gap-1.5 text-[13px] text-text-tertiary">
+        <span className="sr-only">From</span>
+        <input
           type="date"
           value={from}
           max={today}
           onChange={(event) => setFrom(event.target.value)}
-          className="mt-1 w-[9.5rem]"
+          className={dateInputClass}
           aria-label="Export from date"
         />
       </label>
-      <label className="block text-xs text-text-secondary">
-        To
-        <Input
+      <label className="inline-flex h-7 items-center gap-1.5 text-[13px] text-text-tertiary">
+        <span className="sr-only">To</span>
+        <input
           type="date"
           value={to}
           max={today}
           onChange={(event) => setTo(event.target.value)}
-          className="mt-1 w-[9.5rem]"
+          className={dateInputClass}
           aria-label="Export to date"
         />
       </label>
-      <Button asChild variant="secondary" size="sm" className="h-10">
-        <a href={href}>
-          <Download className="h-4 w-4" aria-hidden />
-          Export downtime
-        </a>
-      </Button>
+      <a
+        href={href}
+        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+      >
+        <Download className="h-3.5 w-3.5" aria-hidden />
+        Export downtime
+      </a>
     </div>
   );
 }

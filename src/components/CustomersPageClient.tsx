@@ -2,18 +2,21 @@
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { MessageCircle, Plus, Search } from "lucide-react";
+import { MessageCircle, Plus } from "lucide-react";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
 import { CustomerDrawerContent } from "@/components/CustomerDrawerContent";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import {
+  ListSearchInput,
+  ListTableToolbar,
+} from "@/components/ListTableToolbar";
 import {
   Badge,
   Button,
   DataTable,
   EmptyState,
-  Input,
   PageHeader,
-  Select,
   SideDrawer,
   type DataTableColumn,
 } from "@/components/ui";
@@ -151,7 +154,9 @@ export function CustomersPageClient({
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [accountManagerFilterId, setAccountManagerFilterId] = useState("");
+  const [accountManagerFilterIds, setAccountManagerFilterIds] = useState<
+    string[]
+  >([]);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("asc");
@@ -161,8 +166,9 @@ export function CustomersPageClient({
     const query = search.trim().toLowerCase();
     return customers.filter((customer) => {
       if (
-        accountManagerFilterId &&
-        customer.accountManagerId !== accountManagerFilterId
+        accountManagerFilterIds.length > 0 &&
+        (!customer.accountManagerId ||
+          !accountManagerFilterIds.includes(customer.accountManagerId))
       ) {
         return false;
       }
@@ -176,7 +182,7 @@ export function CustomersPageClient({
         (customer.litiumVersion ?? "").toLowerCase().includes(query)
       );
     });
-  }, [accountManagerFilterId, customers, search]);
+  }, [accountManagerFilterIds, customers, search]);
 
   const activeCustomers = useMemo(
     () =>
@@ -313,12 +319,9 @@ export function CustomersPageClient({
         customer.accountManagerName
       );
     }
-    return [
-      { value: "", label: "All account managers" },
-      ...[...accountManagers.entries()]
-        .sort(([, a], [, b]) => compareTextSv(a, b))
-        .map(([id, name]) => ({ value: id, label: name })),
-    ];
+    return [...accountManagers.entries()]
+      .sort(([, a], [, b]) => compareTextSv(a, b))
+      .map(([id, name]) => ({ id, name }));
   }, [customers]);
 
   function openCustomer(id: string) {
@@ -368,33 +371,32 @@ export function CustomersPageClient({
         ) : null}
 
         {!error && customers.length > 0 ? (
-          <>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="relative w-full sm:w-72">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-                <Input
-                  type="search"
+          <div>
+            <ListTableToolbar
+              leading={
+                <ListSearchInput
                   placeholder="Search customers…"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   aria-label="Search customers"
-                  className="pl-9"
                 />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-                  Filter
-                </span>
-                <Select
-                  variant="filter"
-                  value={accountManagerFilterId}
-                  onValueChange={setAccountManagerFilterId}
-                  options={accountManagerOptions}
-                  className="w-auto min-w-0"
-                  triggerClassName="min-w-[180px]"
+              }
+              trailing={
+                <ListFilterMenu
+                  ariaLabel="Filter customers"
+                  sections={[
+                    {
+                      id: "accountManager",
+                      label: "Account manager",
+                      allLabel: "All account managers",
+                      options: accountManagerOptions,
+                      selectedIds: accountManagerFilterIds,
+                      onChange: setAccountManagerFilterIds,
+                    },
+                  ]}
                 />
-              </div>
-            </div>
+              }
+            />
 
             {matchingCustomers.length === 0 ? (
               <p className="px-1 py-6 text-sm text-text-secondary">
@@ -438,7 +440,7 @@ export function CustomersPageClient({
                 }
               />
             )}
-          </>
+          </div>
         ) : null}
       </div>
 

@@ -278,12 +278,87 @@ export async function applySupportMailLabel(
   });
 }
 
-function encodeBase64Url(value: string): string {
-  return Buffer.from(value, "utf8")
+function encodeBase64Url(value: string | Buffer): string {
+  const buf = typeof value === "string" ? Buffer.from(value, "utf8") : value;
+  return buf
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
+}
+
+function encodeMimeFileName(fileName: string): string {
+  const cleaned = fileName.replace(/[\r\n"]/g, "_").trim() || "file";
+  if (/^[\x20-\x7E]*$/.test(cleaned)) return cleaned;
+  return `=?UTF-8?B?${Buffer.from(cleaned, "utf8").toString("base64")}?=`;
+}
+
+export type GmailOutgoingAttachment = {
+  fileName: string;
+  mimeType: string;
+  content: Buffer;
+};
+
+function buildRawMimeMessage(input: {
+  from: string;
+  to: string;
+  subjectHeader: string;
+  bodyText: string;
+  extraHeaders: string[];
+  attachments: GmailOutgoingAttachment[];
+}): Buffer {
+  const body = input.bodyText.replace(/\r\n/g, "\n").trim();
+  const headers = [
+    `From: ${input.from}`,
+    `To: ${input.to}`,
+    `Subject: ${input.subjectHeader}`,
+    "MIME-Version: 1.0",
+    ...input.extraHeaders,
+  ];
+
+  if (input.attachments.length === 0) {
+    headers.push('Content-Type: text/plain; charset="UTF-8"');
+    headers.push("Content-Transfer-Encoding: 8bit");
+    return Buffer.from(`${headers.join("\r\n")}\r\n\r\n${body}\r\n`, "utf8");
+  }
+
+  const boundary = `rove_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+
+  const chunks: Buffer[] = [
+    Buffer.from(`${headers.join("\r\n")}\r\n\r\n`, "utf8"),
+    Buffer.from(
+      `--${boundary}\r\nContent-Type: text/plain; charset="UTF-8"\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${body}\r\n`,
+      "utf8"
+    ),
+  ];
+
+  for (const file of input.attachments) {
+    const mime = (file.mimeType || "application/octet-stream").replace(
+      /[\r\n]/g,
+      ""
+    );
+    const name = encodeMimeFileName(file.fileName);
+    const asciiName =
+      file.fileName
+        .normalize("NFKD")
+        .replace(/\p{M}/gu, "")
+        .replace(/[^\x20-\x7E]/g, "_")
+        .replace(/"/g, "") || "file";
+    const b64 = file.content.toString("base64");
+    const wrapped = b64.replace(/(.{76})/g, "$1\r\n").replace(/\r\n$/g, "");
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Type: ${mime}; name="${asciiName}"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename="${asciiName}"${
+          name !== asciiName ? `; filename*=UTF-8''${encodeURIComponent(file.fileName.trim() || "file")}` : ""
+        }\r\n\r\n${wrapped}\r\n`,
+        "utf8"
+      )
+    );
+  }
+
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, "utf8"));
+  return Buffer.concat(chunks);
 }
 
 function encodeHeaderWord(value: string): string {
@@ -323,7 +398,8 @@ export async function getGmailMessageHeaders(messageId: string): Promise<{
 }
 
 /**
- * Send a plain-text reply into an existing Gmail thread as support@.
+ * Send a reply into an existing Gmail thread as support@.
+ * Optional image/video (or other) attachments use multipart/mixed.
  * Requires domain-wide delegation scope `gmail.send` for the impersonated mailbox.
  */
 export async function sendGmailThreadReply(input: {
@@ -335,6 +411,7 @@ export async function sendGmailThreadReply(input: {
   references?: string | null;
   /** Set on automatic acknowledgements (RFC 3834). */
   autoSubmitted?: "auto-replied" | "auto-generated" | null;
+  attachments?: GmailOutgoingAttachment[];
 }): Promise<{ id: string; threadId: string }> {
   const from = impersonateEmail();
   const to = input.toEmail.trim().toLowerCase();
@@ -345,28 +422,28 @@ export async function sendGmailThreadReply(input: {
   const body = input.bodyText.replace(/\r\n/g, "\n").trim();
   if (!body) throw new Error("Reply body is required");
 
-  const headers = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: ${encodeHeaderWord(replySubject)}`,
-    "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit",
-  ];
+  const extraHeaders: string[] = [];
   if (input.autoSubmitted) {
-    headers.push(`Auto-Submitted: ${input.autoSubmitted}`);
-    headers.push("X-Auto-Response-Suppress: All");
+    extraHeaders.push(`Auto-Submitted: ${input.autoSubmitted}`);
+    extraHeaders.push("X-Auto-Response-Suppress: All");
   }
   if (input.inReplyToMessageId) {
-    headers.push(`In-Reply-To: ${input.inReplyToMessageId}`);
+    extraHeaders.push(`In-Reply-To: ${input.inReplyToMessageId}`);
     const refs = [input.references, input.inReplyToMessageId]
       .filter(Boolean)
       .join(" ")
       .trim();
-    if (refs) headers.push(`References: ${refs}`);
+    if (refs) extraHeaders.push(`References: ${refs}`);
   }
 
-  const raw = `${headers.join("\r\n")}\r\n\r\n${body}\r\n`;
+  const raw = buildRawMimeMessage({
+    from,
+    to,
+    subjectHeader: encodeHeaderWord(replySubject),
+    bodyText: body,
+    extraHeaders,
+    attachments: input.attachments ?? [],
+  });
   const encoded = encodeBase64Url(raw);
 
   const sent = await gmailFetch<{ id: string; threadId: string }>("/messages/send", {

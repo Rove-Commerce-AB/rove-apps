@@ -11,11 +11,12 @@ import {
   shouldHideCustomerFilter,
   type CustomerFilterOption,
 } from "@/lib/customerFilter";
+import { toggleIdInList } from "@/lib/idListFilter";
 
 type Props = {
   customers: CustomerFilterOption[];
-  /** Selected customer id, or null for All. */
-  value: string | null;
+  /** Selected customer ids. Empty = All. */
+  value: string[];
   basePath: string;
   cookieName: string;
   /** Hide the control when the actor only has one customer (customer users). */
@@ -84,17 +85,18 @@ export function CustomerFilter({
 
   if (customers.length === 0) return null;
 
-  const selectedName =
-    value == null
-      ? null
-      : (customers.find((customer) => customer.id === value)?.name ?? null);
-  const filterActive = value != null;
-  const filterLabel = selectedName ?? "Filter";
+  const filterActive = value.length > 0;
+  const filterLabel =
+    value.length === 0
+      ? "Filter"
+      : value.length === 1
+        ? (customers.find((customer) => customer.id === value[0])?.name ??
+          "Filter")
+        : `${value.length} customers`;
 
-  function selectCustomer(customerId: string | null) {
-    persistCustomerFilterCookie(cookieName, customerId);
-    setMenu(null);
-    router.replace(buildPathWithCustomerFilter(basePath, customerId, queryKey));
+  function applySelection(next: string[]) {
+    persistCustomerFilterCookie(cookieName, next);
+    router.replace(buildPathWithCustomerFilter(basePath, next, queryKey));
   }
 
   function openMenu(event: React.MouseEvent<HTMLButtonElement>) {
@@ -136,16 +138,21 @@ export function CustomerFilter({
                 Customer
               </p>
               <MenuRow
-                selected={value == null}
-                onSelect={() => selectCustomer(null)}
+                selected={value.length === 0}
+                onSelect={() => {
+                  applySelection([]);
+                  setMenu(null);
+                }}
               >
                 <span className="min-w-0 truncate">{allLabel}</span>
               </MenuRow>
               {customers.map((customer) => (
                 <MenuRow
                   key={customer.id}
-                  selected={value === customer.id}
-                  onSelect={() => selectCustomer(customer.id)}
+                  selected={value.includes(customer.id)}
+                  onSelect={() =>
+                    applySelection(toggleIdInList(value, customer.id))
+                  }
                 >
                   <span className="min-w-0 truncate">{customer.name}</span>
                 </MenuRow>
@@ -154,7 +161,10 @@ export function CustomerFilter({
                 <button
                   type="button"
                   className="mt-1 flex w-full border-t border-border-subtle px-3 py-1.5 text-left text-body-m text-text-secondary hover:bg-bg-muted hover:text-text-primary"
-                  onClick={() => selectCustomer(null)}
+                  onClick={() => {
+                    applySelection([]);
+                    setMenu(null);
+                  }}
                 >
                   Clear filter
                 </button>

@@ -2,27 +2,34 @@ import { describe, expect, it } from "vitest";
 import {
   buildPathWithCustomerFilter,
   CUSTOMER_FILTER_ALL,
-  normalizeCustomerFilterValue,
+  normalizeCustomerFilterValues,
   resolveCustomerFilterSelection,
   shouldHideCustomerFilter,
 } from "./customerFilter";
 
 const allowed = ["c1", "c2"];
 
-describe("normalizeCustomerFilterValue", () => {
+describe("normalizeCustomerFilterValues", () => {
   it("treats empty and all as All", () => {
-    expect(normalizeCustomerFilterValue("", allowed)).toBe(null);
-    expect(normalizeCustomerFilterValue(CUSTOMER_FILTER_ALL, allowed)).toBe(
-      null
+    expect(normalizeCustomerFilterValues("", allowed)).toEqual([]);
+    expect(normalizeCustomerFilterValues(CUSTOMER_FILTER_ALL, allowed)).toEqual(
+      []
     );
   });
 
   it("accepts allowed ids", () => {
-    expect(normalizeCustomerFilterValue("c1", allowed)).toBe("c1");
+    expect(normalizeCustomerFilterValues("c1", allowed)).toEqual(["c1"]);
+  });
+
+  it("accepts comma-separated ids", () => {
+    expect(normalizeCustomerFilterValues("c1,c2", allowed)).toEqual([
+      "c1",
+      "c2",
+    ]);
   });
 
   it("rejects unknown ids", () => {
-    expect(normalizeCustomerFilterValue("x", allowed)).toBeUndefined();
+    expect(normalizeCustomerFilterValues("x", allowed)).toBeUndefined();
   });
 });
 
@@ -34,17 +41,17 @@ describe("resolveCustomerFilterSelection", () => {
         persistedValue: "c1",
         allowedIds: allowed,
       })
-    ).toBe("c2");
+    ).toEqual(["c2"]);
   });
 
   it("uses cookie when query is absent", () => {
     expect(
       resolveCustomerFilterSelection({
         queryValue: undefined,
-        persistedValue: "c1",
+        persistedValue: "c1,c2",
         allowedIds: allowed,
       })
-    ).toBe("c1");
+    ).toEqual(["c1", "c2"]);
   });
 
   it("falls back to All when nothing valid", () => {
@@ -54,7 +61,7 @@ describe("resolveCustomerFilterSelection", () => {
         persistedValue: "also-gone",
         allowedIds: allowed,
       })
-    ).toBe(null);
+    ).toEqual([]);
   });
 
   it("explicit all beats cookie", () => {
@@ -64,28 +71,27 @@ describe("resolveCustomerFilterSelection", () => {
         persistedValue: "c1",
         allowedIds: allowed,
       })
-    ).toBe(null);
+    ).toEqual([]);
   });
 });
 
 describe("buildPathWithCustomerFilter", () => {
   it("omits query for All", () => {
-    expect(buildPathWithCustomerFilter("/support/monitors", null)).toBe(
+    expect(buildPathWithCustomerFilter("/support/monitors", [])).toBe(
       "/support/monitors"
     );
   });
 
   it("adds customer query", () => {
-    expect(buildPathWithCustomerFilter("/support/monitors", "c1")).toBe(
-      "/support/monitors?customer=c1"
+    expect(buildPathWithCustomerFilter("/support/monitors", ["c1", "c2"])).toBe(
+      "/support/monitors?customer=c1%2Cc2"
     );
   });
 });
 
 describe("shouldHideCustomerFilter", () => {
-  it("hides only when single and requested", () => {
+  it("hides for single-customer actors", () => {
     expect(shouldHideCustomerFilter(1, true)).toBe(true);
     expect(shouldHideCustomerFilter(2, true)).toBe(false);
-    expect(shouldHideCustomerFilter(1, false)).toBe(false);
   });
 });

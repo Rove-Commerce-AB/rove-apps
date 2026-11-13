@@ -747,8 +747,8 @@ export function ProjectManagerTimeReportClient({
           ) : entries.length === 0 ? (
             <div className="py-8 text-sm text-text-secondary">No reported time entries.</div>
           ) : (
-            <div className="space-y-2">
-            <div className="flex flex-wrap items-start gap-3 border-b border-border-subtle/80 pb-3">
+            <div>
+            <div className="mb-1.5 flex flex-wrap items-start justify-end gap-2">
               <EntryFilterMultiSelect
                 id="pm-entry-filter-consultant"
                 filterLabel="Consultant"
