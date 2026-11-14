@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
 import {
   createAllocations,
   updateAllocation,
@@ -13,8 +12,14 @@ import {
   logBulkAllocationHistory,
   deleteAllocationWithHistory,
 } from "@/app/(app)/allocation/actions";
-import { useEscToClose } from "@/lib/useEscToClose";
-import { Button, modalFocusClass } from "@/components/ui";
+import {
+  Button,
+  Dialog,
+  ModalReadonlyField,
+  ModalTextInput,
+  modalSegmentedButtonClass,
+  modalSegmentedGroupClass,
+} from "@/components/ui";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 
 export type EditAllocationRangeWeek = {
@@ -187,14 +192,14 @@ export function EditAllocationRangeModal({
     }
   };
 
-  const handleClose = () => {
-    setError(null);
-    onClose();
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setError(null);
+      onClose();
+    }
   };
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen || weeks.length === 0) return null;
+  if (weeks.length === 0) return null;
 
   const weekRangeLabel =
     weeks.length === 1
@@ -204,164 +209,97 @@ export function EditAllocationRangeModal({
         : `W${weeks[0].week}–W${weeks[weeks.length - 1].week}, ${weeks[0].year}`;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-allocation-range-title"
-      >
-        <div className="flex items-center justify-between">
-          <h2
-            id="edit-allocation-range-title"
-            className="text-heading-m text-text-primary"
-          >
-            Edit allocation
-          </h2>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange} title="Edit allocation">
+      <form onSubmit={handleSubmit} className="modal-form-discreet mt-4 space-y-3">
+        {error && (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+
+        <ModalReadonlyField label="Consultant">{consultantName}</ModalReadonlyField>
+        <ModalReadonlyField label="Project">{projectLabel}</ModalReadonlyField>
+        {roleName != null && roleName !== "" ? (
+          <ModalReadonlyField label="Role">{roleName}</ModalReadonlyField>
+        ) : null}
+        <ModalReadonlyField label="Weeks">{weekRangeLabel}</ModalReadonlyField>
+
+        <div className={modalSegmentedGroupClass} role="group" aria-label="Input mode">
           <button
             type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
+            aria-pressed={inputMode === "hours"}
+            onClick={() => setInputMode("hours")}
+            className={modalSegmentedButtonClass(inputMode === "hours")}
           >
-            <X className="h-5 w-5" />
+            Hours
+          </button>
+          <button
+            type="button"
+            aria-pressed={inputMode === "percent"}
+            onClick={() => setInputMode("percent")}
+            className={modalSegmentedButtonClass(inputMode === "percent")}
+          >
+            %
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="modal-form-discreet mt-6 space-y-4">
-          {error && (
-            <p className="text-sm text-danger" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary">
-              Consultant
-            </label>
-            <p className="mt-1 text-text-primary">{consultantName}</p>
+        {inputMode === "hours" ? (
+          <div className="w-24">
+            <ModalTextInput
+              id="edit-range-hours"
+              label="Hours per week"
+              type="number"
+              min={0}
+              step={0.5}
+              value={hoursStr}
+              onChange={(e) => setHoursStr(e.target.value)}
+              onFocus={(e) => e.target.select()}
+            />
+            {firstAvailable > 0 && (
+              <p className="mt-1 text-[12px] text-text-tertiary">
+                ≈ {displayPercent()}% of capacity (w{weeks[0].week})
+              </p>
+            )}
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary">
-              Project
-            </label>
-            <p className="mt-1 text-text-primary">{projectLabel}</p>
+        ) : (
+          <div className="w-24">
+            <ModalTextInput
+              id="edit-range-percent"
+              label={`Percent of capacity (w${weeks[0].week})`}
+              type="number"
+              min={0}
+              max={100}
+              step={5}
+              value={percentStr}
+              onChange={(e) => setPercentStr(e.target.value)}
+              onFocus={(e) => e.target.select()}
+            />
+            {firstAvailable > 0 && percentStr !== "" && !Number.isNaN(parseFloat(percentStr)) && (
+              <p className="mt-1 text-[12px] text-text-tertiary">
+                ≈ {((parseFloat(percentStr.replace(",", ".")) / 100) * firstAvailable).toFixed(1)} h
+              </p>
+            )}
           </div>
+        )}
 
-          {roleName != null && roleName !== "" && (
-            <div>
-              <label className="block text-sm font-medium text-text-primary">
-                Role
-              </label>
-              <p className="mt-1 text-text-primary">{roleName}</p>
-            </div>
-          )}
+        <p className="text-[12px] text-text-tertiary">
+          Set 0 to remove allocation in all selected weeks.
+        </p>
 
-          <div>
-            <label className="block text-sm font-medium text-text-primary">
-              Weeks
-            </label>
-            <p className="mt-1 text-text-primary">{weekRangeLabel}</p>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setInputMode("hours")}
-              className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                inputMode === "hours"
-                  ? "border-brand-signal bg-brand-signal/20 text-text-primary"
-                  : "border-form bg-bg-default text-text-primary hover:bg-bg-muted"
-              }`}
-            >
-              Hours
-            </button>
-            <button
-              type="button"
-              onClick={() => setInputMode("percent")}
-              className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                inputMode === "percent"
-                  ? "border-brand-signal bg-brand-signal/20 text-text-primary"
-                  : "border-form bg-bg-default text-text-primary hover:bg-bg-muted"
-              }`}
-            >
-              %
-            </button>
-          </div>
-
-          {inputMode === "hours" ? (
-            <div>
-              <label
-                htmlFor="edit-range-hours"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Hours per week
-              </label>
-              <input
-                id="edit-range-hours"
-                type="number"
-                min={0}
-                step={0.5}
-                value={hoursStr}
-                onChange={(e) => setHoursStr(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
-              />
-              {firstAvailable > 0 && (
-                <p className="mt-1 text-xs text-text-primary opacity-60">
-                  ≈ {displayPercent()}% of capacity (w{weeks[0].week})
-                </p>
-              )}
-            </div>
-          ) : (
-            <div>
-              <label
-                htmlFor="edit-range-percent"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Percent of capacity (w{weeks[0].week})
-              </label>
-              <input
-                id="edit-range-percent"
-                type="number"
-                min={0}
-                max={100}
-                step={5}
-                value={percentStr}
-                onChange={(e) => setPercentStr(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
-              />
-              {firstAvailable > 0 && percentStr !== "" && !Number.isNaN(parseFloat(percentStr)) && (
-                <p className="mt-1 text-xs text-text-primary opacity-60">
-                  ≈ {((parseFloat(percentStr.replace(",", ".")) / 100) * firstAvailable).toFixed(1)} h
-                </p>
-              )}
-            </div>
-          )}
-
-          <p className="text-xs text-text-primary opacity-60">
-            Set 0 to remove allocation in all selected weeks.
-          </p>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => handleOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={submitting}>
+            {submitting ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

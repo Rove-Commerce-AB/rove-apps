@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Dialog, Button } from "@/components/ui";
+import { useState, useEffect } from "react";
+import { Dialog, Button, CheckboxList, InitialsAvatar } from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultantsClient";
 import { addConsultantToCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
+import { initialsFromName } from "@/lib/workIssueKey";
 
 type Props = {
   isOpen: boolean;
@@ -27,8 +28,6 @@ export function AddCustomerConsultantModal({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-
   useEffect(() => {
     if (isOpen) {
       setError(null);
@@ -42,22 +41,17 @@ export function AddCustomerConsultantModal({
   const existingIds = new Set(existingConsultants.map((c) => c.id));
   const options = allConsultants
     .filter((c) => !existingIds.has(c.id))
-    .map((c) => ({ value: c.id, label: c.name }));
-
-  useEffect(() => {
-    const el = selectAllRef.current;
-    if (!el) return;
-    el.indeterminate =
-      selectedIds.length > 0 && selectedIds.length < options.length;
-  }, [selectedIds, options.length]);
-
-  const toggleConsultant = (consultantId: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(consultantId)
-        ? prev.filter((id) => id !== consultantId)
-        : [...prev, consultantId]
-    );
-  };
+    .map((c) => ({
+      value: c.id,
+      label: c.name,
+      leading: (
+        <InitialsAvatar
+          name={c.name}
+          initials={initialsFromName(c.name) || "?"}
+          size="xxs"
+        />
+      ),
+    }));
 
   const handleSubmit = async () => {
     if (selectedIds.length === 0) {
@@ -92,7 +86,7 @@ export function AddCustomerConsultantModal({
           e.preventDefault();
           handleSubmit();
         }}
-        className="modal-form-discreet mt-6 space-y-4"
+        className="modal-form-discreet mt-4 space-y-3"
       >
         {error && (
           <p className="text-sm text-danger" role="alert">
@@ -101,47 +95,15 @@ export function AddCustomerConsultantModal({
         )}
 
         {options.length > 0 && (
-          <div>
-            <p className="mb-2 block text-sm font-medium text-text-primary">
-              Consultants
-            </p>
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
-              <label className="flex cursor-pointer items-center gap-2 border-b border-border-subtle pb-2 text-sm text-text-primary">
-                <input
-                  ref={selectAllRef}
-                  type="checkbox"
-                  checked={
-                    options.length > 0 && selectedIds.length === options.length
-                  }
-                  onChange={() => {
-                    setSelectedIds(
-                      selectedIds.length === options.length
-                        ? []
-                        : options.map((option) => option.value)
-                    );
-                  }}
-                  disabled={submitting}
-                  aria-label="Select all"
-                />
-              </label>
-              {options.map((option) => (
-                <label
-                  key={option.value}
-                  htmlFor={`add-consultant-${option.value}`}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                >
-                  <input
-                    id={`add-consultant-${option.value}`}
-                    type="checkbox"
-                    checked={selectedIds.includes(option.value)}
-                    onChange={() => toggleConsultant(option.value)}
-                    disabled={submitting}
-                  />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <CheckboxList
+            label="Consultants"
+            idPrefix="add-consultant"
+            options={options}
+            value={selectedIds}
+            onChange={setSelectedIds}
+            disabled={submitting}
+            selectAll
+          />
         )}
 
         {options.length === 0 && allConsultants.length > 0 && (
@@ -150,8 +112,8 @@ export function AddCustomerConsultantModal({
           </p>
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button

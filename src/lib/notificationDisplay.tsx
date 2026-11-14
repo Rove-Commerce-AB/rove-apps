@@ -22,7 +22,41 @@ export function formatNotificationTimestamp(iso: string): string {
 }
 
 const linkClass =
-  "font-medium text-brand-signal underline underline-offset-2 hover:opacity-90";
+  "font-medium text-text-primary underline-offset-2 hover:underline";
+
+/** Filter / icon grouping for notification kinds. */
+export type NotificationAppGroup = "planner" | "work" | "product";
+
+export function notificationAppGroup(
+  kind: string
+): NotificationAppGroup | null {
+  if (kind === USER_NOTIFICATION_KIND.ALLOCATION_BOOKED) return "planner";
+  if (
+    kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED ||
+    kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
+    kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED ||
+    kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_BOARD_INVITED ||
+    kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_TODO_ASSIGNED
+  ) {
+    return "work";
+  }
+  if (
+    kind === USER_NOTIFICATION_KIND.FEATURE_REQUEST_IMPLEMENTED ||
+    kind === USER_NOTIFICATION_KIND.FEATURE_REQUEST_DECLINED
+  ) {
+    return "product";
+  }
+  return null;
+}
+
+export const NOTIFICATION_APP_FILTER_OPTIONS: {
+  id: NotificationAppGroup;
+  name: string;
+}[] = [
+  { id: "planner", name: "Planner" },
+  { id: "work", name: "Work" },
+  { id: "product", name: "Product" },
+];
 
 function formatWeeksLabel(weeks: unknown): string {
   if (!Array.isArray(weeks) || weeks.length === 0) return "";

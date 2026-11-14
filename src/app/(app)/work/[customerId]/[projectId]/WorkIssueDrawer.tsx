@@ -119,6 +119,7 @@ import {
 import { formatWorkHours } from "@/lib/workTime";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkScopeApproveButton } from "./WorkScopeApproveButton";
+import { WorkScopeUnlockBanner } from "./WorkScopeUnlockBanner";
 import type {
   WorkIssueTimeLogEntry,
   WorkIssueTimeLogRoleOption,
@@ -420,7 +421,8 @@ export function WorkIssueDrawer({
   const [tab, setTab] = useState(initialTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [unlockScopeOpen, setUnlockScopeOpen] = useState(false);
+  const [unlockScopeBanner, setUnlockScopeBanner] = useState(false);
+  const [unlockScopeBannerOpen, setUnlockScopeBannerOpen] = useState(false);
 
   const scopeApprovalAvailable =
     workScopeApprovalEnabled({
@@ -1520,7 +1522,8 @@ export function WorkIssueDrawer({
                     estimateSize={issue.estimateSize}
                     estimateUnit="tshirt"
                     billingCurrency={board.billingCurrency}
-                    disabled={pending || scopeLocked}
+                    disabled={pending}
+                    locked={scopeLocked}
                     onError={onError}
                     onChange={() => {}}
                     onChangeSize={(value: WorkTshirtSize | null) => {
@@ -1546,9 +1549,16 @@ export function WorkIssueDrawer({
                       size="drawer"
                       onToggle={() => {
                         if (issue.scopeApproved) {
-                          setUnlockScopeOpen(true);
+                          setUnlockScopeBanner(true);
+                          setUnlockScopeBannerOpen(false);
+                          requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                              setUnlockScopeBannerOpen(true);
+                            });
+                          });
                           return;
                         }
+                        setUnlockScopeBanner(false);
                         applyScopeApproved(true);
                       }}
                     />
@@ -1623,6 +1633,26 @@ export function WorkIssueDrawer({
                     </label>
                   </div>
                 )
+              ) : null}
+              {unlockScopeBanner ? (
+                <div className="w-full basis-full">
+                  <WorkScopeUnlockBanner
+                    open={unlockScopeBannerOpen}
+                    onUnlock={() => {
+                      setUnlockScopeBannerOpen(false);
+                      window.setTimeout(() => {
+                        setUnlockScopeBanner(false);
+                        applyScopeApproved(false);
+                      }, 200);
+                    }}
+                    onDismiss={() => {
+                      setUnlockScopeBannerOpen(false);
+                      window.setTimeout(() => {
+                        setUnlockScopeBanner(false);
+                      }, 200);
+                    }}
+                  />
+                </div>
               ) : null}
               <div>
                 {showDates ? (
@@ -2749,19 +2779,6 @@ export function WorkIssueDrawer({
       </div>
 
       <ConfirmModal
-        isOpen={unlockScopeOpen}
-        title="Unlock scope?"
-        message="You can change size and scope, then approve again."
-        confirmLabel="Unlock"
-        variant="danger"
-        onClose={() => setUnlockScopeOpen(false)}
-        onConfirm={() => {
-          setUnlockScopeOpen(false);
-          applyScopeApproved(false);
-        }}
-      />
-
-      <ConfirmModal
         isOpen={deleteOpen && canShowDangerTab}
         title={`Delete ${issue.key}?`}
         message="This permanently deletes the issue and its comments, files, and activity. Issues with logged time cannot be deleted."
@@ -2797,7 +2814,7 @@ export function WorkIssueDrawer({
                 : "Uploading image…"}
             </span>
             <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-bg-muted">
-              <div className="h-full w-full animate-pulse rounded-full bg-interactive-primary" />
+              <div className="h-full w-full animate-pulse rounded-full bg-accent-primary" />
             </div>
           </div>
         </div>

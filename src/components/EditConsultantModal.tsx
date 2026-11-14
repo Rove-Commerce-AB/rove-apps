@@ -1,11 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
 import { updateConsultant } from "@/lib/consultantsClient";
 import { deleteConsultantAction } from "@/app/(app)/consultants/actions";
-import { useEscToClose } from "@/lib/useEscToClose";
-import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
+import {
+  Button,
+  ConfirmModal,
+  Dialog,
+  ModalField,
+  ModalTextInput,
+  Select,
+  Switch,
+  modalSelectTriggerClass,
+} from "@/components/ui";
 import { getRoles } from "@/lib/rolesClient";
 import { getCalendars } from "@/lib/calendarsClient";
 import { getTeams } from "@/lib/teamsClient";
@@ -152,54 +159,30 @@ export function EditConsultantModal({
     setError(null);
   };
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      resetForm();
+      onClose();
+    }
   };
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen || !consultant) return null;
+  if (!consultant) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-consultant-title"
+    <>
+      <Dialog
+        open={isOpen}
+        onOpenChange={handleOpenChange}
+        title="Edit consultant"
+        contentClassName="max-h-[90vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between">
-          <h2
-            id="edit-consultant-title"
-            className="text-heading-m text-text-primary"
-          >
-            Edit consultant
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
         <form
           id="edit-consultant-form"
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();
           }}
-          className="modal-form-discreet mt-6 space-y-4"
+          className="modal-form-discreet mt-4 space-y-3"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -207,123 +190,112 @@ export function EditConsultantModal({
             </p>
           )}
 
-          <div>
-            <label
-              htmlFor="edit-consultant-name"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Name
-            </label>
-            <input
-              id="edit-consultant-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Anna Andersson"
-              className={`mt-1 ${modalInputClass}`}
+          <ModalTextInput
+            id="edit-consultant-name"
+            label="Name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Anna Andersson"
+          />
+
+          <ModalField id="edit-consultant-role" label="Default role">
+            <Select
+              key={`role-${optionsReady}-${roleId}`}
+              id="edit-consultant-role"
+              value={roleId}
+              onValueChange={setRoleId}
+              placeholder="Select role"
+              variant="modal"
+              options={(() => {
+                const base = roles.map((r) => ({ value: r.id, label: r.name }));
+                if (roleId && consultant.roleName && !base.some((o) => o.value === roleId)) {
+                  return [{ value: roleId, label: consultant.roleName }, ...base];
+                }
+                return base;
+              })()}
+              triggerClassName={modalSelectTriggerClass}
             />
-          </div>
+          </ModalField>
 
-          <Select
-            key={`role-${optionsReady}-${roleId}`}
-            id="edit-consultant-role"
-            label="Default role"
-            value={roleId}
-            onValueChange={setRoleId}
-            placeholder="Select role"
-            variant="modal"
-            options={(() => {
-              const base = roles.map((r) => ({ value: r.id, label: r.name }));
-              if (roleId && consultant.roleName && !base.some((o) => o.value === roleId)) {
-                return [{ value: roleId, label: consultant.roleName }, ...base];
-              }
-              return base;
-            })()}
-            triggerClassName={modalSelectTriggerClass}
+          <ModalTextInput
+            id="edit-consultant-email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="anna@company.com"
           />
 
-          <div>
-            <label
-              htmlFor="edit-consultant-email"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Email
-            </label>
-            <input
-              id="edit-consultant-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="anna@company.com"
-              className={`mt-1 ${modalInputClass}`}
+          <ModalField id="edit-consultant-calendar" label="Calendar">
+            <Select
+              key={`calendar-${optionsReady}-${calendarId}`}
+              id="edit-consultant-calendar"
+              value={calendarId}
+              onValueChange={setCalendarId}
+              placeholder="Select calendar"
+              variant="modal"
+              options={(() => {
+                const base = calendars.map((c) => ({
+                  value: c.id,
+                  label: `${c.name} (${c.hours_per_week}h/week)`,
+                }));
+                if (calendarId && consultant.calendarName && !base.some((o) => o.value === calendarId)) {
+                  return [{ value: calendarId, label: consultant.calendarName }, ...base];
+                }
+                return base;
+              })()}
+              triggerClassName={modalSelectTriggerClass}
             />
-          </div>
+          </ModalField>
 
-          <Select
-            key={`calendar-${optionsReady}-${calendarId}`}
-            id="edit-consultant-calendar"
-            label="Calendar"
-            value={calendarId}
-            onValueChange={setCalendarId}
-            placeholder="Select calendar"
-            variant="modal"
-            options={(() => {
-              const base = calendars.map((c) => ({
-                value: c.id,
-                label: `${c.name} (${c.hours_per_week}h/week)`,
-              }));
-              if (calendarId && consultant.calendarName && !base.some((o) => o.value === calendarId)) {
-                return [{ value: calendarId, label: consultant.calendarName }, ...base];
-              }
-              return base;
-            })()}
-            triggerClassName={modalSelectTriggerClass}
-          />
+          <ModalField id="edit-consultant-work-percentage" label="Capacity (%)">
+            <Select
+              id="edit-consultant-work-percentage"
+              value={String(workPercentage)}
+              onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
+              placeholder="Select"
+              variant="modal"
+              options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
+                value: String(p),
+                label: `${p}%`,
+              }))}
+              triggerClassName={modalSelectTriggerClass}
+            />
+          </ModalField>
 
-          <Select
-            id="edit-consultant-work-percentage"
-            label="Capacity (%)"
-            value={String(workPercentage)}
-            onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
-            placeholder="Select"
-            variant="modal"
-            options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
-              value: String(p),
-              label: `${p}%`,
-            }))}
-            triggerClassName={modalSelectTriggerClass}
-          />
+          <ModalField id="edit-consultant-overhead" label="Overhead (%)">
+            <Select
+              id="edit-consultant-overhead"
+              value={String(overheadPercentage)}
+              onValueChange={(v) => setOverheadPercentage(parseInt(v, 10))}
+              placeholder="Select"
+              variant="modal"
+              options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
+                value: String(p),
+                label: `${p}%`,
+              }))}
+              triggerClassName={modalSelectTriggerClass}
+            />
+          </ModalField>
 
-          <Select
-            id="edit-consultant-overhead"
-            label="Overhead (%)"
-            value={String(overheadPercentage)}
-            onValueChange={(v) => setOverheadPercentage(parseInt(v, 10))}
-            placeholder="Select"
-            variant="modal"
-            options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
-              value: String(p),
-              label: `${p}%`,
-            }))}
-            triggerClassName={modalSelectTriggerClass}
-          />
-
-          <Select
-            id="edit-consultant-team"
-            label="Team (optional)"
-            value={teamId ?? ""}
-            onValueChange={(v) => setTeamId(v ? v : null)}
-            placeholder="No team"
-            variant="modal"
-            options={[
-              { value: "", label: "No team" },
-              ...(teamId && consultant.teamName && !teams.some((t) => t.id === teamId)
-                ? [{ value: teamId, label: consultant.teamName }]
-                : []),
-              ...teams.map((t) => ({ value: t.id, label: t.name })),
-            ]}
-            triggerClassName={modalSelectTriggerClass}
-          />
+          <ModalField id="edit-consultant-team" label="Team (optional)">
+            <Select
+              id="edit-consultant-team"
+              value={teamId ?? ""}
+              onValueChange={(v) => setTeamId(v ? v : null)}
+              placeholder="No team"
+              variant="modal"
+              options={[
+                { value: "", label: "No team" },
+                ...(teamId && consultant.teamName && !teams.some((t) => t.id === teamId)
+                  ? [{ value: teamId, label: consultant.teamName }]
+                  : []),
+                ...teams.map((t) => ({ value: t.id, label: t.name })),
+              ]}
+              triggerClassName={modalSelectTriggerClass}
+            />
+          </ModalField>
 
           <Switch
             id="edit-consultant-external"
@@ -333,11 +305,12 @@ export function EditConsultantModal({
           />
         </form>
 
-        <div className="mt-6 flex items-center justify-between gap-2">
+        <div className="mt-4 flex items-center justify-between gap-2">
           {isAdmin ? (
             <Button
               type="button"
               variant="dangerSecondary"
+              size="sm"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={submitting || deleting}
             >
@@ -347,11 +320,17 @@ export function EditConsultantModal({
             <span />
           )}
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={handleClose}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button
               type="submit"
+              size="sm"
               form="edit-consultant-form"
               disabled={submitting || deleting}
             >
@@ -359,7 +338,7 @@ export function EditConsultantModal({
             </Button>
           </div>
         </div>
-      </div>
+      </Dialog>
 
       {isAdmin && (
         <ConfirmModal
@@ -372,6 +351,6 @@ export function EditConsultantModal({
           onConfirm={handleDelete}
         />
       )}
-    </div>
+    </>
   );
 }

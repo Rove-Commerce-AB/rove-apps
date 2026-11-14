@@ -44,6 +44,16 @@
   --color-nav-active: var(--color-nav-active);
   --color-nav-active-accent: var(--color-nav-active-accent);
   --color-nav-hover: var(--color-nav-hover);
+  --color-app-planner: var(--color-app-planner);
+  --color-app-planner-subtle: var(--color-app-planner-subtle);
+  --color-app-work: var(--color-app-work);
+  --color-app-work-subtle: var(--color-app-work-subtle);
+  --color-app-time-report: var(--color-app-time-report);
+  --color-app-time-report-subtle: var(--color-app-time-report-subtle);
+  --color-app-support: var(--color-app-support);
+  --color-app-support-subtle: var(--color-app-support-subtle);
+  --color-app-insights: var(--color-app-insights);
+  --color-app-insights-subtle: var(--color-app-insights-subtle);
   --color-surface-page: var(--color-surface-page);
   --color-surface-default: var(--color-surface-default);
   --color-surface-subtle: var(--color-surface-subtle);
@@ -112,7 +122,7 @@ body {
 /* Interactive UI controls should always communicate clickability on hover. */
 a:hover,
 a[href]:hover,
-button:not(:disabled):hover,
+button:not(:disabled):not([aria-disabled="true"]):hover,
 [role="button"]:not([aria-disabled="true"]):hover,
 [role="tab"]:not([aria-disabled="true"]):hover,
 [aria-pressed]:not([aria-disabled="true"]):hover {

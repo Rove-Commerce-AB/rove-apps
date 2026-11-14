@@ -68,6 +68,7 @@ export function HomeDashboard({ data }: Props) {
             title="Time report"
             href={ROUTES.timeReportOverview}
             icon={Clock}
+            brand="time_report"
             description={`ISO week ${timeReport.week}`}
           >
             <div className="space-y-4">
@@ -131,6 +132,7 @@ export function HomeDashboard({ data }: Props) {
             title="Rove Work"
             href={ROUTES.workOverview}
             icon={Briefcase}
+            brand="work"
             description={
               work.issues.length > 0
                 ? `${work.issues.length} open issue${work.issues.length === 1 ? "" : "s"} assigned to you`

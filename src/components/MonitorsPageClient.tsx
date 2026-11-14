@@ -3,6 +3,8 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import { CustomerFilter } from "@/components/CustomerFilter";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
 import { MonitorFormDrawer } from "@/components/MonitorFormDrawer";
 import { MonitorGroupList } from "@/components/MonitorGroupList";
 import { MonitorsIncidentExportControls } from "@/components/MonitorsIncidentExportControls";
@@ -20,8 +22,27 @@ import type {
   Monitor,
   SlackNotificationOption,
 } from "@/lib/monitors";
+import { statusLabel, type MonitorTone } from "@/lib/monitorStatus";
+import type { CustomerFilterOption } from "@/lib/customerFilter";
+
+const STATUS_FILTER_OPTIONS: { id: MonitorTone; name: string }[] = [
+  { id: "down", name: statusLabel("down") },
+  { id: "operational", name: statusLabel("operational") },
+  { id: "paused", name: statusLabel("paused") },
+  { id: "unknown", name: statusLabel("unknown") },
+];
 
 type CustomerOption = { id: string; name: string };
+
+export type MonitorsCustomerFilterProps = {
+  customers: CustomerFilterOption[];
+  value: string[];
+  basePath: string;
+  cookieName: string;
+  hideWhenSingle?: boolean;
+  queryKey?: string;
+};
+
 type Props = {
   monitors: Monitor[];
   customers: CustomerOption[];
@@ -31,6 +52,8 @@ type Props = {
   fixedCustomerId?: string;
   title?: string;
   description?: string;
+  customerFilter?: MonitorsCustomerFilterProps;
+  /** @deprecated Prefer customerFilter so Status merges into one menu. */
   toolbar?: ReactNode;
 };
 
@@ -71,16 +94,26 @@ export function MonitorsPageClient({
   fixedCustomerId,
   title = "Monitors",
   description = "Manage HTTP monitors and their check settings.",
+  customerFilter,
   toolbar,
 }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [downOnly, setDownOnly] = useState(false);
+  const [statusFilterIds, setStatusFilterIds] = useState<string[]>([]);
   const [editing, setEditing] = useState<Monitor | "new" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Monitor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const canMutate = !readOnly;
+
+  const statusFilterSection = {
+    id: "status",
+    label: "Status",
+    allLabel: "All statuses",
+    options: STATUS_FILTER_OPTIONS,
+    selectedIds: statusFilterIds,
+    onChange: setStatusFilterIds,
+  };
 
   function openForm(target: Monitor | "new") {
     if (!canMutate) return;
@@ -143,28 +176,31 @@ export function MonitorsPageClient({
       <div>
         <ListTableToolbar
           leading={
-            <div className="flex flex-wrap items-center gap-3">
-              <ListSearchInput
-                id="monitor-search"
-                placeholder="Search monitors…"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                aria-label="Search monitors"
-              />
-              <label className="inline-flex h-7 items-center gap-2 text-[13px] text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={downOnly}
-                  onChange={(event) => setDownOnly(event.target.checked)}
-                />
-                Down only
-              </label>
-            </div>
+            <ListSearchInput
+              id="monitor-search"
+              placeholder="Search monitors…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              aria-label="Search monitors"
+            />
           }
           trailing={
             <div className="contents">
               <MonitorsIncidentExportControls customerId={fixedCustomerId} />
-              {toolbar}
+              {customerFilter ? (
+                <CustomerFilter
+                  {...customerFilter}
+                  extraSections={[statusFilterSection]}
+                />
+              ) : (
+                <>
+                  {toolbar}
+                  <ListFilterMenu
+                    ariaLabel="Filter monitors"
+                    sections={[statusFilterSection]}
+                  />
+                </>
+              )}
             </div>
           }
         />
@@ -172,7 +208,7 @@ export function MonitorsPageClient({
           <MonitorGroupList
             monitors={monitors}
             search={search}
-            downOnly={downOnly}
+            statusFilterIds={statusFilterIds}
             canMutate={canMutate}
             pending={pending}
             onEdit={(monitor) => openForm(monitor)}

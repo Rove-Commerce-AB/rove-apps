@@ -10,7 +10,8 @@ import {
   type DragEvent,
 } from "react";
 import { ArrowRight } from "lucide-react";
-import { Button, ConfirmModal, IconButton } from "@/components/ui";
+import { Button, ConfirmModal, Dialog, IconButton } from "@/components/ui";
+import { WorkScopeUnlockBanner } from "./WorkScopeUnlockBanner";
 import {
   addWorkIssueAssigneeAction,
   closeWorkSprintAction,
@@ -135,6 +136,35 @@ export function WorkSprintView({
   const [unlockScopeIssueId, setUnlockScopeIssueId] = useState<string | null>(
     null
   );
+  const [unlockScopeBannerOpen, setUnlockScopeBannerOpen] = useState(false);
+  const unlockScopeExitTimerRef = useRef<number | null>(null);
+
+  function clearUnlockScopeExitTimer() {
+    if (unlockScopeExitTimerRef.current != null) {
+      window.clearTimeout(unlockScopeExitTimerRef.current);
+      unlockScopeExitTimerRef.current = null;
+    }
+  }
+
+  function showUnlockScopeBanner(issueId: string) {
+    clearUnlockScopeExitTimer();
+    setUnlockScopeIssueId(issueId);
+    setUnlockScopeBannerOpen(false);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setUnlockScopeBannerOpen(true);
+      });
+    });
+  }
+
+  function dismissUnlockScopeBanner() {
+    clearUnlockScopeExitTimer();
+    setUnlockScopeBannerOpen(false);
+    unlockScopeExitTimerRef.current = window.setTimeout(() => {
+      setUnlockScopeIssueId(null);
+      unlockScopeExitTimerRef.current = null;
+    }, 220);
+  }
   const [deleteSprintId, setDeleteSprintId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editSprintId, setEditSprintId] = useState<string | null>(null);
@@ -786,8 +816,15 @@ export function WorkSprintView({
             onEstimateSizeChange={commitEstimateSize}
             onScopeApproveToggle={(issueId, approved) => {
               if (approved) commitScopeApproved(issueId, true);
-              else setUnlockScopeIssueId(issueId);
+              else showUnlockScopeBanner(issueId);
             }}
+            unlockScopeIssueId={unlockScopeIssueId}
+            unlockScopeBannerOpen={unlockScopeBannerOpen}
+            onConfirmUnlockScope={(issueId) => {
+              dismissUnlockScopeBanner();
+              commitScopeApproved(issueId, false);
+            }}
+            onDismissUnlockScope={dismissUnlockScopeBanner}
             onTypeChange={commitType}
             onSetOwner={commitOwner}
             onAddAssignee={commitAddAssignee}
@@ -847,8 +884,15 @@ export function WorkSprintView({
             onEstimateSizeChange={commitEstimateSize}
             onScopeApproveToggle={(issueId, approved) => {
               if (approved) commitScopeApproved(issueId, true);
-              else setUnlockScopeIssueId(issueId);
+              else showUnlockScopeBanner(issueId);
             }}
+            unlockScopeIssueId={unlockScopeIssueId}
+            unlockScopeBannerOpen={unlockScopeBannerOpen}
+            onConfirmUnlockScope={(issueId) => {
+              dismissUnlockScopeBanner();
+              commitScopeApproved(issueId, false);
+            }}
+            onDismissUnlockScope={dismissUnlockScopeBanner}
             onTypeChange={commitType}
             onSetOwner={commitOwner}
             onAddAssignee={commitAddAssignee}
@@ -889,176 +933,182 @@ export function WorkSprintView({
         </div>
       </div>
 
-      {createDialogOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-bg-default p-5 shadow-lg">
-            <h3 className="text-heading-s text-text-primary">
-              {sprints.length === 0
-                ? "Create sprint"
-                : upcomingSprints.length > 0
-                  ? "Plan another sprint"
-                  : "Plan next sprint"}
-            </h3>
-            <p className="mt-1 text-sm text-text-secondary">
-              Creates a planned sprint. Start it later from the chip.
-            </p>
-            <label className="mt-4 block space-y-1.5">
-              <span className="text-sm font-medium text-text-primary">
-                Starts on
-              </span>
-              <input
-                type="date"
-                value={planStartsOn}
-                onChange={(event) => setPlanStartsOn(event.target.value)}
-                aria-label="Sprint start date"
-                className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm tabular-nums text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal"
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        title={
+          sprints.length === 0
+            ? "Create sprint"
+            : upcomingSprints.length > 0
+              ? "Plan another sprint"
+              : "Plan next sprint"
+        }
+      >
+        <div className="modal-form-discreet mt-4 space-y-3">
+          <p className="text-sm text-text-secondary">
+            Creates a planned sprint. Start it later from the chip.
+          </p>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-text-primary">
+              Starts on
+            </span>
+            <input
+              type="date"
+              value={planStartsOn}
+              onChange={(event) => setPlanStartsOn(event.target.value)}
+              aria-label="Sprint start date"
+              className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm tabular-nums text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal"
+            />
+          </label>
+          <div className="mt-4 space-y-1.5">
+            <span className="text-sm font-medium text-text-primary">
+              Length
+            </span>
+            <div
+              role="group"
+              aria-label="Sprint length in weeks"
+              className="flex h-9 items-stretch gap-0.5 rounded-lg border border-border-subtle bg-bg-muted/50 p-0.5"
+            >
+              {LENGTH_WEEK_PRESETS.map((weeks) => {
+                const selected = planLengthWeeks === weeks;
+                return (
+                  <button
+                    key={weeks}
+                    type="button"
+                    aria-pressed={selected}
+                    className={`min-w-0 flex-1 rounded-md text-[13px] font-medium tabular-nums transition-colors ${
+                      selected
+                        ? "bg-bg-default text-text-primary shadow-sm ring-1 ring-border-subtle"
+                        : "text-text-secondary hover:bg-bg-default/70 hover:text-text-primary"
+                    }`}
+                    onClick={() => setPlanLengthWeeks(weeks)}
+                  >
+                    {weeks}w
+                  </button>
+                );
+              })}
+              <span
+                className="mx-0.5 my-1.5 w-px shrink-0 bg-border-subtle"
+                aria-hidden
               />
-            </label>
-            <div className="mt-4 space-y-1.5">
-              <span className="text-sm font-medium text-text-primary">
-                Length
-              </span>
-              <div
-                role="group"
-                aria-label="Sprint length in weeks"
-                className="flex h-9 items-stretch gap-0.5 rounded-lg border border-border-subtle bg-bg-muted/50 p-0.5"
-              >
-                {LENGTH_WEEK_PRESETS.map((weeks) => {
-                  const selected = planLengthWeeks === weeks;
-                  return (
-                    <button
-                      key={weeks}
-                      type="button"
-                      aria-pressed={selected}
-                      className={`min-w-0 flex-1 rounded-md text-[13px] font-medium tabular-nums transition-colors ${
-                        selected
-                          ? "bg-bg-default text-text-primary shadow-sm ring-1 ring-border-subtle"
-                          : "text-text-secondary hover:bg-bg-default/70 hover:text-text-primary"
-                      }`}
-                      onClick={() => setPlanLengthWeeks(weeks)}
-                    >
-                      {weeks}w
-                    </button>
-                  );
-                })}
-                <span
-                  className="mx-0.5 my-1.5 w-px shrink-0 bg-border-subtle"
-                  aria-hidden
+              <label className="inline-flex min-w-[3.75rem] shrink-0 items-center justify-center gap-0.5 rounded-md bg-bg-default px-1.5 text-text-primary shadow-sm ring-1 ring-border-subtle focus-within:ring-brand-signal">
+                <span className="sr-only">Custom length in weeks</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={planLengthWeeks}
+                  aria-label="Custom length in weeks"
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (!Number.isFinite(value)) return;
+                    setPlanLengthWeeks(
+                      Math.max(1, Math.min(12, Math.round(value)))
+                    );
+                  }}
+                  onFocus={(event) => event.currentTarget.select()}
+                  className="w-6 border-0 bg-transparent p-0 text-center text-[13px] font-medium tabular-nums text-text-primary placeholder:text-text-muted focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
-                <label className="inline-flex min-w-[3.75rem] shrink-0 items-center justify-center gap-0.5 rounded-md bg-bg-default px-1.5 text-text-primary shadow-sm ring-1 ring-border-subtle focus-within:ring-brand-signal">
-                  <span className="sr-only">Custom length in weeks</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={planLengthWeeks}
-                    aria-label="Custom length in weeks"
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
-                      if (!Number.isFinite(value)) return;
-                      setPlanLengthWeeks(
-                        Math.max(1, Math.min(12, Math.round(value)))
-                      );
-                    }}
-                    onFocus={(event) => event.currentTarget.select()}
-                    className="w-6 border-0 bg-transparent p-0 text-center text-[13px] font-medium tabular-nums text-text-primary placeholder:text-text-muted focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
-                  <span className="text-[12px] font-normal text-text-tertiary">
-                    w
-                  </span>
-                </label>
-              </div>
-              <p className="text-caption text-text-tertiary">
-                {planStartsOn
-                  ? `${planStartsOn} → ${addDays(planStartsOn, planLengthWeeks * 7 - 1)}`
-                  : "Pick a start date"}
-              </p>
+                <span className="text-[12px] font-normal text-text-tertiary">
+                  w
+                </span>
+              </label>
             </div>
-            <label className="mt-4 block space-y-1.5">
-              <span className="text-sm font-medium text-text-primary">
-                Name
-              </span>
-              <input
-                type="text"
-                value={planTitleDraft}
-                maxLength={WORK_SPRINT_TITLE_MAX_LENGTH}
-                onChange={(event) => setPlanTitleDraft(event.target.value)}
-                placeholder="Optional subtitle"
-                aria-label="Sprint name"
-                className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-brand-signal"
-              />
-            </label>
-            <label className="mt-3 block space-y-1.5">
-              <span className="text-sm font-medium text-text-primary">
-                Capacity (h)
-              </span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={planCapacityDraft}
-                onChange={(event) => setPlanCapacityDraft(event.target.value)}
-                placeholder="Optional"
-                aria-label="Sprint capacity in hours"
-                className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm tabular-nums text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-brand-signal"
-              />
-            </label>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={pending}
-                onClick={() => setCreateDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending || planLengthWeeks < 1 || !planStartsOn}
-                onClick={() => {
-                  const capacity = parseCapacityInput(planCapacityDraft);
-                  if (capacity === false) {
-                    onError("Capacity must be a number of hours");
-                    return;
-                  }
-                  if (!/^\d{4}-\d{2}-\d{2}$/.test(planStartsOn)) {
-                    onError("Pick a valid start date");
-                    return;
-                  }
-                  const startsOn = planStartsOn;
-                  const title = clampWorkSprintTitle(planTitleDraft);
-                  setCreateDialogOpen(false);
-                  run(async () => {
-                    const result = await createWorkSprintAction(board.id, {
-                      as: "next",
-                      startsOn,
-                      lengthDays: planLengthWeeks * 7,
-                      capacityHours: capacity,
-                      title,
-                    });
-                    if (!result.ok) return result;
-                    onSprintsChange([...sprints, result.sprint]);
-                    setViewingId(result.sprint.id);
-                    return { ok: true };
+            <p className="text-caption text-text-tertiary">
+              {planStartsOn
+                ? `${planStartsOn} → ${addDays(planStartsOn, planLengthWeeks * 7 - 1)}`
+                : "Pick a start date"}
+            </p>
+          </div>
+          <label className="mt-4 block space-y-1.5">
+            <span className="text-sm font-medium text-text-primary">
+              Name
+            </span>
+            <input
+              type="text"
+              value={planTitleDraft}
+              maxLength={WORK_SPRINT_TITLE_MAX_LENGTH}
+              onChange={(event) => setPlanTitleDraft(event.target.value)}
+              placeholder="Optional subtitle"
+              aria-label="Sprint name"
+              className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-brand-signal"
+            />
+          </label>
+          <label className="mt-3 block space-y-1.5">
+            <span className="text-sm font-medium text-text-primary">
+              Capacity (h)
+            </span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={planCapacityDraft}
+              onChange={(event) => setPlanCapacityDraft(event.target.value)}
+              placeholder="Optional"
+              aria-label="Sprint capacity in hours"
+              className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-sm tabular-nums text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-brand-signal"
+            />
+          </label>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={pending}
+              onClick={() => setCreateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending || planLengthWeeks < 1 || !planStartsOn}
+              onClick={() => {
+                const capacity = parseCapacityInput(planCapacityDraft);
+                if (capacity === false) {
+                  onError("Capacity must be a number of hours");
+                  return;
+                }
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(planStartsOn)) {
+                  onError("Pick a valid start date");
+                  return;
+                }
+                const startsOn = planStartsOn;
+                const title = clampWorkSprintTitle(planTitleDraft);
+                setCreateDialogOpen(false);
+                run(async () => {
+                  const result = await createWorkSprintAction(board.id, {
+                    as: "next",
+                    startsOn,
+                    lengthDays: planLengthWeeks * 7,
+                    capacityHours: capacity,
+                    title,
                   });
-                }}
-              >
-                Create sprint
-              </Button>
-            </div>
+                  if (!result.ok) return result;
+                  onSprintsChange([...sprints, result.sprint]);
+                  setViewingId(result.sprint.id);
+                  return { ok: true };
+                });
+              }}
+            >
+              Create sprint
+            </Button>
           </div>
         </div>
-      ) : null}
+      </Dialog>
 
       {editSprint ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-bg-default p-5 shadow-lg">
-            <h3 className="text-heading-s text-text-primary">Edit sprint</h3>
-            <p className="mt-1 text-sm text-text-secondary">
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditSprintId(null);
+          }}
+          title="Edit sprint"
+        >
+          <div className="modal-form-discreet mt-4 space-y-3">
+            <p className="text-sm text-text-secondary">
               Sprint {editSprint.number}
             </p>
-            <label className="mt-4 block space-y-1.5">
+            <label className="block space-y-1.5">
               <span className="text-sm font-medium text-text-primary">
                 Name
               </span>
@@ -1163,23 +1213,8 @@ export function WorkSprintView({
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       ) : null}
-
-      <ConfirmModal
-        isOpen={unlockScopeIssueId != null}
-        title="Unlock scope?"
-        message="You can change size and scope, then approve again."
-        confirmLabel="Unlock"
-        variant="danger"
-        onClose={() => setUnlockScopeIssueId(null)}
-        onConfirm={() => {
-          if (!unlockScopeIssueId) return;
-          const issueId = unlockScopeIssueId;
-          setUnlockScopeIssueId(null);
-          commitScopeApproved(issueId, false);
-        }}
-      />
 
       <ConfirmModal
         isOpen={deleteSprintId != null}
@@ -1218,10 +1253,9 @@ export function WorkSprintView({
       />
 
       {closeOpen && current ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-xl bg-bg-default p-5 shadow-lg">
-            <h3 className="text-heading-s text-text-primary">Close sprint</h3>
-            <p className="mt-1 text-sm text-text-secondary">
+        <Dialog open onOpenChange={setCloseOpen} title="Close sprint">
+          <div className="mt-4">
+            <p className="text-sm text-text-secondary">
               {unfinished.length > 0
                 ? `${unfinished.length} unfinished issue${
                     unfinished.length === 1 ? "" : "s"
@@ -1233,6 +1267,7 @@ export function WorkSprintView({
                 <>
                   <Button
                     type="button"
+                    size="sm"
                     disabled={pending || !next}
                     onClick={() => {
                       setCloseOpen(false);
@@ -1245,6 +1280,7 @@ export function WorkSprintView({
                   </Button>
                   <Button
                     type="button"
+                    size="sm"
                     variant="secondary"
                     disabled={pending}
                     onClick={() => {
@@ -1258,6 +1294,7 @@ export function WorkSprintView({
                   </Button>
                   <Button
                     type="button"
+                    size="sm"
                     variant="secondary"
                     disabled={pending}
                     onClick={() => {
@@ -1273,6 +1310,7 @@ export function WorkSprintView({
               ) : (
                 <Button
                   type="button"
+                  size="sm"
                   disabled={pending}
                   onClick={() => {
                     setCloseOpen(false);
@@ -1286,6 +1324,7 @@ export function WorkSprintView({
               )}
               <Button
                 type="button"
+                size="sm"
                 variant="secondary"
                 disabled={pending}
                 onClick={() => setCloseOpen(false)}
@@ -1299,7 +1338,7 @@ export function WorkSprintView({
               </p>
             ) : null}
           </div>
-        </div>
+        </Dialog>
       ) : null}
     </div>
   );
@@ -1323,6 +1362,10 @@ function SprintColumn({
   onEstimateChange,
   onEstimateSizeChange,
   onScopeApproveToggle,
+  unlockScopeIssueId = null,
+  unlockScopeBannerOpen = false,
+  onConfirmUnlockScope,
+  onDismissUnlockScope,
   onTypeChange,
   onSetOwner,
   onAddAssignee,
@@ -1359,6 +1402,10 @@ function SprintColumn({
     value: WorkTshirtSize | null
   ) => void;
   onScopeApproveToggle?: (issueId: string, approved: boolean) => void;
+  unlockScopeIssueId?: string | null;
+  unlockScopeBannerOpen?: boolean;
+  onConfirmUnlockScope?: (issueId: string) => void;
+  onDismissUnlockScope?: () => void;
   onTypeChange: (issueId: string, issueType: WorkIssueType) => void;
   onSetOwner: (issueId: string, person: WorkPerson | null) => void;
   onAddAssignee: (issueId: string, person: WorkPerson) => void;
@@ -1431,133 +1478,145 @@ function SprintColumn({
     const canDrag = draggableCards && !pending;
     const isDragging = draggingIssueId === issue.id;
     const tone = statusTones[issue.status];
+    const showUnlockBanner = unlockScopeIssueId === issue.id;
     return (
-      <li
-        key={key}
-        data-sprint-issue-id={issue.id}
-        draggable={canDrag}
-        role="button"
-        tabIndex={0}
-        aria-label={`Open ${issue.key}`}
-        style={
-          tone
-            ? { borderLeftColor: workStatusBorderColor(tone) }
-            : undefined
-        }
-        className={`flex cursor-pointer items-stretch gap-0.5 rounded-lg border border-l-4 border-border-subtle bg-bg-default transition-opacity ${
-          canDrag ? "select-none" : ""
-        } ${isDragging ? "opacity-35" : ""}`}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onOpenIssue(issue.id);
+      <Fragment key={key}>
+        <li
+          data-sprint-issue-id={issue.id}
+          draggable={canDrag}
+          role="button"
+          tabIndex={0}
+          aria-label={`Open ${issue.key}`}
+          style={
+            tone
+              ? { borderLeftColor: workStatusBorderColor(tone) }
+              : undefined
           }
-        }}
-        onClick={(event) => {
-          if (skipRowClickRef.current) return;
-          if (isRowControlTarget(event.target)) return;
-          onOpenIssue(issue.id);
-        }}
-        onDragStart={
-          canDrag
-            ? (event) => {
-                if (isRowControlTarget(event.target)) {
-                  event.preventDefault();
-                  return;
+          className={`flex cursor-pointer items-stretch gap-0.5 rounded-lg border border-l-4 border-border-subtle bg-bg-default transition-opacity ${
+            canDrag ? "select-none" : ""
+          } ${isDragging ? "opacity-35" : ""}`}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onOpenIssue(issue.id);
+            }
+          }}
+          onClick={(event) => {
+            if (skipRowClickRef.current) return;
+            if (isRowControlTarget(event.target)) return;
+            onOpenIssue(issue.id);
+          }}
+          onDragStart={
+            canDrag
+              ? (event) => {
+                  if (isRowControlTarget(event.target)) {
+                    event.preventDefault();
+                    return;
+                  }
+                  skipRowClickRef.current = true;
+                  onDragStart(event, issue.id);
                 }
-                skipRowClickRef.current = true;
-                onDragStart(event, issue.id);
-              }
-            : undefined
-        }
-        onDragEnd={
-          canDrag
-            ? () => {
-                onDragEnd();
-                window.setTimeout(() => {
-                  skipRowClickRef.current = false;
-                }, 0);
-              }
-            : undefined
-        }
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-1 py-2 pr-1 pl-2">
-          <span data-no-row-drag className="shrink-0">
-            <WorkCardTypeBadge
-              issueType={issue.issueType}
-              disabled={estimateDisabled}
-              onChange={(issueType) => onTypeChange(issue.id, issueType)}
-            />
-          </span>
-          <div className="flex min-w-0 flex-1 items-start gap-1">
-            <span className="min-w-0 flex-1 text-left">
-              <span className="flex min-w-0 items-center gap-2 text-sm leading-6 text-text-primary">
-                <span className="shrink-0 tabular-nums text-text-tertiary">
-                  {issue.key}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{issue.title}</span>
-              </span>
-              {blockedIds.has(issue.id) ? (
-                <span className="mt-0.5 block text-caption leading-snug text-danger">
-                  Blocked by work outside this sprint or not done
-                </span>
-              ) : null}
-            </span>
-            <span data-no-row-drag className="shrink-0">
-              <WorkCardPreDeployHint
-                actions={issue.preDeployActions}
-                onOpen={() => onOpenIssue(issue.id, { tab: "pre-deploy" })}
-              />
-            </span>
-          </div>
-        </div>
-        <div
-          data-no-row-drag
-          className="flex shrink-0 items-center gap-1.5 py-2 pr-2"
+              : undefined
+          }
+          onDragEnd={
+            canDrag
+              ? () => {
+                  onDragEnd();
+                  window.setTimeout(() => {
+                    skipRowClickRef.current = false;
+                  }, 0);
+                }
+              : undefined
+          }
         >
-          <WorkCardPeople
-            owner={issue.owner}
-            assignees={issue.assignees}
-            people={board?.members ?? []}
-            disabled={estimateDisabled}
-            onSetOwner={(person) => onSetOwner(issue.id, person)}
-            onAddAssignee={(person) => onAddAssignee(issue.id, person)}
-            onRemoveAssignee={(person) => onRemoveAssignee(issue.id, person)}
-          />
-          {/* Fixed slot so edit mode does not push avatars left. */}
-          {board?.showEstimates !== false ? (
-            <div className="flex min-w-14 shrink-0 items-center justify-end gap-1">
-              <WorkCardEstimate
-                estimateHours={issue.estimateHours}
-                estimateSize={issue.estimateSize}
-                estimateUnit={board?.estimateUnit ?? "hours"}
-                billingCurrency={board?.billingCurrency ?? "SEK"}
-                disabled={estimateDisabled || issue.scopeApproved}
-                onError={onError}
-                onChange={(value) => onEstimateChange(issue.id, value)}
-                onChangeSize={(value) =>
-                  onEstimateSizeChange?.(issue.id, value)
-                }
+          <div className="flex min-w-0 flex-1 items-center gap-1 py-2 pr-1 pl-2">
+            <span data-no-row-drag className="shrink-0">
+              <WorkCardTypeBadge
+                issueType={issue.issueType}
+                disabled={estimateDisabled}
+                onChange={(issueType) => onTypeChange(issue.id, issueType)}
               />
-              {(workScopeApprovalEnabled({
-                estimateUnit: board?.estimateUnit ?? "hours",
-                fixedPriceEnabled: board?.fixedPriceEnabled === true,
-              }) ||
-                issue.scopeApproved) &&
-              onScopeApproveToggle ? (
-                <WorkScopeApproveButton
-                  approved={issue.scopeApproved}
-                  canApprove={issue.estimateSize != null}
+            </span>
+            <div className="flex min-w-0 flex-1 items-start gap-1">
+              <span className="min-w-0 flex-1 text-left">
+                <span className="flex min-w-0 items-center gap-2 text-sm leading-6 text-text-primary">
+                  <span className="shrink-0 tabular-nums text-text-tertiary">
+                    {issue.key}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+                </span>
+                {blockedIds.has(issue.id) ? (
+                  <span className="mt-0.5 block text-caption leading-snug text-danger">
+                    Blocked by work outside this sprint or not done
+                  </span>
+                ) : null}
+              </span>
+              <span data-no-row-drag className="shrink-0">
+                <WorkCardPreDeployHint
+                  actions={issue.preDeployActions}
+                  onOpen={() => onOpenIssue(issue.id, { tab: "pre-deploy" })}
+                />
+              </span>
+            </div>
+          </div>
+          <div
+            data-no-row-drag
+            className="flex shrink-0 items-center gap-1.5 py-2 pr-2"
+          >
+            <WorkCardPeople
+              owner={issue.owner}
+              assignees={issue.assignees}
+              people={board?.members ?? []}
+              disabled={estimateDisabled}
+              onSetOwner={(person) => onSetOwner(issue.id, person)}
+              onAddAssignee={(person) => onAddAssignee(issue.id, person)}
+              onRemoveAssignee={(person) => onRemoveAssignee(issue.id, person)}
+            />
+            {/* Fixed slot so edit mode does not push avatars left. */}
+            {board?.showEstimates !== false ? (
+              <div className="flex min-w-14 shrink-0 items-center justify-end gap-1">
+                <WorkCardEstimate
+                  estimateHours={issue.estimateHours}
+                  estimateSize={issue.estimateSize}
+                  estimateUnit={board?.estimateUnit ?? "hours"}
+                  billingCurrency={board?.billingCurrency ?? "SEK"}
                   disabled={estimateDisabled}
-                  onToggle={() =>
-                    onScopeApproveToggle(issue.id, !issue.scopeApproved)
+                  locked={issue.scopeApproved}
+                  onError={onError}
+                  onChange={(value) => onEstimateChange(issue.id, value)}
+                  onChangeSize={(value) =>
+                    onEstimateSizeChange?.(issue.id, value)
                   }
                 />
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </li>
+                {(workScopeApprovalEnabled({
+                  estimateUnit: board?.estimateUnit ?? "hours",
+                  fixedPriceEnabled: board?.fixedPriceEnabled === true,
+                }) ||
+                  issue.scopeApproved) &&
+                onScopeApproveToggle ? (
+                  <WorkScopeApproveButton
+                    approved={issue.scopeApproved}
+                    canApprove={issue.estimateSize != null}
+                    disabled={estimateDisabled}
+                    onToggle={() =>
+                      onScopeApproveToggle(issue.id, !issue.scopeApproved)
+                    }
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </li>
+        {showUnlockBanner && onConfirmUnlockScope && onDismissUnlockScope ? (
+          <li className="list-none">
+            <WorkScopeUnlockBanner
+              open={unlockScopeBannerOpen}
+              onUnlock={() => onConfirmUnlockScope(issue.id)}
+              onDismiss={onDismissUnlockScope}
+            />
+          </li>
+        ) : null}
+      </Fragment>
     );
   }
 

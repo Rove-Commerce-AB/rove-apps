@@ -487,7 +487,7 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
         onOpenChange={closeHistory}
         title={editDraft ? "Edit status" : historyName || "History"}
         subtitle="Customer status"
-        contentClassName="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,32rem)] w-full max-w-[min(100vw-2rem,44rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-default p-6 shadow-xl focus:outline-none"
+        contentClassName="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,32rem)] w-full max-w-[min(100vw-2rem,44rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-default p-5 shadow-lg focus:outline-none"
         titleClassName="pr-10"
       >
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto">

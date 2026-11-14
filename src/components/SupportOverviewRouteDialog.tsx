@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Input } from "@/components/ui";
+import { Button, Dialog, ModalTextInput } from "@/components/ui";
 import type { SupportOverviewCaseItem } from "@/lib/supportOverviewCases";
 import type { SupportRouteCustomerOption } from "@/lib/supportOverviewCases";
 import {
@@ -143,7 +143,7 @@ export function SupportOverviewRouteDialog({
 
         {step === "customer" && (
           <>
-            <Input
+            <ModalTextInput
               id="route-customer-search"
               label="Customer"
               placeholder="Search customer"

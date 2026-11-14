@@ -31,7 +31,12 @@ const MENU_ITEM_DANGER =
 type Props = {
   monitors: Monitor[];
   search: string;
+  /** @deprecated Prefer statusFilterIds with `["down"]`. */
   downOnly?: boolean;
+  /** Empty = all. Values are MonitorTone ids. */
+  statusFilterIds?: string[];
+  /** Empty = all. */
+  customerFilterIds?: string[];
   /** Staff can mutate; Overview stays read-only. */
   canMutate?: boolean;
   pending?: boolean;
@@ -48,6 +53,8 @@ export function MonitorGroupList({
   monitors,
   search,
   downOnly = false,
+  statusFilterIds = [],
+  customerFilterIds = [],
   canMutate = false,
   pending = false,
   emptyLabel = "No monitors yet.",
@@ -64,16 +71,29 @@ export function MonitorGroupList({
 
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
+    const statusSet =
+      statusFilterIds.length > 0 ? new Set(statusFilterIds) : null;
+    const customerSet =
+      customerFilterIds.length > 0 ? new Set(customerFilterIds) : null;
     return monitors.filter((monitor) => {
-      if (downOnly && monitorTone(monitor) !== "down") return false;
+      const tone = monitorTone(monitor);
+      if (downOnly && tone !== "down") return false;
+      if (statusSet && !statusSet.has(tone)) return false;
+      if (customerSet && !customerSet.has(monitor.customer_id)) return false;
       if (!term) return true;
       return `${monitor.name} ${monitor.url} ${monitor.customer_name_snapshot}`
         .toLocaleLowerCase()
         .includes(term);
     });
-  }, [monitors, search, downOnly]);
+  }, [monitors, search, downOnly, statusFilterIds, customerFilterIds]);
 
   const groups = useMemo(() => buildMonitorGroups(filtered), [filtered]);
+
+  const filtersActive =
+    Boolean(search.trim()) ||
+    downOnly ||
+    statusFilterIds.length > 0 ||
+    customerFilterIds.length > 0;
 
   useEffect(() => {
     if (seeded) return;
@@ -83,9 +103,9 @@ export function MonitorGroupList({
   }, [groups, seeded]);
 
   useEffect(() => {
-    if (!search.trim() && !downOnly) return;
+    if (!filtersActive) return;
     setExpandedIds(new Set(groups.map((group) => group.customerId)));
-  }, [search, downOnly, groups]);
+  }, [filtersActive, groups]);
 
   const openMenuMonitor =
     rowMenu == null

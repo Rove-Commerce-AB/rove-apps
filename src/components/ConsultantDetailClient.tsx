@@ -11,6 +11,7 @@ import {
   DetailPageHeader,
   DetailFieldStack,
   DrawerFieldRow,
+  DrawerSection,
   DrawerSelectField,
   FieldValue,
   InlineEditFieldContainer,
@@ -75,20 +76,14 @@ type Props = {
 function ConsultantField({
   embedded,
   label,
-  variant = "field",
   children,
 }: {
   embedded: boolean;
   label: string;
-  variant?: "field" | "summary";
   children: ReactNode;
 }) {
   if (embedded) {
-    return (
-      <DrawerFieldRow label={label} variant={variant}>
-        {children}
-      </DrawerFieldRow>
-    );
+    return <DrawerFieldRow label={label}>{children}</DrawerFieldRow>;
   }
   return <DetailFieldStack label={label}>{children}</DetailFieldStack>;
 }
@@ -589,13 +584,16 @@ export function ConsultantDetailClient({
   );
 
   const calendarTimeField = (
-    <ConsultantField embedded={embedded} label="Calendar time" variant="summary">
-      <span className="text-sm font-medium tabular-nums text-text-primary">{hoursPerWeek}h</span>
+    <ConsultantField embedded={embedded} label="Calendar time">
+      <span className="text-sm tabular-nums text-text-primary">{hoursPerWeek}h</span>
     </ConsultantField>
   );
 
   const capacityField = (
-    <ConsultantField embedded={embedded} label="Capacity" variant={embedded ? "summary" : "field"}>
+    <ConsultantField
+      embedded={embedded}
+      label={embedded ? "Work %" : "Capacity"}
+    >
       <InlineEditFieldContainer
         isEditing={editingField === "workPercentage"}
         onRequestClose={commitEdit}
@@ -643,7 +641,10 @@ export function ConsultantDetailClient({
   );
 
   const overheadField = (
-    <ConsultantField embedded={embedded} label={embedded ? "Overhead" : "Overhead (%)"} variant={embedded ? "summary" : "field"}>
+    <ConsultantField
+      embedded={embedded}
+      label={embedded ? "Overhead" : "Overhead (%)"}
+    >
       <InlineEditFieldContainer
         isEditing={editingField === "overheadPercentage"}
         onRequestClose={commitEdit}
@@ -953,7 +954,11 @@ export function ConsultantDetailClient({
 
       {embedded ? (
         <div className="flex min-h-full flex-1 flex-col">
-          <div className="px-6 pt-4">
+          <DrawerSection
+            title="Planning"
+            hint="Team, role, and employment"
+            first={false}
+          >
             {hideIdentityFields ? null : nameField}
             {teamField}
             {roleField}
@@ -962,16 +967,14 @@ export function ConsultantDetailClient({
             {endDateField}
             {isAdmin ? birthDateField : null}
             {isAdmin ? employmentNumberField : null}
-          </div>
-          <div className="border-t border-border-subtle px-6">
+          </DrawerSection>
+          <DrawerSection title="Capacity">
             {calendarTimeField}
             {capacityField}
             {overheadField}
-          </div>
-          <div className="border-t border-border-subtle px-6">
             {calendarField}
             {typeField}
-          </div>
+          </DrawerSection>
           {isAdmin && !hideDelete ? (
             <div className="mt-auto border-t border-border-subtle px-6 pb-6 pt-2">
               <DetailPageDeleteFooter

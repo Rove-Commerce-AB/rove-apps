@@ -1,11 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
 import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
-import { useEscToClose } from "@/lib/useEscToClose";
-import { Button, ConfirmModal, Tabs, TabsList, TabsTrigger, TabsContent, modalInputClass } from "@/components/ui";
+import {
+  Button,
+  ConfirmModal,
+  Dialog,
+  ModalField,
+  ModalFormSection,
+  ModalNativeSelect,
+  ModalTextInput,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  modalInputClass,
+} from "@/components/ui";
 import { CustomerRatesTab } from "./CustomerRatesTab";
 import { SizePricesSection } from "./SizePricesSection";
 import type { CustomerWithDetails } from "@/types";
@@ -107,45 +118,23 @@ export function EditCustomerModal({
     setActiveTab("information");
   };
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      resetForm();
+      onClose();
+    }
   };
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen || !customer) return null;
+  if (!customer) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={handleClose}
-        aria-hidden
-      />
-      <div
-        className="relative z-10 w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-customer-title"
+    <>
+      <Dialog
+        open={isOpen}
+        onOpenChange={handleOpenChange}
+        title="Edit customer"
+        contentClassName="max-h-[90vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between">
-          <h2
-            id="edit-customer-title"
-            className="text-heading-m text-text-primary"
-          >
-            Edit customer
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
         <Tabs
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as Tab)}
@@ -155,11 +144,11 @@ export function EditCustomerModal({
             <TabsTrigger value="information">Information</TabsTrigger>
             <TabsTrigger value="rates">Hourly rates</TabsTrigger>
           </TabsList>
-          <TabsContent value="information" className="mt-6 min-h-[340px]">
+          <TabsContent value="information" className="mt-4 min-h-[340px]">
           <form
             id="edit-customer-form"
             onSubmit={handleSubmit}
-            className="modal-form-discreet mt-6 space-y-4"
+            className="modal-form-discreet space-y-3"
           >
             {error && (
               <p className="text-sm text-danger" role="alert">
@@ -167,35 +156,21 @@ export function EditCustomerModal({
               </p>
             )}
 
-            <div>
-              <label
-                htmlFor="edit-customer-name"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Company name
-              </label>
-              <input
+            <div className="space-y-3">
+              <ModalTextInput
                 id="edit-customer-name"
+                label="Company name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Company AB"
-                className={`mt-1 ${modalInputClass}`}
               />
-            </div>
 
-            <div>
-              <label
-                htmlFor="edit-customer-account-manager"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Account Manager
-              </label>
-              <select
+              <ModalNativeSelect
                 id="edit-customer-account-manager"
+                label="Account Manager"
                 value={accountManagerId}
                 onChange={(e) => setAccountManagerId(e.target.value)}
-                className={`mt-1 ${modalInputClass}`}
               >
                 <option value="">—</option>
                 {allConsultants.map((c) => (
@@ -203,66 +178,55 @@ export function EditCustomerModal({
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </ModalNativeSelect>
+
+              <label
+                htmlFor="edit-customer-is-internal"
+                className="flex items-center gap-2 text-[13px] text-text-primary"
+              >
+                <input
+                  id="edit-customer-is-internal"
+                  type="checkbox"
+                  checked={isInternal}
+                  onChange={(e) => setIsInternal(e.target.checked)}
+                />
+                Internal customer
+              </label>
             </div>
 
-            <div>
-              <label
-                htmlFor="edit-customer-color"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Color
-              </label>
-              <div className="mt-1 flex items-center gap-2">
-                <input
-                  id="edit-customer-color"
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="h-10 w-14 cursor-pointer rounded border border-form bg-transparent p-0"
-                />
-                <input
-                  type="text"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  placeholder={DEFAULT_CUSTOMER_COLOR}
-                  className={`flex-1 ${modalInputClass}`}
-                />
-              </div>
-            </div>
+            <ModalFormSection title="Brand">
+              <ModalField id="edit-customer-color" label="Color">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="edit-customer-color"
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    className="h-8 w-12 cursor-pointer rounded border border-form bg-transparent p-0"
+                  />
+                  <input
+                    type="text"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    placeholder={DEFAULT_CUSTOMER_COLOR}
+                    aria-label="Color hex value"
+                    className={`flex-1 ${modalInputClass}`}
+                  />
+                </div>
+              </ModalField>
 
-            <div>
-              <label
-                htmlFor="edit-customer-logo"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Logo URL (optional)
-              </label>
-              <input
+              <ModalTextInput
                 id="edit-customer-logo"
+                label="Logo URL (optional)"
                 type="url"
                 value={logoUrl}
                 onChange={(e) => setLogoUrl(e.target.value)}
                 placeholder="https://example.com/logo.png"
-                className={`mt-1 ${modalInputClass}`}
               />
-            </div>
-
-            <label
-              htmlFor="edit-customer-is-internal"
-              className="flex items-center gap-2 text-sm text-text-primary"
-            >
-              <input
-                id="edit-customer-is-internal"
-                type="checkbox"
-                checked={isInternal}
-                onChange={(e) => setIsInternal(e.target.checked)}
-              />
-              Internal customer
-            </label>
+            </ModalFormSection>
           </form>
           </TabsContent>
-          <TabsContent value="rates" className="mt-6 min-h-[340px]">
+          <TabsContent value="rates" className="mt-4 min-h-[340px]">
             {customer && (
               <>
                 <CustomerRatesTab
@@ -287,11 +251,12 @@ export function EditCustomerModal({
           </TabsContent>
         </Tabs>
 
-        <div className="mt-6 flex items-center justify-between gap-2">
+        <div className="mt-4 flex items-center justify-between gap-2">
           {isAdmin ? (
             <Button
               type="button"
               variant="dangerSecondary"
+              size="sm"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={submitting || deleting}
             >
@@ -301,12 +266,18 @@ export function EditCustomerModal({
             <span />
           )}
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={handleClose}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleOpenChange(false)}
+            >
               {activeTab === "rates" ? "Close" : "Cancel"}
             </Button>
             {activeTab === "information" && (
               <Button
                 type="submit"
+                size="sm"
                 form="edit-customer-form"
                 disabled={submitting || deleting}
               >
@@ -315,7 +286,7 @@ export function EditCustomerModal({
             )}
           </div>
         </div>
-      </div>
+      </Dialog>
 
       {isAdmin && (
         <ConfirmModal
@@ -328,6 +299,6 @@ export function EditCustomerModal({
           onConfirm={handleDelete}
         />
       )}
-    </div>
+    </>
   );
 }

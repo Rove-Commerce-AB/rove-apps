@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Button, Input, SideDrawer } from "@/components/ui";
+import {
+  Button,
+  CheckboxList,
+  Dialog,
+  ModalField,
+  ModalTextInput,
+  Select,
+  modalSelectTriggerClass,
+} from "@/components/ui";
 import type {
   Monitor,
   MonitorInput,
@@ -81,6 +89,7 @@ async function changeMonitor(
   throw new Error(message);
 }
 
+/** Create/edit monitor — Dialog + modal chrome (same family as Add customer/project). */
 export function MonitorFormDrawer({
   open,
   onOpenChange,
@@ -102,10 +111,7 @@ export function MonitorFormDrawer({
       setForm({
         ...emptyInput,
         customerId:
-          defaultCustomerId ??
-          fixedCustomerId ??
-          customers[0]?.id ??
-          "",
+          defaultCustomerId ?? fixedCustomerId ?? customers[0]?.id ?? "",
         slackNotificationIds: slackNotifications
           .filter((channel) => channel.default_enabled)
           .map((channel) => channel.id),
@@ -155,8 +161,8 @@ export function MonitorFormDrawer({
     min: number,
     max?: number
   ) => (
-    <Input
-      id={`monitor-drawer-${key}`}
+    <ModalTextInput
+      id={`monitor-${key}`}
       label={label}
       type="number"
       min={min}
@@ -174,62 +180,59 @@ export function MonitorFormDrawer({
   );
 
   const title = target === "new" ? "Add monitor" : "Edit monitor";
+  const subtitle =
+    target && target !== "new" ? target.customer_name_snapshot : undefined;
+
+  const customerOptions = [
+    ...(!customers.some((c) => c.id === form.customerId) && form.customerId
+      ? [
+          {
+            value: form.customerId,
+            label:
+              target !== "new" && target
+                ? target.customer_name_snapshot
+                : "Current customer",
+          },
+        ]
+      : []),
+    ...customers.map((customer) => ({
+      value: customer.id,
+      label: customer.name,
+    })),
+  ];
 
   return (
-    <SideDrawer
+    <Dialog
       open={open && target != null}
       onOpenChange={(next) => {
         if (!next && pending) return;
         onOpenChange(next);
       }}
       title={title}
-      subtitle={
-        target && target !== "new"
-          ? target.customer_name_snapshot
-          : undefined
-      }
+      subtitle={subtitle}
+      contentClassName="max-h-[90vh] max-w-lg overflow-y-auto"
     >
-      <form className="space-y-4" onSubmit={save}>
+      <form onSubmit={save} className="modal-form-discreet mt-4 space-y-3">
         {fixedCustomerId ? (
           <input type="hidden" name="customerId" value={fixedCustomerId} />
         ) : (
-          <div>
-            <label
-              htmlFor="monitor-drawer-customer"
-              className="mb-1 block text-sm font-medium text-text-primary"
-            >
-              Customer
-            </label>
-            <select
-              id="monitor-drawer-customer"
-              className="h-10 w-full rounded-lg border border-form bg-bg-default px-3 text-sm"
+          <ModalField id="monitor-customer" label="Customer">
+            <Select
+              id="monitor-customer"
               value={form.customerId}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  customerId: event.target.value,
-                }))
+              onValueChange={(value) =>
+                setForm((prev) => ({ ...prev, customerId: value }))
               }
-              required
-            >
-              {!customers.some((c) => c.id === form.customerId) &&
-                form.customerId && (
-                  <option value={form.customerId}>
-                    {target !== "new" && target
-                      ? target.customer_name_snapshot
-                      : "Current customer"}
-                  </option>
-                )}
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
-          </div>
+              options={customerOptions}
+              placeholder="Select customer"
+              variant="modal"
+              triggerClassName={modalSelectTriggerClass}
+            />
+          </ModalField>
         )}
-        <Input
-          id="monitor-drawer-name"
+
+        <ModalTextInput
+          id="monitor-name"
           label="Name"
           value={form.name}
           maxLength={200}
@@ -238,8 +241,9 @@ export function MonitorFormDrawer({
             setForm((prev) => ({ ...prev, name: event.target.value }))
           }
         />
-        <Input
-          id="monitor-drawer-url"
+
+        <ModalTextInput
+          id="monitor-url"
           label="URL"
           type="url"
           value={form.url}
@@ -248,59 +252,8 @@ export function MonitorFormDrawer({
             setForm((prev) => ({ ...prev, url: event.target.value }))
           }
         />
-        <div className="grid grid-cols-2 gap-4">
-          {numberField("intervalSeconds", "Interval (seconds)", 30, 86400)}
-          {numberField("retryDelaySeconds", "Retry delay (seconds)", 1)}
-          {numberField("timeoutMs", "Timeout (ms)", 1)}
-          {numberField("expectedStatusMin", "Expected status from", 100, 599)}
-          {numberField("expectedStatusMax", "Expected status to", 100, 599)}
-        </div>
-        <Input
-          id="monitor-drawer-secret"
-          label="Auth secret reference (optional)"
-          value={form.authSecretRef ?? ""}
-          onChange={(event) =>
-            setForm((prev) => ({
-              ...prev,
-              authSecretRef: event.target.value || null,
-            }))
-          }
-        />
-        <fieldset className="space-y-2 rounded-lg border border-form p-3">
-          <legend className="px-1 text-sm font-medium text-text-primary">
-            Slack channels for downtime alerts
-          </legend>
-          {slackNotifications.length === 0 ? (
-            <p className="text-sm text-text-secondary">
-              No Slack channels are configured.
-            </p>
-          ) : (
-            slackNotifications.map((channel) => (
-              <label
-                key={channel.id}
-                className="flex items-center gap-2 text-sm text-text-primary"
-              >
-                <input
-                  type="checkbox"
-                  checked={form.slackNotificationIds.includes(channel.id)}
-                  onChange={(event) => {
-                    setForm((prev) => ({
-                      ...prev,
-                      slackNotificationIds: event.target.checked
-                        ? [...prev.slackNotificationIds, channel.id]
-                        : prev.slackNotificationIds.filter(
-                            (id) => id !== channel.id
-                          ),
-                    }));
-                  }}
-                />
-                {channel.channel_name}{" "}
-                <span className="text-text-secondary">({channel.name})</span>
-              </label>
-            ))
-          )}
-        </fieldset>
-        <label className="flex items-center gap-2 text-sm">
+
+        <label className="flex items-center gap-2 text-[13px] text-text-primary">
           <input
             type="checkbox"
             checked={form.enabled}
@@ -310,28 +263,73 @@ export function MonitorFormDrawer({
                 enabled: event.target.checked,
               }))
             }
-          />{" "}
+          />
           Enabled
         </label>
-        {error && (
+
+        <div className="grid grid-cols-2 gap-3 border-t border-border-subtle pt-3">
+          {numberField("intervalSeconds", "Interval (seconds)", 30, 86400)}
+          {numberField("retryDelaySeconds", "Retry delay (seconds)", 1)}
+          {numberField("timeoutMs", "Timeout (ms)", 1)}
+          {numberField("expectedStatusMin", "Expected status from", 100, 599)}
+          {numberField("expectedStatusMax", "Expected status to", 100, 599)}
+        </div>
+
+        <div className="space-y-3 border-t border-border-subtle pt-3">
+          <ModalTextInput
+            id="monitor-secret"
+            label="Auth secret reference (optional)"
+            value={form.authSecretRef ?? ""}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                authSecretRef: event.target.value || null,
+              }))
+            }
+          />
+
+          <CheckboxList
+            label="Slack channels for downtime alerts"
+            idPrefix="monitor-slack"
+            maxHeightClassName="max-h-40"
+            options={slackNotifications.map((channel) => ({
+              value: channel.id,
+              label: channel.channel_name,
+              description: channel.name,
+            }))}
+            value={form.slackNotificationIds}
+            onChange={(next) =>
+              setForm((prev) => ({ ...prev, slackNotificationIds: next }))
+            }
+            empty={
+              <p className="px-2 py-1.5 text-sm text-text-secondary">
+                No Slack channels are configured.
+              </p>
+            }
+          />
+        </div>
+
+        {error ? (
           <p role="alert" className="text-sm text-danger">
             {error}
           </p>
-        )}
-        <div className="flex justify-end gap-2 pt-2">
+        ) : null}
+
+        <div className="flex justify-end gap-2">
           <Button
             type="button"
             variant="secondary"
+            size="sm"
             onClick={() => onOpenChange(false)}
             disabled={pending}
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" size="sm" disabled={pending}>
             {pending ? "Saving…" : "Save"}
           </Button>
         </div>
       </form>
-    </SideDrawer>
+    </Dialog>
   );
 }

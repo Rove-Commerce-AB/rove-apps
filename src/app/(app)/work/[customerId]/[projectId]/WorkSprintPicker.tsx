@@ -202,11 +202,11 @@ export function WorkSprintPicker({
         const menuOpen = menu?.sprintId === sprint.id;
         const chipClass = `${CHIP_SIZE} overflow-hidden rounded-md border transition-colors ${
           selected
-            ? "border-interactive-primary bg-interactive-primary text-text-inverse"
+            ? "border-accent-primary bg-accent-primary text-text-inverse"
             : "border-border-subtle bg-bg-default text-text-primary hover:bg-bg-muted"
         } ${
           !selected && isCurrent
-            ? "ring-2 ring-inset ring-interactive-primary"
+            ? "ring-2 ring-inset ring-accent-primary"
             : ""
         }`;
 

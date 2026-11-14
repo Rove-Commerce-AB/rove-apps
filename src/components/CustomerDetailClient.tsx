@@ -19,6 +19,7 @@ import {
   InlineEditFieldContainer,
   InlineEditStatus,
   InlineEditTrigger,
+  ListAddAction,
   OptionSegments,
   Panel,
   PanelSectionTitle,
@@ -691,13 +692,10 @@ export function CustomerDetailClient({
                   count={initialConsultants.length}
                   bleed="panel"
                   action={
-                    <button
-                      type="button"
+                    <ListAddAction
+                      label="Add consultant"
                       onClick={() => setAddConsultantModalOpen(true)}
-                      className="rounded-md px-1.5 py-0.5 text-label-s font-medium text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary"
-                    >
-                      + Add
-                    </button>
+                    />
                   }
                   empty={
                     initialConsultants.length === 0

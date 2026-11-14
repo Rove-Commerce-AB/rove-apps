@@ -12,6 +12,7 @@ import {
   IconButton,
   InlineEditFieldContainer,
   InlineEditStatus,
+  ListAddAction,
   SAVED_DURATION_MS,
   editInputClass,
   inlineEditTriggerClass,
@@ -31,6 +32,8 @@ import type { CustomerRate } from "@/lib/customerRatesQueries";
 type ListHeader = {
   title: string;
   onAdd?: () => void;
+  /** Defaults to "Add rate". */
+  addLabel?: string;
   bleed?: "drawer" | "panel" | "none";
 };
 
@@ -279,13 +282,10 @@ export function CustomerRatesTab(props: Props) {
           bleed={bleed}
           action={
             listHeader.onAdd ? (
-              <button
-                type="button"
+              <ListAddAction
+                label={listHeader.addLabel ?? "Add rate"}
                 onClick={listHeader.onAdd}
-                className="rounded-md px-1.5 py-0.5 text-label-s font-medium text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary"
-              >
-                + Add
-              </button>
+              />
             ) : null
           }
         />

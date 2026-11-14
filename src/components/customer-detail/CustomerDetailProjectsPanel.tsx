@@ -2,8 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
-import { IconButton, Panel, PanelSectionTitle } from "@/components/ui";
+import { ListAddAction, Panel, PanelSectionTitle } from "@/components/ui";
 import { CustomerProjectGroup } from "@/components/CustomerProjectGroup";
 import { groupCustomerProjectsForList } from "@/lib/customerProjectsList";
 import type { CustomerWithDetails } from "@/types";
@@ -27,13 +26,7 @@ export function CustomerDetailProjectsPanel({
     <Panel>
       <PanelSectionTitle
         action={
-          <IconButton
-            aria-label="Add project"
-            onClick={onAddProject}
-            className="text-text-muted hover:text-text-primary"
-          >
-            <Plus className="h-4 w-4" />
-          </IconButton>
+          <ListAddAction label="Add project" onClick={onAddProject} />
         }
       >
         PROJECTS

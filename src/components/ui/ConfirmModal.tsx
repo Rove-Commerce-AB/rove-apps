@@ -30,23 +30,26 @@ export function ConfirmModal({
   return (
     <AlertDialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/20" />
         <AlertDialog.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-bg-default p-6 shadow-xl focus:outline-none"
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border-subtle bg-bg-default p-4 shadow-lg focus:outline-none"
           onEscapeKeyDown={onClose}
         >
-          <AlertDialog.Title className="text-heading-m text-text-primary">
+          <AlertDialog.Title className="text-[13px] font-medium text-text-primary">
             {title}
           </AlertDialog.Title>
-          <AlertDialog.Description className="mt-4 text-sm text-text-primary opacity-90">
+          <AlertDialog.Description className="mt-1 text-[12px] leading-snug text-text-tertiary">
             {message}
           </AlertDialog.Description>
-          <div className="mt-6 flex justify-end gap-2">
+          <div className="mt-4 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
-              <Button variant="secondary">Cancel</Button>
+              <Button variant="secondary" size="sm">
+                Cancel
+              </Button>
             </AlertDialog.Cancel>
             <Button
               variant={variant}
+              size="sm"
               onClick={async () => {
                 await handleConfirm();
               }}

@@ -4,16 +4,12 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { breadcrumbsForPathname } from "@/lib/breadcrumbs";
+import { appBrandDotClass, appThemeFromPathname } from "@/lib/appTheme";
 import { useWorkTrail } from "@/components/WorkTrailContext";
 import { ShortcutStarButton } from "@/components/ShortcutStarButton";
-import { NotificationsBellDropdown } from "@/components/NotificationsBellDropdown";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-type AppTopBarProps = {
-  unreadNotificationCount?: number;
-};
-
-export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
+export function AppTopBar() {
   const pathname = usePathname();
   const workTrail = useWorkTrail();
   // Work trail is set by page children after mount. AppTopBar sits in a Suspense
@@ -29,6 +25,9 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
   );
   const defaultShortcutName =
     crumbs.length > 0 ? crumbs[crumbs.length - 1]!.label : "Shortcut";
+  const brandDot = appBrandDotClass(appThemeFromPathname(pathname));
+  /** Product crumb sits after "Rove Apps" when inside an app. */
+  const productCrumbIndex = brandDot ? 1 : -1;
 
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-border-default bg-bg-default px-(--space-32)">
@@ -37,6 +36,7 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
           <ol className="flex min-w-0 items-center gap-1.5 text-xs">
             {crumbs.map((crumb, index) => {
               const isLast = index === crumbs.length - 1;
+              const showBrandDot = index === productCrumbIndex && brandDot;
               return (
                 <li
                   key={`${crumb.label}-${index}`}
@@ -49,22 +49,34 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
                   )}
                   {isLast || crumb.href == null ? (
                     <span
-                      className={`truncate ${
+                      className={`inline-flex min-w-0 items-center gap-1.5 truncate ${
                         isLast
                           ? "font-semibold text-text-primary"
                           : "text-text-secondary"
                       }`}
                       aria-current={isLast ? "page" : undefined}
                     >
-                      {crumb.label}
+                      {showBrandDot ? (
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${brandDot}`}
+                          aria-hidden
+                        />
+                      ) : null}
+                      <span className="truncate">{crumb.label}</span>
                     </span>
                   ) : (
                     <Link
                       href={crumb.href}
                       prefetch={false}
-                      className="truncate text-text-secondary transition-colors hover:text-text-primary"
+                      className="inline-flex min-w-0 items-center gap-1.5 truncate text-text-secondary transition-colors hover:text-text-primary"
                     >
-                      {crumb.label}
+                      {showBrandDot ? (
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${brandDot}`}
+                          aria-hidden
+                        />
+                      ) : null}
+                      <span className="truncate">{crumb.label}</span>
                     </Link>
                   )}
                 </li>
@@ -79,7 +91,6 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
 
       <div className="flex shrink-0 items-center">
         <ThemeToggle />
-        <NotificationsBellDropdown unreadCount={unreadNotificationCount} />
       </div>
     </header>
   );

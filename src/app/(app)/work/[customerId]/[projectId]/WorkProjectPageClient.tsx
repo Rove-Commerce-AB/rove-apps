@@ -132,6 +132,7 @@ import { WorkJiraImportDialog } from "./WorkJiraImportDialog";
 import { WorkProcessPanel } from "./WorkProcessPanel";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkScopeApproveButton } from "./WorkScopeApproveButton";
+import { WorkScopeUnlockBanner } from "./WorkScopeUnlockBanner";
 import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
 import { WorkTimelineView } from "./WorkTimelineView";
@@ -302,6 +303,7 @@ export function WorkBoardPageClient({
     issueId: string;
     message: string;
     open: boolean;
+    variant?: "error" | "unlock";
   } | null>(null);
   const cardErrorTimerRef = useRef<number | null>(null);
   const cardErrorExitTimerRef = useRef<number | null>(null);
@@ -398,9 +400,6 @@ export function WorkBoardPageClient({
     issueId: string;
     status: WorkIssueStatus;
     beforeIssueId: string | null;
-  } | null>(null);
-  const [unlockScopeConfirm, setUnlockScopeConfirm] = useState<{
-    issueId: string;
   } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] =
@@ -879,12 +878,12 @@ export function WorkBoardPageClient({
 
   function showCardError(issueId: string, message: string) {
     clearCardErrorTimers();
-    setCardError({ issueId, message, open: false });
+    setCardError({ issueId, message, open: false, variant: "error" });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setCardError((current) =>
           current?.issueId === issueId
-            ? { ...current, message, open: true }
+            ? { ...current, message, open: true, variant: "error" }
             : current
         );
       });
@@ -893,6 +892,25 @@ export function WorkBoardPageClient({
       cardErrorTimerRef.current = null;
       dismissCardError(issueId);
     }, 5000);
+  }
+
+  function showCardUnlock(issueId: string) {
+    clearCardErrorTimers();
+    setCardError({
+      issueId,
+      message: "Unlock scope?",
+      open: false,
+      variant: "unlock",
+    });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setCardError((current) =>
+          current?.issueId === issueId
+            ? { ...current, open: true, variant: "unlock" }
+            : current
+        );
+      });
+    });
   }
 
   function requestMoveIssue(
@@ -2283,7 +2301,7 @@ export function WorkBoardPageClient({
                                 estimateSize={issue.estimateSize}
                                 estimateUnit={estimateUnit}
                                 billingCurrency={billingCurrency}
-                                disabled={issue.scopeApproved}
+                                locked={issue.scopeApproved}
                                 onError={setError}
                                 onChange={(value) => {
                                   noteOptimisticIssuePatch(
@@ -2363,9 +2381,7 @@ export function WorkBoardPageClient({
                                   canApprove={issue.estimateSize != null}
                                   onToggle={() => {
                                     if (issue.scopeApproved) {
-                                      setUnlockScopeConfirm({
-                                        issueId: issue.id,
-                                      });
+                                      showCardUnlock(issue.id);
                                       return;
                                     }
                                     applyScopeApproved(issue.id, true);
@@ -2388,22 +2404,33 @@ export function WorkBoardPageClient({
                       ) : null}
                     </article>
                     {cardError?.issueId === issue.id ? (
-                      <div
-                        className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-out ${
-                          cardError.open
-                            ? "mt-1.5 grid-rows-[1fr] opacity-100"
-                            : "mt-0 grid-rows-[0fr] opacity-0"
-                        }`}
-                      >
-                        <div className="min-h-0 overflow-hidden">
-                          <p
-                            role="alert"
-                            className="rounded-md border border-danger/35 bg-bg-default px-2 py-1.5 text-[12px] leading-snug text-danger shadow-sm"
-                          >
-                            {cardError.message}
-                          </p>
+                      cardError.variant === "unlock" ? (
+                        <WorkScopeUnlockBanner
+                          open={cardError.open}
+                          onUnlock={() => {
+                            dismissCardError(issue.id);
+                            applyScopeApproved(issue.id, false);
+                          }}
+                          onDismiss={() => dismissCardError(issue.id)}
+                        />
+                      ) : (
+                        <div
+                          className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-out ${
+                            cardError.open
+                              ? "mt-1.5 grid-rows-[1fr] opacity-100"
+                              : "mt-0 grid-rows-[0fr] opacity-0"
+                          }`}
+                        >
+                          <div className="min-h-0 overflow-hidden">
+                            <p
+                              role="alert"
+                              className="rounded-md border border-danger/35 bg-bg-default px-2 py-1.5 text-[12px] leading-snug text-danger shadow-sm"
+                            >
+                              {cardError.message}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      )
                     ) : null}
                     </div>
                   </li>
@@ -2762,21 +2789,6 @@ export function WorkBoardPageClient({
         }}
       />
 
-      <ConfirmModal
-        isOpen={unlockScopeConfirm != null}
-        title="Unlock scope?"
-        message="You can change size and scope, then approve again."
-        confirmLabel="Unlock"
-        variant="danger"
-        onClose={() => setUnlockScopeConfirm(null)}
-        onConfirm={() => {
-          if (!unlockScopeConfirm) return;
-          const issueId = unlockScopeConfirm.issueId;
-          setUnlockScopeConfirm(null);
-          applyScopeApproved(issueId, false);
-        }}
-      />
-
       {statusMenu
         ? createPortal(
             (() => {
@@ -2993,7 +3005,7 @@ export function WorkBoardPageClient({
         contentClassName="max-w-md"
       >
         <form
-          className="modal-form-discreet mt-6 space-y-4"
+          className="modal-form-discreet mt-4 space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
             startTransition(() => void submitDeleteStatus());
@@ -3028,6 +3040,7 @@ export function WorkBoardPageClient({
             <Button
               type="button"
               variant="secondary"
+              size="sm"
               onClick={() => setDeletingStatus(null)}
             >
               Cancel
@@ -3035,6 +3048,7 @@ export function WorkBoardPageClient({
             <Button
               type="submit"
               variant="danger"
+              size="sm"
               disabled={
                 pending || (deletingIssueCount > 0 && !moveToStatusId)
               }

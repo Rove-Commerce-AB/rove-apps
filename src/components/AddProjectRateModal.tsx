@@ -3,7 +3,15 @@
 import { useState, useEffect } from "react";
 import { getRoles } from "@/lib/rolesClient";
 import { getProjectRates, createProjectRate } from "@/lib/projectRatesClient";
-import { Button, Dialog, Input, Select } from "@/components/ui";
+import {
+  Button,
+  Dialog,
+  ModalField,
+  ModalTextInput,
+  Select,
+  modalFieldLabelClass,
+  modalSelectTriggerClass,
+} from "@/components/ui";
 import { OptionSegments } from "@/components/ui/OptionSegments";
 import { hourlyRateLabel } from "@/lib/currency";
 import type { Role } from "@/lib/rolesQueries";
@@ -110,12 +118,17 @@ export function AddProjectRateModal({
           e.preventDefault();
           handleSubmit();
         }}
-        className="modal-form-discreet mt-6 space-y-4"
+        className="modal-form-discreet mt-4 space-y-3"
       >
+        {error && (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
         {loading ? null : (
           <>
             <div>
-              <p className="mb-2 text-sm font-medium text-text-primary">Type</p>
+              <p className={`mb-1 ${modalFieldLabelClass}`}>Type</p>
               <OptionSegments
                 name="add-project-rate-type"
                 value={mode}
@@ -127,26 +140,27 @@ export function AddProjectRateModal({
               />
             </div>
             {mode === "role" ? (
-              <Select
-                id="add-project-rate-role"
-                label="Role"
-                value={selectedRoleId}
-                onValueChange={setSelectedRoleId}
-                placeholder="Role"
-                variant="modal"
-                options={availableRoles.map((r) => ({ value: r.id, label: r.name }))}
-              />
+              <ModalField id="add-project-rate-role" label="Role">
+                <Select
+                  id="add-project-rate-role"
+                  value={selectedRoleId}
+                  onValueChange={setSelectedRoleId}
+                  placeholder="Role"
+                  variant="modal"
+                  triggerClassName={modalSelectTriggerClass}
+                  options={availableRoles.map((r) => ({ value: r.id, label: r.name }))}
+                />
+              </ModalField>
             ) : (
-              <Input
+              <ModalTextInput
                 id="add-project-rate-name"
                 label="Task name"
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
                 placeholder="e.g. Onsite"
-                modalStyle
               />
             )}
-            <Input
+            <ModalTextInput
               id="add-project-rate-value"
               type="number"
               min={0}
@@ -155,8 +169,6 @@ export function AddProjectRateModal({
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               placeholder="e.g. 1200"
-              error={error ?? undefined}
-              modalStyle
             />
           </>
         )}
@@ -166,10 +178,10 @@ export function AddProjectRateModal({
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!canSubmit}>
+          <Button type="submit" size="sm" disabled={!canSubmit}>
             {submitting ? "Adding…" : "Add"}
           </Button>
         </div>

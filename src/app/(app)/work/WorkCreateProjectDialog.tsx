@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, InitialsAvatar, Input } from "@/components/ui";
+import {
+  Button,
+  CheckboxList,
+  type CheckboxListOption,
+  Dialog,
+  InitialsAvatar,
+  ModalNativeSelect,
+  ModalTextInput,
+  modalFieldLabelClass,
+} from "@/components/ui";
 import { workProjectHref } from "@/lib/routes";
 import { suggestWorkBoardPrefix } from "@/lib/workIssueKey";
 import type { WorkAccessPerson } from "@/lib/workTypes";
@@ -52,9 +61,6 @@ export function WorkCreateProjectDialog({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
-  const selectAllCustomerRef = useRef<HTMLInputElement | null>(null);
-  const selectAllOthersRef = useRef<HTMLInputElement | null>(null);
-
   const customerPeople = people.filter((person) => person.onCustomer);
   const otherPeople = people.filter((person) => !person.onCustomer);
   const hasLinkableProjects = plannerProjects.length > 0;
@@ -106,35 +112,6 @@ export function WorkCreateProjectDialog({
   }, [customer, open]);
 
   useEffect(() => {
-    const customerEl = selectAllCustomerRef.current;
-    if (customerEl) {
-      const ids = customerPeople.map((person) => person.id);
-      const selected = ids.filter((id) => memberIds.includes(id)).length;
-      customerEl.indeterminate = selected > 0 && selected < ids.length;
-    }
-    const othersEl = selectAllOthersRef.current;
-    if (othersEl) {
-      const ids = otherPeople.map((person) => person.id);
-      const selected = ids.filter((id) => memberIds.includes(id)).length;
-      othersEl.indeterminate = selected > 0 && selected < ids.length;
-    }
-  }, [memberIds, customerPeople, otherPeople]);
-
-  function toggleGroup(ids: string[]) {
-    const allSelected = ids.every((id) => memberIds.includes(id));
-    setMemberIds((current) => {
-      if (allSelected) {
-        const next = current.filter((id) => !ids.includes(id));
-        return withRequiredMember(next, currentUserId);
-      }
-      return withRequiredMember(
-        [...new Set([...current, ...ids])],
-        currentUserId
-      );
-    });
-  }
-
-  useEffect(() => {
     if (mode !== "link" || !plannerProjectId) return;
     const selected = plannerProjects.find((row) => row.id === plannerProjectId);
     if (!selected) return;
@@ -151,51 +128,31 @@ export function WorkCreateProjectDialog({
     setPrefix(suggestWorkBoardPrefix(customer?.name ?? "", value));
   }
 
-  function toggleMember(id: string) {
-    if (currentUserId && id === currentUserId) return;
-    setMemberIds((current) => {
-      const next = current.includes(id)
-        ? current.filter((row) => row !== id)
-        : [...current, id];
-      return withRequiredMember(next, currentUserId);
-    });
+  function updateMembers(next: string[]) {
+    setMemberIds(withRequiredMember(next, currentUserId));
   }
 
-  function renderPersonRow(person: WorkAccessPerson) {
-    const checked = memberIds.includes(person.id);
+  function personOption(person: WorkAccessPerson): CheckboxListOption {
     const isSelf = Boolean(currentUserId && person.id === currentUserId);
-    return (
-      <li key={person.id}>
-        <label
-          className={`flex items-center gap-2 rounded-md px-1 py-1.5 ${
-            isSelf
-              ? "cursor-default"
-              : "cursor-pointer hover:bg-bg-muted"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={isSelf}
-            onChange={() => toggleMember(person.id)}
-            className="h-4 w-4 rounded border-border-form disabled:cursor-not-allowed disabled:opacity-60"
-            title={isSelf ? "You always have access" : undefined}
-          />
-          <InitialsAvatar
-            name={person.name}
-            initials={person.initials}
-            size="xs"
-            className="!h-6 !w-6 text-[9px]"
-          />
-          <span className="min-w-0 truncate text-sm text-text-primary">
-            {person.name}
-            {isSelf ? (
-              <span className="text-text-tertiary"> (you)</span>
-            ) : null}
-          </span>
-        </label>
-      </li>
-    );
+    return {
+      value: person.id,
+      label: (
+        <>
+          {person.name}
+          {isSelf ? <span className="text-text-tertiary"> (you)</span> : null}
+        </>
+      ),
+      leading: (
+        <InitialsAvatar
+          name={person.name}
+          initials={person.initials}
+          size="xs"
+          className="!h-6 !w-6 text-[9px]"
+        />
+      ),
+      disabled: isSelf,
+      title: isSelf ? "You always have access" : undefined,
+    };
   }
 
   /* Wait until people + projects are loaded so the modal opens at final height (no jump). */
@@ -211,7 +168,7 @@ export function WorkCreateProjectDialog({
       contentClassName="max-w-md"
     >
       <form
-        className="modal-form-discreet mt-6 space-y-4"
+        className="modal-form-discreet mt-4 space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
           if (!customer) return;
@@ -304,19 +261,17 @@ export function WorkCreateProjectDialog({
           </div>
         </fieldset>
 
-        <label
-          className={`block min-h-[4.25rem] transition-opacity ${
+        <div
+          className={`min-h-[4.25rem] transition-opacity ${
             mode === "link" && hasLinkableProjects ? "opacity-100" : "opacity-50"
           }`}
         >
-          <span className="mb-1 block text-sm font-medium text-text-primary">
-            Project
-          </span>
-          <select
+          <ModalNativeSelect
+            id="new-work-project-link"
+            label="Project"
             value={plannerProjectId}
             onChange={(event) => setPlannerProjectId(event.target.value)}
             disabled={mode !== "link" || !hasLinkableProjects}
-            className="w-full rounded-md border border-border-subtle bg-bg-default px-2.5 py-2 text-sm text-text-primary disabled:cursor-not-allowed"
             required={mode === "link" && hasLinkableProjects}
           >
             <option value="">
@@ -327,20 +282,19 @@ export function WorkCreateProjectDialog({
                 {project.name}
               </option>
             ))}
-          </select>
-        </label>
+          </ModalNativeSelect>
+        </div>
 
-        <Input
+        <ModalTextInput
           id="new-work-project-title"
           label="Title"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
           placeholder="Project name"
-          modalStyle
           disabled={mode === "link"}
           autoFocus={mode === "standalone"}
         />
-        <Input
+        <ModalTextInput
           id="new-work-project-prefix"
           label="Issue prefix"
           value={prefix}
@@ -350,99 +304,62 @@ export function WorkCreateProjectDialog({
           }}
           placeholder="RT"
           title="Used for issue keys on this project, e.g. RT-12. Suggested from the title until you edit it."
-          modalStyle
         />
         <fieldset className="space-y-2">
-          <legend className="mb-1 text-sm font-medium text-text-primary">
-            Access
-          </legend>
-          <ul className="min-h-52 max-h-52 space-y-1 overflow-y-auto">
-            {people.length === 0 ? (
-              <li className="px-1 py-2 text-caption text-text-tertiary">
+          <legend className={modalFieldLabelClass}>Access</legend>
+          <CheckboxList
+            idPrefix="work-create-access"
+            value={memberIds}
+            onChange={updateMembers}
+            maxHeightClassName="max-h-52"
+            empty={
+              <p className="px-2 py-1.5 text-sm text-text-secondary">
                 No people available
-              </li>
-            ) : (
-              <>
-                {customerPeople.length > 0 ? (
-                  <>
-                    <li className="sticky top-0 z-[1] bg-bg-default px-1 pb-0.5 pt-0.5">
-                      <div className="flex items-center gap-2">
-                        <input
-                          ref={selectAllCustomerRef}
-                          type="checkbox"
-                          checked={
-                            customerPeople.length > 0 &&
-                            customerPeople.every((person) =>
-                              memberIds.includes(person.id)
-                            )
-                          }
-                          onChange={() =>
-                            toggleGroup(
-                              customerPeople.map((person) => person.id)
-                            )
-                          }
-                          className="h-4 w-4 rounded border-border-form"
-                          aria-label="Select all on customer"
-                        />
-                        <span className="text-caption text-text-tertiary">
-                          On this customer
-                        </span>
-                      </div>
-                    </li>
-                    {customerPeople.map(renderPersonRow)}
-                  </>
-                ) : null}
-                {otherPeople.length > 0 ? (
-                  <>
-                    <li
-                      className={`sticky top-0 z-[1] bg-bg-default px-1 pb-0.5 pt-1.5 ${
-                        customerPeople.length > 0
-                          ? "mt-1 border-t border-border-subtle"
-                          : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          ref={selectAllOthersRef}
-                          type="checkbox"
-                          checked={
-                            otherPeople.length > 0 &&
-                            otherPeople.every((person) =>
-                              memberIds.includes(person.id)
-                            )
-                          }
-                          onChange={() =>
-                            toggleGroup(otherPeople.map((person) => person.id))
-                          }
-                          className="h-4 w-4 rounded border-border-form"
-                          aria-label="Select all others"
-                        />
-                        <span className="text-caption text-text-tertiary">
-                          Others
-                        </span>
-                      </div>
-                    </li>
-                    {otherPeople.map(renderPersonRow)}
-                  </>
-                ) : null}
-              </>
-            )}
-          </ul>
+              </p>
+            }
+            groups={[
+              ...(customerPeople.length > 0
+                ? [
+                    {
+                      id: "customer",
+                      label: "On this customer",
+                      selectAll: true,
+                      options: customerPeople.map(personOption),
+                    },
+                  ]
+                : []),
+              ...(otherPeople.length > 0
+                ? [
+                    {
+                      id: "others",
+                      label: "Others",
+                      selectAll: true,
+                      options: otherPeople.map(personOption),
+                    },
+                  ]
+                : []),
+            ]}
+          />
         </fieldset>
         {error ? (
           <p className="text-sm text-danger" role="alert">
             {error}
           </p>
         ) : null}
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex justify-end gap-2">
           <Button
             type="button"
             variant="secondary"
+            size="sm"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={pending || memberIds.length === 0}>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={pending || memberIds.length === 0}
+          >
             Create
           </Button>
         </div>

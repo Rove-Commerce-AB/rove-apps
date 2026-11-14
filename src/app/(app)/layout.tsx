@@ -60,11 +60,12 @@ export default async function AppLayout({
           appKeys={user?.appKeys ?? []}
           workNav={workNav}
           initialCollapsed={sidebarCollapsed}
+          unreadNotificationCount={unreadNotificationCount}
         />
         <WorkTrailProvider>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <Suspense fallback={<div className="h-[49px] shrink-0 border-b border-border-default bg-bg-default" />}>
-              <AppTopBar unreadNotificationCount={unreadNotificationCount} />
+              <AppTopBar />
             </Suspense>
             <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-surface-page p-(--space-32)">
               {children}

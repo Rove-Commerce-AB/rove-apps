@@ -6,8 +6,24 @@ export { Combobox, type ComboboxOption } from "./Combobox";
 export { Switch } from "./Switch";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { Dialog } from "./Dialog";
+export { ActionPopover } from "./ActionPopover";
+export {
+  ModalReadonlyField,
+  ModalField,
+  ModalTextInput,
+  ModalNativeSelect,
+  ModalFormSection,
+  modalFieldLabelClass,
+  modalSegmentedButtonClass,
+  modalSegmentedGroupClass,
+} from "./ModalReadonlyField";
 export { SideDrawer } from "./SideDrawer";
 export { FilterChip } from "./FilterChip";
+export {
+  CheckboxList,
+  type CheckboxListOption,
+  type CheckboxListGroup,
+} from "./CheckboxList";
 export {
   SegmentedControl,
   type SegmentedControlOption,
@@ -30,6 +46,7 @@ export {
   FieldInfoTip,
   DetailBadgeFieldRow,
   DetailFieldStack,
+  DrawerSection,
   DrawerFieldRow,
   DrawerSelectField,
   InlineEditFieldContainer,
@@ -48,8 +65,10 @@ export {
   DrawerListGroupHeader,
   drawerListBleedClass,
   drawerListRowClass,
+  drawerTabBodyClass,
   type DrawerListBleed,
 } from "./DrawerListGroup";
+export { ListAddAction } from "./ListAddAction";
 export {
   editInputClass,
   editInputListClass,

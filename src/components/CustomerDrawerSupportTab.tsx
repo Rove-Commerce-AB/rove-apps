@@ -83,7 +83,7 @@ export function CustomerDrawerSupportTab({
 
   if (!loaded) {
     return (
-      <div className="px-6 py-6">
+      <div className="px-6 pt-4 pb-6">
         <PageLoading />
       </div>
     );
@@ -113,7 +113,7 @@ export function CustomerDrawerSupportTab({
   }
 
   return (
-    <form className="space-y-5 px-6 py-6" onSubmit={submit}>
+    <form className="space-y-5 px-6 pt-4 pb-6" onSubmit={submit}>
       <div>
         <h2 className="text-label-l text-text-primary">Support contract</h2>
         <p className="mt-1 text-sm text-text-secondary">

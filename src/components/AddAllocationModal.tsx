@@ -1,7 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Dialog, Select, Button, modalInputClass, modalSelectTriggerClass, modalFocusClass } from "@/components/ui";
+import {
+  Dialog,
+  Select,
+  Button,
+  ModalField,
+  ModalReadonlyField,
+  ModalTextInput,
+  modalFieldLabelClass,
+  modalSegmentedButtonClass,
+  modalSegmentedGroupClass,
+  modalSelectTriggerClass,
+} from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultantsClient";
 import {
   getProjectsWithCustomer,
@@ -311,17 +322,15 @@ export function AddAllocationModal({
       onOpenChange={(open) => !open && handleClose()}
       title={dialogTitle}
       subtitle={dialogSubtitle}
-      overlayClassName="bg-black/25 backdrop-blur-0"
-      contentClassName="max-w-[400px] rounded-2xl border border-border-subtle p-8"
+      contentClassName="max-w-[400px]"
       subtitleClassName="mb-1"
-      closeClassName="right-6 top-6 p-1 text-text-tertiary opacity-100 hover:bg-transparent hover:text-text-secondary focus:border-transparent focus:ring-0"
     >
       <form
         onSubmit={(e) => {
           e.preventDefault();
           handleSubmit();
         }}
-        className="modal-form-discreet mt-7 space-y-5"
+        className="modal-form-discreet mt-4 space-y-3"
       >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -330,13 +339,7 @@ export function AddAllocationModal({
           )}
 
           {!isToPlan && !lockConsultant && (
-            <div>
-              <label
-                htmlFor="alloc-consultant"
-                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-              >
-                Consultant
-              </label>
+            <ModalField id="alloc-consultant" label="Consultant">
               <Select
                 id="alloc-consultant"
                 value={consultantId === TO_PLAN_CONSULTANT_ID ? "" : consultantId}
@@ -346,7 +349,7 @@ export function AddAllocationModal({
                 }}
                 placeholder="Select consultant"
                 variant="modal"
-                triggerClassName={`mt-1.5 h-10 rounded-lg border-form px-3 text-sm ${modalSelectTriggerClass}`}
+                triggerClassName={modalSelectTriggerClass}
                 options={[
                   { value: "", label: "Select consultant" },
                   { value: TO_PLAN_CONSULTANT_ID, label: "To plan" },
@@ -356,167 +359,126 @@ export function AddAllocationModal({
                   ...consultants.map((c) => ({ value: c.id, label: c.name })),
                 ]}
               />
-            </div>
+            </ModalField>
           )}
           {isToPlan && (
-            <p className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+            <p className="text-[12px] font-medium text-text-tertiary">
               Adding to <strong>To plan</strong>
             </p>
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-            <label
-              htmlFor="alloc-project"
-              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-            >
-              Project
-            </label>
             {lockProject ? (
-              <p id="alloc-project" className="mt-1.5 font-medium text-text-primary">
-                {initialProjectLabel ?? (() => {
-                  const p = projects.find((x) => x.id === projectId);
-                  return p ? `${p.customerName} - ${p.name}` : projectId;
-                })()}
-              </p>
+              <ModalReadonlyField label="Project">
+                <span id="alloc-project">
+                  {initialProjectLabel ?? (() => {
+                    const p = projects.find((x) => x.id === projectId);
+                    return p ? `${p.customerName} - ${p.name}` : projectId;
+                  })()}
+                </span>
+              </ModalReadonlyField>
             ) : (
-              <Select
-                id="alloc-project"
-                value={projectId}
-                onValueChange={setProjectId}
-                placeholder="Select project"
-                variant="modal"
-                triggerClassName={`mt-1.5 h-10 rounded-lg border-form px-3 text-sm ${modalSelectTriggerClass}`}
-                options={[...projects]
-                  .sort((a, b) => a.customerName.localeCompare(b.customerName))
-                  .map((p) => ({
-                    value: p.id,
-                    label: `${p.customerName} - ${p.name}`,
-                  }))}
-              />
+              <ModalField id="alloc-project" label="Project">
+                <Select
+                  id="alloc-project"
+                  value={projectId}
+                  onValueChange={setProjectId}
+                  placeholder="Select project"
+                  variant="modal"
+                  triggerClassName={modalSelectTriggerClass}
+                  options={[...projects]
+                    .sort((a, b) => a.customerName.localeCompare(b.customerName))
+                    .map((p) => ({
+                      value: p.id,
+                      label: `${p.customerName} - ${p.name}`,
+                    }))}
+                />
+              </ModalField>
             )}
-            </div>
 
-            <div>
-            <label
-              htmlFor="alloc-role"
-              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-            >
-              Role
-            </label>
-            <Select
-              id="alloc-role"
-              value={roleId ?? ""}
-              onValueChange={(v) => setRoleId(v || null)}
-              placeholder={
-                projects.find((p) => p.id === projectId)?.type !== "customer"
-                  ? "Select a customer project first"
-                  : "Select role"
-              }
-              disabled={projects.find((p) => p.id === projectId)?.type !== "customer"}
-              variant="modal"
-              triggerClassName={`mt-1.5 h-10 rounded-lg border-form px-3 text-sm ${modalSelectTriggerClass}`}
-              options={roles.map((r) => ({ value: r.id, label: r.name }))}
-            />
-            </div>
+            <ModalField id="alloc-role" label="Role">
+              <Select
+                id="alloc-role"
+                value={roleId ?? ""}
+                onValueChange={(v) => setRoleId(v || null)}
+                placeholder={
+                  projects.find((p) => p.id === projectId)?.type !== "customer"
+                    ? "Select a customer project first"
+                    : "Select role"
+                }
+                disabled={projects.find((p) => p.id === projectId)?.type !== "customer"}
+                variant="modal"
+                triggerClassName={modalSelectTriggerClass}
+                options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              />
+            </ModalField>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label
-                htmlFor="alloc-from-week"
-                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-              >
-                From week
-              </label>
-              <input
-                id="alloc-from-week"
-                type="number"
-                min={1}
-                max={52}
-                value={fromWeek}
-                onChange={(e) => setFromWeek(parseInt(e.target.value, 10) || 1)}
-                onFocus={(e) => e.target.select()}
-                className={`${modalInputClass} mt-1.5 h-10 rounded-lg border-form px-3 !text-sm font-medium leading-none`}
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="alloc-to-week"
-                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-              >
-                To week
-              </label>
-              <input
-                id="alloc-to-week"
-                type="number"
-                min={1}
-                max={52}
-                value={toWeek}
-                onChange={(e) => setToWeek(parseInt(e.target.value, 10) || 1)}
-                onFocus={(e) => e.target.select()}
-                className={`${modalInputClass} mt-1.5 h-10 rounded-lg border-form px-3 !text-sm font-medium leading-none`}
-              />
-            </div>
+            <ModalTextInput
+              id="alloc-from-week"
+              label="From week"
+              type="number"
+              min={1}
+              max={52}
+              value={fromWeek}
+              onChange={(e) => setFromWeek(parseInt(e.target.value, 10) || 1)}
+              onFocus={(e) => e.target.select()}
+            />
+            <ModalTextInput
+              id="alloc-to-week"
+              label="To week"
+              type="number"
+              min={1}
+              max={52}
+              value={toWeek}
+              onChange={(e) => setToWeek(parseInt(e.target.value, 10) || 1)}
+              onFocus={(e) => e.target.select()}
+            />
           </div>
 
           <div>
-            <label className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-              Type
-            </label>
-            <div className="mt-1.5 grid h-9 grid-cols-2 overflow-hidden rounded-lg border border-form bg-surface-subtle">
+            <p className={modalFieldLabelClass}>Type</p>
+            <div
+              className={`mt-1 ${modalSegmentedGroupClass}`}
+              role="group"
+              aria-label="Input mode"
+            >
               <button
                 type="button"
+                aria-pressed={inputMode === "hours"}
                 onClick={() => setInputMode("hours")}
-                className={`text-[13px] transition-colors ${
-                  inputMode === "hours"
-                    ? "ds-shadow-xs bg-surface-raised font-medium text-text-primary"
-                    : "text-text-tertiary hover:text-text-primary"
-                }`}
+                className={modalSegmentedButtonClass(inputMode === "hours")}
               >
                 Hours / week
               </button>
               <button
                 type="button"
+                aria-pressed={inputMode === "percent"}
                 onClick={() => setInputMode("percent")}
-                className={`border-l border-form text-[13px] transition-colors ${
-                  inputMode === "percent"
-                    ? "ds-shadow-xs bg-surface-raised font-medium text-text-primary"
-                    : "text-text-tertiary hover:text-text-primary"
-                }`}
+                className={modalSegmentedButtonClass(inputMode === "percent")}
               >
                 % of week
               </button>
             </div>
             {inputMode === "hours" ? (
-              <div className="mt-4">
-                <label
-                  htmlFor="alloc-hours"
-                  className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-                >
-                  Hours
-                </label>
-                <input
+              <div className="mt-4 w-24">
+                <ModalTextInput
                   id="alloc-hours"
+                  label="Hours"
                   type="number"
                   min={0}
                   step={0.5}
                   value={hoursPerWeek}
                   onChange={(e) => setHoursPerWeek(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  className={`mt-1.5 h-10 w-20 rounded-lg border border-form bg-bg-default px-3 !text-sm font-medium leading-none text-text-primary ${modalFocusClass}`}
                 />
               </div>
             ) : (
-              <div className="mt-4">
-                <label
-                  htmlFor="alloc-percent"
-                  className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-                >
-                  Percent
-                </label>
-                <input
+              <div className="mt-4 w-24">
+                <ModalTextInput
                   id="alloc-percent"
+                  label="Percent"
                   type="number"
                   min={0}
                   max={100}
@@ -524,17 +486,27 @@ export function AddAllocationModal({
                   value={percent}
                   onChange={(e) => setPercent(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  className={`mt-1.5 h-10 w-20 rounded-lg border border-form bg-bg-default px-3 !text-sm font-medium leading-none text-text-primary ${modalFocusClass}`}
                 />
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-2 pt-3">
-            <Button type="button" variant="secondary" onClick={handleClose} className="h-10 flex-1 text-sm font-normal">
+          <div className="flex items-center gap-2 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleClose}
+              className="flex-1"
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting} className="h-10 flex-[2] text-sm font-medium">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={submitting}
+              className="flex-[2]"
+            >
               {submitting ? "Adding…" : "Add"}
             </Button>
           </div>

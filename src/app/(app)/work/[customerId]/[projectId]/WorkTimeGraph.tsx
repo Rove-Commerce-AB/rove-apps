@@ -31,6 +31,9 @@ export function WorkTimeGraph({
   const hasEstimate =
     estimateHours != null && estimateHours > 0 && compares;
 
+  // T-shirt boards: no logged-vs-estimate bar under cards (hours ≠ size).
+  if (size === "card" && estimateUnit === "tshirt") return null;
+
   if (size === "card") {
     if (!hasLogged && !hasEstimate) return null;
   } else if (!hasWorkTimeToShow(estimateForBar, loggedHours)) {

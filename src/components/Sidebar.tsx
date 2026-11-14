@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   ChevronLeft,
   ChevronRight,
+  Bell,
   Clock,
   Inbox,
   Settings,
@@ -30,11 +31,17 @@ import {
   buildCurrentPageHref,
   shortcutMatchKey,
 } from "@/lib/shortcutHref";
+import {
+  APP_BRAND_BY_THEME,
+  type AppThemeKey,
+} from "@/lib/appTheme";
 
 /** 10px left padding so the w-8 icon column is centered in the rail. */
 const SIDEBAR_RAIL_PAD_X = "10px";
 export const SIDEBAR_COLLAPSED_COOKIE = "rove-sidebar-collapsed";
 const SIDEBAR_COLLAPSED_MAX_AGE = 60 * 60 * 24 * 365;
+
+type AppBrand = AppThemeKey;
 
 function persistSidebarCollapsed(collapsed: boolean) {
   try {
@@ -77,6 +84,7 @@ function NavLink({
   active,
   prefetch = false,
   onNavigate,
+  brand,
 }: {
   href: string;
   label: string;
@@ -94,18 +102,22 @@ function NavLink({
   prefetch?: boolean;
   /** Optimistic sidebar highlight before the route finishes loading. */
   onNavigate?: (href: string) => void;
+  /** App brand for colored icon + active wash (top-level / collapsed rail). */
+  brand?: AppBrand;
 }) {
   const nest = indent || depth > 0;
   const isActive = active ?? pathMatches(pathname, href, activeMatch);
   const showBadge = typeof badgeCount === "number" && badgeCount > 0;
   const badgeLabel =
     badgeCount != null && badgeCount > 99 ? "99+" : String(badgeCount ?? "");
+  const brandStyles = brand ? APP_BRAND_BY_THEME[brand] : null;
 
-  const typeClass = nest ? "text-body-m" : "text-heading-xs";
+  const typeClass = nest ? "text-body-m" : "text-label-l";
   // depth 1 = customer/group (primary); depth 2 = child links (secondary).
   // plain indent (Planner etc.) stays secondary.
+  const activeBg = brandStyles?.active ?? "bg-nav-active";
   const toneClass = isActive
-    ? "bg-nav-active text-text-primary"
+    ? `${activeBg} text-text-primary`
     : depth >= 2
       ? "text-text-secondary transition-colors hover:bg-nav-active hover:text-text-primary"
       : depth === 1
@@ -128,7 +140,9 @@ function NavLink({
       ) : null}
       {Icon ? (
         <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
-          <Icon className="h-4 w-4" />
+          <Icon
+            className={`h-4 w-4 ${brandStyles?.icon ?? ""}`.trim()}
+          />
         </span>
       ) : leading ? (
         <span className="flex h-8 w-4 shrink-0 items-center justify-center">
@@ -141,21 +155,19 @@ function NavLink({
         />
       ) : null}
       {!collapsed ? (
-        <span className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left max-w-[10rem] whitespace-nowrap">
-          <span className="inline-flex min-w-0 items-center gap-1.5">
+        <>
+          <span className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left max-w-[10rem] whitespace-nowrap">
             <span className="truncate">{label}</span>
-            {showBadge && (
-              <span
-                className="box-border inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default/80 px-0.5 text-center text-[10px] font-semibold leading-none text-text-primary tabular-nums"
-                aria-label={`${badgeCount} unread notifications`}
-              >
-                <span className="flex -translate-x-px items-center justify-center leading-none">
-                  {badgeLabel}
-                </span>
-              </span>
-            )}
           </span>
-        </span>
+          {showBadge ? (
+            <span
+              className="mr-1.5 shrink-0 tabular-nums text-[12px] text-text-tertiary"
+              aria-label={`${badgeCount} unread notifications`}
+            >
+              {badgeLabel}
+            </span>
+          ) : null}
+        </>
       ) : showBadge ? (
         <span
           className="absolute right-0 top-0 box-border inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default px-0.5 text-center text-[9px] font-semibold leading-none text-text-primary tabular-nums"
@@ -181,6 +193,7 @@ function AppGroup({
   active = false,
   prefetch = true,
   onNavigate,
+  brand,
 }: {
   label: string;
   icon: IconType;
@@ -195,10 +208,16 @@ function AppGroup({
   /** Prefetch landing href (Overview). Default on for product apps. */
   prefetch?: boolean;
   onNavigate?: (href: string) => void;
+  /** Colored icon + active wash for product apps. Omit for shell (Settings). */
+  brand?: AppBrand;
 }) {
   const headingActive = href
     ? pathMatches(pathname, href, collapsed ? "prefix" : "exact")
     : collapsed && active;
+  const groupActive = Boolean(headingActive || active);
+  const brandStyles = brand ? APP_BRAND_BY_THEME[brand] : null;
+  const activeBg = brandStyles?.active ?? "bg-nav-active";
+  const iconClass = brandStyles?.icon ?? "";
 
   if (collapsed) {
     const railHref = href ?? collapsedHref;
@@ -210,9 +229,10 @@ function AppGroup({
           icon={Icon}
           pathname={pathname}
           collapsed
-          active={headingActive || active}
+          active={groupActive}
           prefetch={prefetch}
           onNavigate={onNavigate}
+          brand={brand}
         />
       );
     }
@@ -222,7 +242,7 @@ function AppGroup({
     <div className="flex flex-col gap-px">
       <div
         className={`flex h-8 w-full min-w-0 items-center overflow-hidden rounded-md ${
-          headingActive ? "bg-nav-active" : "hover:bg-nav-active"
+          groupActive ? activeBg : "hover:bg-nav-active"
         }`}
       >
         {href ? (
@@ -233,10 +253,10 @@ function AppGroup({
               if (!open) onToggle();
               onNavigate?.(href);
             }}
-            className="flex h-8 min-w-0 flex-1 items-center justify-start gap-1.5 rounded-md py-0 text-left text-heading-xs text-text-primary"
+            className="flex h-8 min-w-0 flex-1 items-center justify-start gap-1.5 rounded-md py-0 text-left text-label-l text-text-primary"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
-              <Icon className="h-4 w-4" />
+              <Icon className={`h-4 w-4 ${iconClass}`.trim()} />
             </span>
             <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
               {label}
@@ -247,10 +267,10 @@ function AppGroup({
             type="button"
             aria-expanded={open}
             onClick={onToggle}
-            className="flex h-8 min-w-0 flex-1 cursor-pointer items-center justify-start gap-1.5 rounded-md py-0 text-left text-heading-xs text-text-primary"
+            className="flex h-8 min-w-0 flex-1 cursor-pointer items-center justify-start gap-1.5 rounded-md py-0 text-left text-label-l text-text-primary"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
-              <Icon className="h-4 w-4" />
+              <Icon className={`h-4 w-4 ${iconClass}`.trim()} />
             </span>
             <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
               {label}
@@ -290,7 +310,7 @@ function NavPlaceholder({
     <div
       aria-disabled
       title={`${label} (coming soon)`}
-      className="flex h-8 w-full min-w-0 cursor-default items-center justify-start gap-1.5 rounded-md py-0 text-heading-xs text-[var(--color-zinc-500)]"
+      className="flex h-8 w-full min-w-0 cursor-default items-center justify-start gap-1.5 rounded-md py-0 text-label-l text-[var(--color-zinc-500)]"
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center">
         <Icon className="h-4 w-4" />
@@ -338,7 +358,7 @@ function ShortcutsNav({
           aria-haspopup="true"
           aria-label="Shortcuts"
           title="Shortcuts"
-          className={`flex h-8 w-full min-w-0 items-center justify-center rounded-md py-0 text-heading-xs transition-colors hover:bg-nav-active ${
+          className={`flex h-8 w-full min-w-0 items-center justify-center rounded-md py-0 text-label-l transition-colors hover:bg-nav-active ${
             flyoutOpen ? "bg-nav-active text-text-primary" : "text-text-primary"
           }`}
         >
@@ -482,6 +502,7 @@ type SidebarProps = {
   appKeys?: AppKey[];
   workNav?: WorkSelectorCustomer[];
   initialCollapsed?: boolean;
+  unreadNotificationCount?: number;
 };
 
 export function Sidebar({
@@ -491,6 +512,7 @@ export function Sidebar({
   appKeys = [],
   workNav = [],
   initialCollapsed = false,
+  unreadNotificationCount = 0,
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -685,7 +707,7 @@ export function Sidebar({
                   <Star className="h-4 w-4 text-text-tertiary" aria-hidden />
                 </div>
               ) : (
-                <div className="flex h-8 items-center gap-1.5 text-heading-xs text-text-tertiary">
+                <div className="flex h-8 items-center gap-1.5 text-label-l text-text-tertiary">
                   <span className="flex h-8 w-8 items-center justify-center">
                     <Star className="h-4 w-4" aria-hidden />
                   </span>
@@ -710,6 +732,7 @@ export function Sidebar({
               collapsedHref={ROUTES.plannerConsultant}
               active={plannerActive}
               onNavigate={markPending}
+              brand="planner"
             >
               <NavLink
                 href={ROUTES.plannerConsultant}
@@ -763,6 +786,7 @@ export function Sidebar({
               collapsedHref={ROUTES.timeReportOverview}
               active={timeReportChildActive}
               onNavigate={markPending}
+              brand="time-report"
             >
               <NavLink
                 href={ROUTES.timeReportOverview}
@@ -813,6 +837,7 @@ export function Sidebar({
               collapsedHref={ROUTES.workOverview}
               active={workActive}
               onNavigate={markPending}
+              brand="work"
             >
               <NavLink
                 href={ROUTES.workOverview}
@@ -875,6 +900,7 @@ export function Sidebar({
               }
               active={supportActive}
               onNavigate={markPending}
+              brand="support"
             >
               {showSupportOverview ? (
                 <NavLink
@@ -921,6 +947,7 @@ export function Sidebar({
               collapsedHref={ROUTES.insightsOverview}
               active={insightsActive}
               onNavigate={markPending}
+              brand="insights"
             >
               <NavLink
                 href={ROUTES.insightsOverview}
@@ -934,8 +961,18 @@ export function Sidebar({
           )}
         </div>
 
-        {!isCustomerUser && (
-          <div className="border-t border-border-subtle pt-4">
+        <div className="flex flex-col gap-px border-t border-border-subtle pt-4">
+          <NavLink
+            href={ROUTES.notifications}
+            label="Notifications"
+            icon={Bell}
+            pathname={activePath}
+            activeMatch="prefix"
+            collapsed={collapsed}
+            badgeCount={unreadNotificationCount}
+            onNavigate={markPending}
+          />
+          {!isCustomerUser ? (
             <AppGroup
               label="Settings"
               icon={Settings}
@@ -981,8 +1018,8 @@ export function Sidebar({
                 onNavigate={markPending}
               />
             </AppGroup>
-          </div>
-        )}
+          ) : null}
+        </div>
       </nav>
 
       <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">

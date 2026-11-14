@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { addAppUser } from "@/lib/appUsers";
 import type { AppUserRole } from "@/lib/appUsers";
-import { Button, Dialog, Input } from "@/components/ui";
+import {
+  Button,
+  Dialog,
+  ModalNativeSelect,
+  ModalTextInput,
+} from "@/components/ui";
 
 type Props = {
   isOpen: boolean;
@@ -60,50 +65,49 @@ export function AddAppUserModal({ isOpen, onClose, onSuccess }: Props) {
           e.preventDefault();
           handleSubmit();
         }}
-        className="modal-form-discreet mt-6 space-y-4"
+        className="modal-form-discreet mt-4 space-y-3"
       >
-        <Input
+        {error && (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+        <ModalTextInput
           id="add-user-email"
           type="email"
           label="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="namn@example.com"
-          error={error ?? undefined}
-          modalStyle
           autoFocus
         />
-        <Input
+        <ModalTextInput
           id="add-user-name"
           type="text"
           label="Name (optional)"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Name"
-          modalStyle
         />
-        <div>
-          <label
-            htmlFor="add-user-role"
-            className="mb-1 block text-sm font-medium text-text-primary"
-          >
-            Role
-          </label>
-          <select
-            id="add-user-role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as AppUserRole)}
-            className="mt-1 h-10 w-full rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
+        <ModalNativeSelect
+          id="add-user-role"
+          label="Role"
+          value={role}
+          onChange={(e) => setRole(e.target.value as AppUserRole)}
+        >
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </ModalNativeSelect>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => handleOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" size="sm" disabled={submitting}>
             {submitting ? "Adding…" : "Add"}
           </Button>
         </div>

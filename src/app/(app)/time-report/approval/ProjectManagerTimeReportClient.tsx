@@ -23,7 +23,8 @@ import {
 import type { ProjectManagerEntry } from "@/types";
 import { getMonthLabel } from "@/lib/dateUtils";
 import { TIME_REPORT_MONTH_NAMES } from "../timeReportShared";
-import { EntryFilterMultiSelect } from "./EntryFilterMultiSelect";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import { ListTableToolbar } from "@/components/ListTableToolbar";
 
 type Customer = { id: string; name: string };
 type Project = {
@@ -599,11 +600,11 @@ export function ProjectManagerTimeReportClient({
                     onClick={() => setMonth(m)}
                     className={`w-[4.0rem] cursor-pointer shrink-0 rounded-md px-2 py-1 text-center text-xs font-medium transition-colors whitespace-nowrap ${
                       isSelected
-                        ? "bg-interactive-primary text-text-inverse"
+                        ? "bg-accent-primary text-text-inverse"
                         : "border border-border-subtle bg-bg-default text-text-primary hover:bg-bg-muted"
                     } ${
                       !isSelected && isCurrentMonth
-                        ? "ring-2 ring-interactive-primary ring-offset-1 ring-offset-bg-default"
+                        ? "ring-2 ring-accent-primary ring-offset-1 ring-offset-bg-default"
                         : ""
                     }`}
                     aria-label={`Month ${m}`}
@@ -748,35 +749,49 @@ export function ProjectManagerTimeReportClient({
             <div className="py-8 text-sm text-text-secondary">No reported time entries.</div>
           ) : (
             <div>
-            <div className="mb-1.5 flex flex-wrap items-start justify-end gap-2">
-              <EntryFilterMultiSelect
-                id="pm-entry-filter-consultant"
-                filterLabel="Consultant"
-                options={consultantFilterOptions}
-                selectedValues={filterConsultantIds}
-                onSelectedValuesChange={setFilterConsultantIds}
-                emptySummary="All consultants"
-                className="w-full sm:w-[11rem]"
-              />
-              <EntryFilterMultiSelect
-                id="pm-entry-filter-role"
-                filterLabel="Role"
-                options={roleFilterOptions}
-                selectedValues={filterRoleIds}
-                onSelectedValuesChange={setFilterRoleIds}
-                emptySummary="All roles"
-                className="w-full sm:w-[11rem]"
-              />
-              <EntryFilterMultiSelect
-                id="pm-entry-filter-jira"
-                filterLabel="Jira"
-                options={jiraFilterOptions}
-                selectedValues={filterJiraKeys}
-                onSelectedValuesChange={setFilterJiraKeys}
-                emptySummary="All Jira"
-                className="w-full sm:min-w-[12rem] sm:max-w-[22rem]"
-              />
-            </div>
+            <ListTableToolbar
+              className="mb-3"
+              trailing={
+                <ListFilterMenu
+                  ariaLabel="Filter entries"
+                  sections={[
+                    {
+                      id: "consultant",
+                      label: "Consultant",
+                      allLabel: "All consultants",
+                      options: consultantFilterOptions.map((o) => ({
+                        id: o.value,
+                        name: o.label,
+                      })),
+                      selectedIds: filterConsultantIds,
+                      onChange: setFilterConsultantIds,
+                    },
+                    {
+                      id: "role",
+                      label: "Role",
+                      allLabel: "All roles",
+                      options: roleFilterOptions.map((o) => ({
+                        id: o.value,
+                        name: o.label,
+                      })),
+                      selectedIds: filterRoleIds,
+                      onChange: setFilterRoleIds,
+                    },
+                    {
+                      id: "jira",
+                      label: "Jira",
+                      allLabel: "All Jira",
+                      options: jiraFilterOptions.map((o) => ({
+                        id: o.value,
+                        name: o.label,
+                      })),
+                      selectedIds: filterJiraKeys,
+                      onChange: setFilterJiraKeys,
+                    },
+                  ]}
+                />
+              }
+            />
             {filteredEntries.length === 0 ? (
               <div className="py-6 text-sm text-text-secondary">No entries match the filters.</div>
             ) : (

@@ -9,9 +9,11 @@ import {
   ConfirmModal,
   DrawerListGroup,
   drawerListRowClass,
+  drawerTabBodyClass,
   IconButton,
   InitialsAvatar,
   Input,
+  ListAddAction,
   OptionSegments,
   PageLoading,
   Tabs,
@@ -115,7 +117,7 @@ function CustomerDrawerDanger({
 
   return (
     <>
-      <div className="px-6 py-6">
+      <div className="px-6 pt-4 pb-6">
         <div className="space-y-6 rounded-lg border border-danger/30 bg-danger/5 p-4">
           <div>
             <h2 className="text-label-l text-danger">Danger zone</h2>
@@ -513,26 +515,21 @@ export function CustomerDrawerContent({
           />
         </TabsContent>
 
-        <TabsContent
-          value="projects"
-          className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
-        >
-          <div className="space-y-5">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setCreatingProject(true)}
-                className="rounded-md px-1.5 py-1 text-label-s font-medium text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary"
-              >
-                + Add project
-              </button>
-            </div>
+        <TabsContent value="projects" className={drawerTabBodyClass}>
 
+          <div className="space-y-5">
             <CustomerProjectGroup
               title="Confirmed"
               projects={confirmed}
               tone="confirmed"
               onOpen={setSelectedProjectId}
+              showWhenEmpty
+              action={
+                <ListAddAction
+                  label="Add project"
+                  onClick={() => setCreatingProject(true)}
+                />
+              }
             />
             <CustomerProjectGroup
               title="Pipeline"
@@ -561,19 +558,11 @@ export function CustomerDrawerContent({
                   : `Show inactive (${inactive.length})`}
               </button>
             ) : null}
-
-            {customer.projects.length === 0 ? (
-              <p className="text-sm text-text-tertiary">
-                No projects for this customer yet.
-              </p>
-            ) : null}
           </div>
         </TabsContent>
 
-        <TabsContent
-          value="people"
-          className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
-        >
+        <TabsContent value="people" className={drawerTabBodyClass}>
+
           <div className="space-y-5">
             {consultantError ? (
               <p className="text-sm text-danger" role="alert">
@@ -585,13 +574,10 @@ export function CustomerDrawerContent({
               title="Consultants"
               count={assignedConsultants.length}
               action={
-                <button
-                  type="button"
+                <ListAddAction
+                  label="Add consultant"
                   onClick={() => setAddConsultantOpen(true)}
-                  className="rounded-md px-1.5 py-0.5 text-label-s font-medium text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary"
-                >
-                  + Add
-                </button>
+                />
               }
               empty={
                 assignedConsultants.length === 0
@@ -653,13 +639,10 @@ export function CustomerDrawerContent({
               count={customer.isInternal ? undefined : assignedUsers.length}
               action={
                 customer.isInternal ? undefined : (
-                  <button
-                    type="button"
+                  <ListAddAction
+                    label="Add user"
                     onClick={() => setAddUserOpen(true)}
-                    className="rounded-md px-1.5 py-0.5 text-label-s font-medium text-text-tertiary hover:bg-text-primary/[0.06] hover:text-text-secondary"
-                  >
-                    + Add
-                  </button>
+                  />
                 )
               }
               empty={
@@ -719,10 +702,8 @@ export function CustomerDrawerContent({
           </div>
         </TabsContent>
 
-        <TabsContent
-          value="rates"
-          className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
-        >
+        <TabsContent value="rates" className={drawerTabBodyClass}>
+
           <div className="space-y-1">
             {ratesError ? (
               <p className="mb-2 text-sm text-danger" role="alert">

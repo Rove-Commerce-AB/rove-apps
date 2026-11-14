@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Briefcase, CalendarCheck, Plus } from "lucide-react";
+import { APP_BRAND_BY_KEY } from "@/lib/appTheme";
 import {
   updateProject,
   getUniqueJiraAndDevopsProjects,
@@ -23,6 +24,7 @@ import {
   Button,
   ConfirmModal,
   DrawerFieldRow,
+  DrawerSection,
   DrawerSelectField,
   InlineEditFieldContainer,
   InlineEditStatus,
@@ -558,7 +560,7 @@ export function ProjectSettingsPanel({
                     href={`/projects/${initial.id}`}
                     title="Open in Planner"
                     aria-label="Open in Planner"
-                    className="inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 text-text-primary opacity-60 transition-colors hover:bg-bg-muted hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2"
+                    className={`inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 opacity-80 transition-colors hover:bg-bg-muted hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 ${APP_BRAND_BY_KEY.planner.icon}`}
                   >
                     <CalendarCheck className="h-4 w-4" aria-hidden />
                   </Link>
@@ -571,7 +573,7 @@ export function ProjectSettingsPanel({
                     )}
                     title="Open in Work"
                     aria-label="Open in Work"
-                    className="inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 text-text-primary opacity-60 transition-colors hover:bg-bg-muted hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2"
+                    className={`inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 opacity-80 transition-colors hover:bg-bg-muted hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 ${APP_BRAND_BY_KEY.work.icon}`}
                   >
                     <Briefcase className="h-4 w-4" aria-hidden />
                   </Link>
@@ -585,7 +587,7 @@ export function ProjectSettingsPanel({
               href={workProjectHref(workProject.customerId, workProject.id)}
               title="Open in Work"
               aria-label="Open in Work"
-              className="inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 text-text-primary opacity-60 transition-colors hover:bg-bg-muted hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2"
+              className={`inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 opacity-80 transition-colors hover:bg-bg-muted hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 ${APP_BRAND_BY_KEY.work.icon}`}
             >
               <Briefcase className="h-4 w-4" aria-hidden />
             </Link>
@@ -620,7 +622,7 @@ export function ProjectSettingsPanel({
                 {error}
               </p>
             ) : null}
-            <div className="px-6 pt-4">
+            <DrawerSection first title="Identity">
               {textField("Name", "name", name)}
               <DrawerFieldRow label="Project manager">
                 <DrawerSelectField
@@ -657,6 +659,9 @@ export function ProjectSettingsPanel({
                   placeholder="—"
                 />
               </DrawerFieldRow>
+            </DrawerSection>
+
+            <DrawerSection title="Schedule & budget">
               {textField(
                 "Budget (hours)",
                 "budgetHours",
@@ -686,9 +691,9 @@ export function ProjectSettingsPanel({
                   placeholder="—"
                 />
               </DrawerFieldRow>
-            </div>
+            </DrawerSection>
 
-            <div className="border-t border-border-subtle px-6">
+            <DrawerSection title="Classification">
               <DrawerFieldRow label="Type">
                 <OptionSegments
                   name="Type"
@@ -747,7 +752,7 @@ export function ProjectSettingsPanel({
                   ]}
                 />
               </DrawerFieldRow>
-            </div>
+            </DrawerSection>
           </TabsContent>
 
           <TabsContent

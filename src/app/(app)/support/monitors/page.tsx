@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { CustomerFilter } from "@/components/CustomerFilter";
 import { MonitorsPageClient } from "@/components/MonitorsPageClient";
 import { CUSTOMER_FILTER_QUERY_KEY } from "@/lib/customerFilter";
 import {
@@ -97,16 +96,14 @@ export default async function SupportMonitorsPage({ searchParams }: Props) {
       loadError={loadError}
       title="Monitors"
       description={description}
-      toolbar={
-        <CustomerFilter
-          customers={customers}
-          value={selectedCustomerIds}
-          basePath={ROUTES.supportMonitors}
-          cookieName={SUPPORT_CUSTOMER_FILTER_COOKIE}
-          hideWhenSingle={actor.role === "customer"}
-          queryKey={CUSTOMER_FILTER_QUERY_KEY}
-        />
-      }
+      customerFilter={{
+        customers,
+        value: selectedCustomerIds,
+        basePath: ROUTES.supportMonitors,
+        cookieName: SUPPORT_CUSTOMER_FILTER_COOKIE,
+        hideWhenSingle: actor.role === "customer",
+        queryKey: CUSTOMER_FILTER_QUERY_KEY,
+      }}
     />
   );
 }

@@ -821,9 +821,9 @@ export function WorkTimelineView({
                   key={sprint.id}
                   className={`absolute inset-y-0 border-x ${
                     isFocused
-                      ? "bg-interactive-primary/14 border-interactive-primary/45"
+                      ? "bg-accent-primary/14 border-accent-primary/45"
                       : sprint.status === "current"
-                        ? "bg-interactive-primary/6 border-interactive-primary/20"
+                        ? "bg-accent-primary/6 border-accent-primary/20"
                         : sprint.status === "next"
                           ? "bg-bg-muted/60 border-border-subtle"
                           : "bg-transparent border-border-subtle/50"
@@ -949,8 +949,8 @@ export function WorkTimelineView({
                         overflow
                           ? "bg-danger/80"
                           : draft && !explicit
-                            ? "bg-interactive-primary/70"
-                            : "bg-interactive-primary"
+                            ? "bg-accent-primary/70"
+                            : "bg-accent-primary"
                       } ${pending ? "opacity-70" : ""}`}
                       style={{
                         left: xFor(bar.start),

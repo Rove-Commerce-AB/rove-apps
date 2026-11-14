@@ -1,45 +1,10 @@
 "use client";
 
-import {
-  Briefcase,
-  CalendarCheck,
-  Clock,
-  MessageCircle,
-  Sparkles,
-} from "lucide-react";
 import { Switch } from "@/components/ui";
+import { APP_ACCESS_ITEMS } from "@/components/appIcons";
 import { APP_KEYS, type AppKey } from "@/lib/peopleTypes";
 
-export const APP_ACCESS_ITEMS: Record<
-  AppKey,
-  { name: string; icon: typeof CalendarCheck; tileClass: string }
-> = {
-  planner: {
-    name: "Rove Planner",
-    icon: CalendarCheck,
-    tileClass: "bg-[var(--color-blue-100)] text-[var(--color-blue-600)]",
-  },
-  time_report: {
-    name: "Rove Time report",
-    icon: Clock,
-    tileClass: "bg-[var(--color-teal-100)] text-[var(--color-teal-600)]",
-  },
-  insights: {
-    name: "Rove Insights",
-    icon: Sparkles,
-    tileClass: "bg-[var(--color-cyan-100)] text-[var(--color-cyan-600)]",
-  },
-  work: {
-    name: "Rove Work",
-    icon: Briefcase,
-    tileClass: "bg-[var(--color-purple-100)] text-[var(--color-purple-600)]",
-  },
-  support: {
-    name: "Rove Support",
-    icon: MessageCircle,
-    tileClass: "bg-[var(--color-orange-100)] text-[var(--color-orange-600)]",
-  },
-};
+export { APP_ACCESS_ITEMS } from "@/components/appIcons";
 
 export function AppAccessList({
   value,

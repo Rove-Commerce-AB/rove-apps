@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { updateRole } from "@/lib/rolesClient";
-import { Button, Dialog, Input } from "@/components/ui";
+import { Button, Dialog, ModalTextInput } from "@/components/ui";
 
 type Props = {
   role: { id: string; name: string } | null;
@@ -63,23 +63,26 @@ export function EditRoleModal({
           e.preventDefault();
           handleSubmit();
         }}
-        className="modal-form-discreet mt-6 space-y-4"
+        className="modal-form-discreet mt-4 space-y-3"
       >
-        <Input
+        {error && (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+        <ModalTextInput
           id="edit-role-name"
           label="Role name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Senior Developer"
-          error={error ?? undefined}
-          modalStyle
         />
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" size="sm" disabled={submitting}>
             {submitting ? "Saving…" : "Save"}
           </Button>
         </div>

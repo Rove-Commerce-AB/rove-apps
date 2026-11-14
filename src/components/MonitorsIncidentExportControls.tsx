@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
+import { ActionPopover } from "@/components/ui/ActionPopover";
 
 type Props = {
   /** When set, export is scoped to that customer; otherwise all visible monitors. */
@@ -9,7 +10,7 @@ type Props = {
 };
 
 const dateInputClass =
-  "box-border h-7 w-[9.25rem] rounded-md border border-border-subtle bg-bg-default px-2 text-[13px] text-text-primary outline-none transition-colors hover:border-border-default focus:border-border-default focus:ring-1 focus:ring-border-default";
+  "box-border h-8 w-full rounded-md border border-border-subtle bg-bg-default px-2 text-[13px] text-text-primary outline-none transition-colors hover:border-border-default focus:border-border-default focus:ring-1 focus:ring-border-default";
 
 function stockholmToday(): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -43,36 +44,57 @@ export function MonitorsIncidentExportControls({ customerId }: Props) {
   }, [from, to, customerId]);
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <label className="inline-flex h-7 items-center gap-1.5 text-[13px] text-text-tertiary">
-        <span className="sr-only">From</span>
-        <input
-          type="date"
-          value={from}
-          max={today}
-          onChange={(event) => setFrom(event.target.value)}
-          className={dateInputClass}
-          aria-label="Export from date"
-        />
-      </label>
-      <label className="inline-flex h-7 items-center gap-1.5 text-[13px] text-text-tertiary">
-        <span className="sr-only">To</span>
-        <input
-          type="date"
-          value={to}
-          max={today}
-          onChange={(event) => setTo(event.target.value)}
-          className={dateInputClass}
-          aria-label="Export to date"
-        />
-      </label>
-      <a
-        href={href}
-        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
-      >
-        <Download className="h-3.5 w-3.5" aria-hidden />
-        Export downtime
-      </a>
-    </div>
+    <ActionPopover
+      title="Export downtime"
+      description="Choose a period, then download. Dates use Europe/Stockholm."
+      trigger={
+        <>
+          <Download className="h-3.5 w-3.5" aria-hidden />
+          Export downtime
+        </>
+      }
+    >
+      {({ close }) => (
+        <>
+          <div className="space-y-2">
+            <label className="block space-y-1">
+              <span className="text-[12px] font-medium text-text-secondary">
+                From
+              </span>
+              <input
+                type="date"
+                value={from}
+                max={to || today}
+                onChange={(event) => setFrom(event.target.value)}
+                className={dateInputClass}
+                aria-label="Export from date"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[12px] font-medium text-text-secondary">
+                To
+              </span>
+              <input
+                type="date"
+                value={to}
+                min={from || undefined}
+                max={today}
+                onChange={(event) => setTo(event.target.value)}
+                className={dateInputClass}
+                aria-label="Export to date"
+              />
+            </label>
+          </div>
+          <a
+            href={href}
+            className="mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-interactive-secondary-hover px-2 text-[13px] font-medium text-text-primary transition-colors hover:bg-border-subtle"
+            onClick={close}
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden />
+            Download
+          </a>
+        </>
+      )}
+    </ActionPopover>
   );
 }

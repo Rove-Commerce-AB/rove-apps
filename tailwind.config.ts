@@ -92,6 +92,18 @@ const config: Config = {
           "active-accent": "var(--color-nav-active-accent)",
           hover: "var(--color-nav-hover)",
         },
+        app: {
+          planner: "var(--color-app-planner)",
+          "planner-subtle": "var(--color-app-planner-subtle)",
+          work: "var(--color-app-work)",
+          "work-subtle": "var(--color-app-work-subtle)",
+          "time-report": "var(--color-app-time-report)",
+          "time-report-subtle": "var(--color-app-time-report-subtle)",
+          support: "var(--color-app-support)",
+          "support-subtle": "var(--color-app-support-subtle)",
+          insights: "var(--color-app-insights)",
+          "insights-subtle": "var(--color-app-insights-subtle)",
+        },
         table: {
           header: "var(--color-table-header)",
         },

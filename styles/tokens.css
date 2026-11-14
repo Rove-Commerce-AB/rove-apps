@@ -270,6 +270,18 @@
   --color-nav-active: var(--color-interactive-primary-subtle);
   --color-nav-active-accent: var(--color-interactive-primary);
   --color-nav-hover: var(--color-interactive-secondary-hover);
+
+  /* App brand – always available (sidebar shows all apps at once) */
+  --color-app-planner: var(--color-orange-600);
+  --color-app-planner-subtle: var(--color-orange-50);
+  --color-app-work: var(--color-blue-500);
+  --color-app-work-subtle: var(--color-blue-50);
+  --color-app-time-report: var(--color-teal-600);
+  --color-app-time-report-subtle: var(--color-teal-50);
+  --color-app-support: var(--color-cyan-600);
+  --color-app-support-subtle: var(--color-cyan-50);
+  --color-app-insights: var(--color-purple-600);
+  --color-app-insights-subtle: var(--color-purple-50);
   --panel-bg: var(--color-surface-raised);
   --panel-border: var(--color-border-default);
   --section-divider: var(--color-border-default);
@@ -359,6 +371,17 @@
   --color-accent-2: var(--color-green-400);
   --color-accent-3: var(--color-purple-400);
   --color-accent-4: var(--color-orange-400);
+
+  --color-app-planner: var(--color-orange-500);
+  --color-app-planner-subtle: var(--color-orange-950);
+  --color-app-work: var(--color-blue-500);
+  --color-app-work-subtle: var(--color-blue-950);
+  --color-app-time-report: var(--color-teal-400);
+  --color-app-time-report-subtle: var(--color-teal-950);
+  --color-app-support: var(--color-cyan-400);
+  --color-app-support-subtle: var(--color-cyan-950);
+  --color-app-insights: var(--color-purple-400);
+  --color-app-insights-subtle: var(--color-purple-950);
 }
 
 /* Planner – orange accent */
@@ -410,6 +433,63 @@ html.dark[data-app="work"] {
 }
 
 html.dark[data-app="future"] {
+  --color-accent-primary: var(--color-purple-500);
+  --color-accent-primary-hover: var(--color-purple-400);
+  --color-accent-primary-active: var(--color-purple-300);
+  --color-accent-primary-subtle: var(--color-purple-950);
+  --color-accent-primary-text: var(--color-purple-400);
+  --color-accent-focus: var(--color-purple-400);
+}
+
+/* Time report – teal accent */
+:root[data-app="time-report"] {
+  --color-accent-primary: var(--color-teal-600);
+  --color-accent-primary-hover: var(--color-teal-700);
+  --color-accent-primary-active: var(--color-teal-800);
+  --color-accent-primary-subtle: var(--color-teal-50);
+  --color-accent-primary-text: var(--color-teal-700);
+  --color-accent-focus: var(--color-teal-600);
+}
+
+html.dark[data-app="time-report"] {
+  --color-accent-primary: var(--color-teal-400);
+  --color-accent-primary-hover: var(--color-teal-300);
+  --color-accent-primary-active: var(--color-teal-200);
+  --color-accent-primary-subtle: var(--color-teal-950);
+  --color-accent-primary-text: var(--color-teal-300);
+  --color-accent-focus: var(--color-teal-400);
+}
+
+/* Rove Support – cyan accent */
+:root[data-app="support"] {
+  --color-accent-primary: var(--color-cyan-600);
+  --color-accent-primary-hover: var(--color-cyan-700);
+  --color-accent-primary-active: var(--color-cyan-800);
+  --color-accent-primary-subtle: var(--color-cyan-50);
+  --color-accent-primary-text: var(--color-cyan-700);
+  --color-accent-focus: var(--color-cyan-600);
+}
+
+html.dark[data-app="support"] {
+  --color-accent-primary: var(--color-cyan-400);
+  --color-accent-primary-hover: var(--color-cyan-300);
+  --color-accent-primary-active: var(--color-cyan-200);
+  --color-accent-primary-subtle: var(--color-cyan-950);
+  --color-accent-primary-text: var(--color-cyan-300);
+  --color-accent-focus: var(--color-cyan-400);
+}
+
+/* Insights – purple accent */
+:root[data-app="insights"] {
+  --color-accent-primary: var(--color-purple-600);
+  --color-accent-primary-hover: var(--color-purple-700);
+  --color-accent-primary-active: var(--color-purple-800);
+  --color-accent-primary-subtle: var(--color-purple-50);
+  --color-accent-primary-text: var(--color-purple-700);
+  --color-accent-focus: var(--color-purple-600);
+}
+
+html.dark[data-app="insights"] {
   --color-accent-primary: var(--color-purple-500);
   --color-accent-primary-hover: var(--color-purple-400);
   --color-accent-primary-active: var(--color-purple-300);

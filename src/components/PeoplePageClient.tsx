@@ -3,20 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Briefcase,
   Building2,
-  CalendarCheck,
   Handshake,
-  Clock,
   IdCard,
-  MessageCircle,
   FileDown,
   Plus,
-  Sparkles,
   UserRound,
 } from "lucide-react";
 import { AddConsultantModal } from "@/components/AddConsultantModal";
+import { APP_ICONS } from "@/components/appIcons";
 import { AppAccessList } from "@/components/AppAccessList";
+import { APP_BRAND_BY_KEY } from "@/lib/appTheme";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { ConsultantDetailClient } from "@/components/ConsultantDetailClient";
 import { FortnoxPayrollExportModal } from "@/components/FortnoxPayrollExportModal";
@@ -59,17 +56,20 @@ import {
   Badge,
   Button,
   CapacityBar,
+  CheckboxList,
   ConfirmModal,
   DataTable,
   Dialog,
   DrawerFieldRow,
+  DrawerSection,
   DrawerSelectField,
   EmptyState,
   InitialsAvatar,
   InlineEditFieldContainer,
   InlineEditStatus,
   InlineEditTrigger,
-  Input,
+  ModalField,
+  ModalTextInput,
   OptionSegments,
   PageHeader,
   SAVED_DURATION_MS,
@@ -80,6 +80,7 @@ import {
   TabsList,
   TabsTrigger,
   editInputClass,
+  modalSelectTriggerClass,
   type DataTableColumn,
 } from "@/components/ui";
 
@@ -158,14 +159,6 @@ const TYPE_ICON_CLASS: Record<PersonKind, string> = {
   user: "text-text-muted",
 };
 
-const APP_ICONS: Record<AppKey, typeof CalendarCheck> = {
-  planner: CalendarCheck,
-  time_report: Clock,
-  insights: Sparkles,
-  work: Briefcase,
-  support: MessageCircle,
-};
-
 function PersonTypeCell({ person }: { person: PersonListItem }) {
   const kind = personKind(person);
   const label = personType(person);
@@ -206,11 +199,11 @@ function PersonAppIcons({ appKeys }: { appKeys: AppKey[] }) {
   if (appKeys.length === 0) return null;
 
   return (
-    <span className="inline-flex items-center gap-1 text-text-secondary">
+    <span className="inline-flex items-center gap-1">
       {APP_KEYS.filter((key) => appKeys.includes(key)).map((key) => {
         const Icon = APP_ICONS[key];
         return (
-          <span key={key} title={APP_LABELS[key]}>
+          <span key={key} title={APP_LABELS[key]} className={APP_BRAND_BY_KEY[key].icon}>
             <Icon className="h-4 w-4" aria-hidden />
             <span className="sr-only">{APP_LABELS[key]}</span>
           </span>
@@ -399,25 +392,25 @@ function UserFormDialog({
         </div>
       ) : (
       <form
-        className="modal-form-discreet mt-6 space-y-4"
+        className="modal-form-discreet mt-4 space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
         }}
       >
-        <Input
+        <ModalTextInput
+          id="add-person-name"
           label="Name"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          modalStyle
           autoFocus
         />
-        <Input
+        <ModalTextInput
+          id="add-person-email"
           type="email"
           label="Email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          modalStyle
         />
         {isCustomer ? (
           <div className="space-y-4">
@@ -428,35 +421,25 @@ function UserFormDialog({
               allowedKeys={CUSTOMER_APP_KEYS}
             />
             {assignableCustomers.length > 0 ? (
-              <div>
-                <p className="mb-2 block text-sm font-medium text-text-primary">
-                  Customers
-                </p>
-                <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
-                  {assignableCustomers.map((customer) => (
-                    <label
-                      key={customer.id}
-                      htmlFor={`add-customer-user-customer-${customer.id}`}
-                      className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                    >
-                      <input
-                        id={`add-customer-user-customer-${customer.id}`}
-                        type="checkbox"
-                        checked={customerIds.includes(customer.id)}
-                        onChange={() =>
-                          setCustomerIds((prev) =>
-                            prev.includes(customer.id)
-                              ? prev.filter((id) => id !== customer.id)
-                              : [...prev, customer.id]
-                          )
-                        }
-                        disabled={submitting}
-                      />
-                      <span>{customer.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <CheckboxList
+                label="Customers"
+                idPrefix="add-customer-user-customer"
+                options={assignableCustomers.map((customer) => ({
+                  value: customer.id,
+                  label: customer.name,
+                  leading: (
+                    <CustomerFavicon
+                      name={customer.name}
+                      url={customer.url}
+                      color={customer.color}
+                      size="xs"
+                    />
+                  ),
+                }))}
+                value={customerIds}
+                onChange={setCustomerIds}
+                disabled={submitting}
+              />
             ) : (
               <p className="text-sm text-text-secondary">
                 No customers available to assign yet.
@@ -465,16 +448,19 @@ function UserFormDialog({
           </div>
         ) : (
           <>
-            <Select
-              label="System role"
-              value={role}
-              onValueChange={(value) => setRole(value as AppUserRole)}
-              variant="modal"
-              options={[
-                { value: "member", label: "Member" },
-                { value: "admin", label: "Admin" },
-              ]}
-            />
+            <ModalField id="add-person-system-role" label="System role">
+              <Select
+                id="add-person-system-role"
+                value={role}
+                onValueChange={(value) => setRole(value as AppUserRole)}
+                variant="modal"
+                triggerClassName={modalSelectTriggerClass}
+                options={[
+                  { value: "member", label: "Member" },
+                  { value: "admin", label: "Admin" },
+                ]}
+              />
+            </ModalField>
             <AppAccessList
               idPrefix="add-user-apps"
               value={appKeys}
@@ -483,74 +469,73 @@ function UserFormDialog({
             />
           </>
         )}
-        <div>
-          <p className="mb-2 block text-sm font-medium text-text-primary">
-            Work projects
-            <span className="ml-1 font-normal text-text-tertiary">
-              (optional)
-            </span>
-          </p>
-          <div
-            className={`h-40 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3 ${
-              hasWorkApp ? "" : "opacity-60"
-            }`}
-          >
-            {!hasWorkApp ? (
-              <p className="text-sm text-text-secondary">
-                Enable Work above to assign projects.
-              </p>
-            ) : isCustomer && customerIds.length === 0 ? (
-              <p className="text-sm text-text-secondary">
-                Select at least one customer to choose Work projects.
-              </p>
-            ) : workBoardsLoading ? (
-              <p className="text-sm text-text-secondary">Loading projects…</p>
-            ) : workBoards.length === 0 ? (
-              <p className="text-sm text-text-secondary">
-                {isCustomer
-                  ? "No Work projects for the selected customers."
-                  : "No Work projects available."}
-              </p>
-            ) : (
-              workBoards.map((board) => (
-                <label
-                  key={board.id}
-                  htmlFor={`add-person-board-${board.id}`}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                >
-                  <input
-                    id={`add-person-board-${board.id}`}
-                    type="checkbox"
-                    checked={workBoardIds.includes(board.id)}
-                    onChange={() =>
-                      setWorkBoardIds((prev) =>
-                        prev.includes(board.id)
-                          ? prev.filter((id) => id !== board.id)
-                          : [...prev, board.id]
-                      )
-                    }
-                    disabled={submitting || !hasWorkApp}
-                  />
-                  <span className="min-w-0 truncate">
-                    {!isCustomer || customerIds.length > 1
-                      ? `${board.title} · ${board.customerName}`
-                      : board.title}
-                  </span>
-                </label>
-              ))
-            )}
-          </div>
-        </div>
+        <CheckboxList
+          label={
+            <>
+              Work projects
+              <span className="ml-1 font-normal text-text-tertiary">
+                (optional)
+              </span>
+            </>
+          }
+          idPrefix="add-person-board"
+          heightClassName="h-40"
+          disabled={submitting || !hasWorkApp}
+          options={
+            !hasWorkApp || (isCustomer && customerIds.length === 0) || workBoardsLoading
+              ? []
+              : workBoards.map((board) => {
+                  const customer = customers.find(
+                    (row) => row.id === board.customerId
+                  );
+                  return {
+                    value: board.id,
+                    label:
+                      !isCustomer || customerIds.length > 1
+                        ? `${board.title} · ${board.customerName}`
+                        : board.title,
+                    leading: (
+                      <CustomerFavicon
+                        name={board.customerName}
+                        url={customer?.url ?? null}
+                        color={customer?.color ?? null}
+                        size="xs"
+                      />
+                    ),
+                  };
+                })
+          }
+          value={workBoardIds}
+          onChange={setWorkBoardIds}
+          empty={
+            <p className="px-2 py-1.5 text-sm text-text-secondary">
+              {!hasWorkApp
+                ? "Enable Work above to assign projects."
+                : isCustomer && customerIds.length === 0
+                  ? "Select at least one customer to choose Work projects."
+                  : workBoardsLoading
+                    ? "Loading projects…"
+                    : isCustomer
+                      ? "No Work projects for the selected customers."
+                      : "No Work projects available."}
+            </p>
+          }
+        />
         {error ? (
           <p className="text-body-m text-danger" role="alert">
             {error}
           </p>
         ) : null}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" size="sm" disabled={submitting}>
             {submitting
               ? "Saving…"
               : isCustomer
@@ -670,14 +655,33 @@ function AccountOverview({ person }: { person: PersonListItem }) {
         : "idle";
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div>
       {error ? (
         <p className="px-6 pt-4 text-sm text-danger" role="alert">
           {error}
         </p>
       ) : null}
 
-      <div className="px-6 pt-4 pb-6">
+      <DrawerSection first title="Access">
+        <DrawerFieldRow label="System role">
+          {person.userRole === "customer" ? (
+            <span className="flex h-9 items-center text-sm text-text-primary">
+              Customer user
+            </span>
+          ) : (
+            <DrawerSelectField
+              value={role}
+              onValueChange={(value) => {
+                if (!isInlineEditValueChanged(role, value)) return;
+                void saveField("role", value);
+              }}
+              options={[...USER_ROLE_OPTIONS]}
+            />
+          )}
+        </DrawerFieldRow>
+      </DrawerSection>
+
+      <DrawerSection title="Identity">
         <DrawerFieldRow label="Name">
           <InlineEditFieldContainer
             isEditing={editingField === "name"}
@@ -767,28 +771,13 @@ function AccountOverview({ person }: { person: PersonListItem }) {
             }
           />
         </DrawerFieldRow>
+      </DrawerSection>
 
-        <DrawerFieldRow label="System role">
-          {person.userRole === "customer" ? (
-            <span className="flex h-9 items-center text-sm text-text-primary">
-              Customer user
-            </span>
-          ) : (
-            <DrawerSelectField
-              value={role}
-              onValueChange={(value) => {
-                if (!isInlineEditValueChanged(role, value)) return;
-                void saveField("role", value);
-              }}
-              options={[...USER_ROLE_OPTIONS]}
-            />
-          )}
-        </DrawerFieldRow>
-
-        {person.userRole === "customer" && person.appUserId ? (
+      {person.userRole === "customer" && person.appUserId ? (
+        <DrawerSection title="Activity">
           <PersonLoginHistory appUserId={person.appUserId} />
-        ) : null}
-      </div>
+        </DrawerSection>
+      ) : null}
     </div>
   );
 }
@@ -1254,13 +1243,15 @@ function EmptyConsultantProfile({
   }
 
   return (
-    <div className="px-6 py-6">
-      <h3 className="text-heading-m text-text-primary">Consultant profile</h3>
-      <p className="mt-1 text-body-m text-text-secondary">
-        Create a consultant profile to make this user available for planning
-        and time reporting.
+    <DrawerSection
+      title="Planning"
+      hint="Required for allocations and time reporting"
+      first={!person.appUserId}
+    >
+      <p className="mb-3 text-[13px] text-text-secondary">
+        Create a consultant profile to make this user available for planning.
       </p>
-      <div className="mt-4 space-y-4">
+      <div className="space-y-3">
         <Select
           label="Default role"
           value={roleId}
@@ -1285,7 +1276,7 @@ function EmptyConsultantProfile({
           {submitting ? "Creating…" : "Create consultant profile"}
         </Button>
       </div>
-    </div>
+    </DrawerSection>
   );
 }
 
@@ -1651,32 +1642,27 @@ export function PeoplePageClient({
             defaultValue="overview"
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
-            <TabsList className="shrink-0 overflow-x-auto border-border-default px-6 !gap-6">
-              <TabsTrigger value="overview" className="px-1 !px-1">
+            <TabsList className="shrink-0 !flex-wrap overflow-x-hidden border-border-default px-4 !gap-x-4 !gap-y-0">
+              <TabsTrigger value="overview" className="!px-1">
                 Overview
               </TabsTrigger>
               {selected.appUserId ? (
-                <TabsTrigger value="apps" className="px-1 !px-1">
-                  App access
+                <TabsTrigger value="apps" className="!px-1">
+                  Apps
                 </TabsTrigger>
               ) : null}
               {selected.appUserId ? (
-                <TabsTrigger value="mcp" className="px-1 !px-1">
-                  MCP access
-                </TabsTrigger>
-              ) : null}
-              {selected.userRole !== "customer" ? (
-                <TabsTrigger value="consultant" className="px-1 !px-1">
-                  Consultant profile
+                <TabsTrigger value="mcp" className="!px-1">
+                  MCP
                 </TabsTrigger>
               ) : null}
               {selected.userRole === "customer" || selected.consultantId ? (
-                <TabsTrigger value="customers" className="px-1 !px-1">
+                <TabsTrigger value="customers" className="!px-1">
                   Customers
                 </TabsTrigger>
               ) : null}
               {selected.appUserId || selected.consultantId ? (
-                <TabsTrigger value="danger" className="px-1 !px-1">
+                <TabsTrigger value="danger" className="!px-1">
                   Danger
                 </TabsTrigger>
               ) : null}
@@ -1688,13 +1674,14 @@ export function PeoplePageClient({
               {selected.appUserId ? (
                 <AccountOverview key={selected.key} person={selected} />
               ) : (
-                <div className="px-6 pt-4 pb-6">
-                  <p className="text-body-m text-text-secondary">
+                <DrawerSection first title="Access">
+                  <p className="text-[13px] text-text-secondary">
                     This consultant does not have a login account.
                   </p>
                   <Button
                     type="button"
-                    className="mt-5"
+                    size="sm"
+                    className="mt-3"
                     onClick={() =>
                       setUserForm({
                         open: true,
@@ -1707,8 +1694,15 @@ export function PeoplePageClient({
                   >
                     Create user account
                   </Button>
-                </div>
+                </DrawerSection>
               )}
+              {selected.userRole !== "customer" ? (
+                <PersonConsultantSection
+                  person={selected}
+                  roles={roles}
+                  calendars={calendars}
+                />
+              ) : null}
             </TabsContent>
             {selected.appUserId ? (
               <TabsContent
@@ -1732,18 +1726,6 @@ export function PeoplePageClient({
                   isCustomer={selected.userRole === "customer"}
                   appKeys={selected.appKeys}
                   initialAccess={selected.mcpAccess}
-                />
-              </TabsContent>
-            ) : null}
-            {selected.userRole !== "customer" ? (
-              <TabsContent
-                value="consultant"
-                className="min-h-0 flex-1 overflow-y-auto data-[state=active]:flex data-[state=active]:flex-col"
-              >
-                <PersonConsultantSection
-                  person={selected}
-                  roles={roles}
-                  calendars={calendars}
                 />
               </TabsContent>
             ) : null}

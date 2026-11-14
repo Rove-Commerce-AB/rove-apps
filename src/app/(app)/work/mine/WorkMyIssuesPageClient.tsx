@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui";
+import { ListTableToolbar } from "@/components/ListTableToolbar";
 import { workIssuePriorityLabel } from "@/lib/workBoardView";
 import type { WorkMyIssue } from "@/lib/workMyIssues";
 import { formatVisibleWorkEstimate } from "@/lib/workEstimate";
@@ -18,9 +19,14 @@ import { createWorkIssueAction } from "../actions";
 import { WorkIssueTypeIcon } from "../[customerId]/[projectId]/WorkIssueTypeIcon";
 import { WorkAddIssueInline } from "../[customerId]/[projectId]/WorkAddIssueInline";
 import { WorkMyIssueDrawer } from "./WorkMyIssueDrawer";
+import {
+  WorkMyWorkViewControls,
+  type MyWorkGroupBy,
+  type MyWorkRoleFilter,
+} from "./WorkMyWorkViewControls";
 
-type RoleFilter = "either" | "owner" | "assignee";
-type GroupBy = "project" | "status" | "sprint" | "none";
+type RoleFilter = MyWorkRoleFilter;
+type GroupBy = MyWorkGroupBy;
 
 type Group = {
   key: string;
@@ -107,14 +113,6 @@ function groupIssues(issues: WorkMyIssue[], groupBy: GroupBy): Group[] {
   return groups;
 }
 
-function triggerClass(active: boolean) {
-  return `inline-flex h-8 items-center rounded-md px-2.5 text-[13px] transition-colors ${
-    active
-      ? "bg-accent-primary-subtle text-accent-primary-text"
-      : "text-text-secondary hover:bg-bg-muted hover:text-text-primary"
-  }`;
-}
-
 export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
   const router = useRouter();
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("either");
@@ -178,69 +176,22 @@ export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
       <PageHeader
         title="My work"
         description="Issues where you are owner or assignee across projects you can access."
-        className="mb-6"
-      >
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            className={triggerClass(roleFilter === "either")}
-            onClick={() => setRoleFilter("either")}
-          >
-            Either
-          </button>
-          <button
-            type="button"
-            className={triggerClass(roleFilter === "owner")}
-            onClick={() => setRoleFilter("owner")}
-          >
-            Owner
-          </button>
-          <button
-            type="button"
-            className={triggerClass(roleFilter === "assignee")}
-            onClick={() => setRoleFilter("assignee")}
-          >
-            Assignee
-          </button>
-          <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
-          <button
-            type="button"
-            className={triggerClass(groupBy === "project")}
-            onClick={() => setGroupBy("project")}
-          >
-            By project
-          </button>
-          <button
-            type="button"
-            className={triggerClass(groupBy === "status")}
-            onClick={() => setGroupBy("status")}
-          >
-            By status
-          </button>
-          <button
-            type="button"
-            className={triggerClass(groupBy === "sprint")}
-            onClick={() => setGroupBy("sprint")}
-          >
-            By sprint
-          </button>
-          <button
-            type="button"
-            className={triggerClass(groupBy === "none")}
-            onClick={() => setGroupBy("none")}
-          >
-            List
-          </button>
-          <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
-          <button
-            type="button"
-            className={triggerClass(includeDone)}
-            onClick={() => setIncludeDone((value) => !value)}
-          >
-            Include done
-          </button>
-        </div>
-      </PageHeader>
+        className="mb-4"
+      />
+
+      <ListTableToolbar
+        className="mb-3"
+        trailing={
+          <WorkMyWorkViewControls
+            roleFilter={roleFilter}
+            onRoleFilterChange={setRoleFilter}
+            includeDone={includeDone}
+            onIncludeDoneChange={setIncludeDone}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
+          />
+        }
+      />
 
       {createError ? (
         <p role="alert" className="mb-4 text-sm text-danger">

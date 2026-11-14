@@ -7,6 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import {
   Button,
+  CheckboxList,
   ConfirmModal,
   Dialog,
   IconButton,
@@ -56,14 +57,6 @@ export function PersonCustomersTab({ person, customers }: Props) {
       return true;
     })
     .sort((a, b) => compareTextSv(a.name, b.name));
-
-  function toggleCustomer(customerId: string) {
-    setSelectedIds((prev) =>
-      prev.includes(customerId)
-        ? prev.filter((id) => id !== customerId)
-        : [...prev, customerId]
-    );
-  }
 
   async function addSelected() {
     if (selectedIds.length === 0) {
@@ -204,7 +197,7 @@ export function PersonCustomersTab({ person, customers }: Props) {
         title="Add customer"
       >
         <form
-          className="modal-form-discreet mt-6 space-y-4"
+          className="modal-form-discreet mt-4 space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
             void addSelected();
@@ -216,44 +209,44 @@ export function PersonCustomersTab({ person, customers }: Props) {
             </p>
           ) : null}
           {options.length > 0 ? (
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
-              {options.map((customer) => (
-                <label
-                  key={customer.id}
-                  htmlFor={`person-customer-${customer.id}`}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                >
-                  <input
-                    id={`person-customer-${customer.id}`}
-                    type="checkbox"
-                    checked={selectedIds.includes(customer.id)}
-                    onChange={() => toggleCustomer(customer.id)}
-                    disabled={submitting}
-                  />
+            <CheckboxList
+              idPrefix="person-customer"
+              options={options.map((customer) => ({
+                value: customer.id,
+                label: customer.name,
+                leading: (
                   <CustomerFavicon
                     name={customer.name}
                     url={customer.url}
                     color={customer.color}
+                    size="xs"
                   />
-                  <span>{customer.name}</span>
-                </label>
-              ))}
-            </div>
+                ),
+              }))}
+              value={selectedIds}
+              onChange={setSelectedIds}
+              disabled={submitting}
+            />
           ) : (
             <p className="text-sm text-text-secondary">
               All available customers are already assigned.
             </p>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2">
             <Button
               type="button"
               variant="secondary"
+              size="sm"
               onClick={() => setAddOpen(false)}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || options.length === 0}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={submitting || options.length === 0}
+            >
               {submitting ? "Adding…" : "Add selected"}
             </Button>
           </div>

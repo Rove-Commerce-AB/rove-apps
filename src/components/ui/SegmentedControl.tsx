@@ -58,7 +58,7 @@ export function SegmentedControl<T extends string>({
             }}
             className={
               selected
-                ? "inline-flex cursor-pointer items-center rounded-full bg-interactive-primary px-3.5 py-2 text-label-m text-text-inverse transition-colors hover:bg-interactive-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2"
+                ? "inline-flex cursor-pointer items-center rounded-full bg-accent-primary px-3.5 py-2 text-label-m text-text-inverse transition-colors hover:bg-accent-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2"
                 : "inline-flex cursor-pointer items-center rounded-full bg-interactive-secondary-hover px-3.5 py-2 text-body-m text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2"
             }
           >

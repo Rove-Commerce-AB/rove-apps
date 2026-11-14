@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
 import { createConsultantAndRevalidate } from "@/app/(app)/consultants/actions";
 import { consultantHref } from "@/lib/routes";
 import { getRoles } from "@/lib/rolesClient";
-import { useEscToClose } from "@/lib/useEscToClose";
 import { getCalendars } from "@/lib/calendarsClient";
-import { Button, modalInputClass } from "@/components/ui";
+import { Button, Dialog, ModalTextInput } from "@/components/ui";
 
 type Props = {
   isOpen: boolean;
@@ -71,88 +69,52 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
     setError(null);
   };
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      resetForm();
+      onClose();
+    }
   };
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-consultant-title"
+    <Dialog open={isOpen} onOpenChange={handleOpenChange} title="Add consultant">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSubmit();
+        }}
+        className="modal-form-discreet mt-4 space-y-3"
       >
-        <div className="flex items-center justify-between">
-          <h2
-            id="add-consultant-title"
-            className="text-heading-m text-text-primary"
-          >
-            Add consultant
-          </h2>
-          <button
+        {error && (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+
+        <ModalTextInput
+          id="consultant-name"
+          label="Name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Anna Andersson"
+          autoFocus
+        />
+
+        <div className="flex justify-end gap-2">
+          <Button
             type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
+            variant="secondary"
+            size="sm"
+            onClick={() => handleOpenChange(false)}
           >
-            <X className="h-5 w-5" />
-          </button>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={submitting}>
+            {submitting ? "Saving…" : "Save"}
+          </Button>
         </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmit();
-          }}
-          className="modal-form-discreet mt-6 space-y-4"
-        >
-          {error && (
-            <p className="text-sm text-danger" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div>
-            <label
-              htmlFor="consultant-name"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Name
-            </label>
-            <input
-              id="consultant-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Anna Andersson"
-              className={`mt-1 ${modalInputClass}`}
-              autoFocus
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Dialog>
   );
 }

@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dialog, Button, Input } from "@/components/ui";
+import {
+  Dialog,
+  Button,
+  CheckboxList,
+  InitialsAvatar,
+  ModalTextInput,
+  modalFieldLabelClass,
+} from "@/components/ui";
+import { initialsFromName } from "@/lib/workIssueKey";
 import { TemporaryPasswordReveal } from "@/components/TemporaryPasswordReveal";
 import { addCustomerUserToCustomer } from "@/lib/customerAppUsersClient";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
@@ -46,14 +54,6 @@ export function AddCustomerUserModal({
 
   const existingIds = new Set(existingUsers.map((user) => user.id));
   const options = allCustomerUsers.filter((user) => !existingIds.has(user.id));
-
-  function toggleUser(userId: string) {
-    setSelectedIds((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
-    );
-  }
 
   function finish() {
     setRevealed(null);
@@ -131,7 +131,7 @@ export function AddCustomerUserModal({
             event.preventDefault();
             void handleSubmit();
           }}
-          className="modal-form-discreet mt-6 space-y-4"
+          className="modal-form-discreet mt-4 space-y-3"
         >
           {error ? (
             <p className="text-sm text-danger" role="alert">
@@ -140,34 +140,25 @@ export function AddCustomerUserModal({
           ) : null}
 
           {options.length > 0 ? (
-            <div>
-              <p className="mb-2 block text-sm font-medium text-text-primary">
-                Existing customer users
-              </p>
-              <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
-                {options.map((user) => (
-                  <label
-                    key={user.id}
-                    htmlFor={`add-customer-user-${user.id}`}
-                    className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                  >
-                    <input
-                      id={`add-customer-user-${user.id}`}
-                      type="checkbox"
-                      checked={selectedIds.includes(user.id)}
-                      onChange={() => toggleUser(user.id)}
-                      disabled={submitting}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate">{user.name}</span>
-                      <span className="block truncate text-text-tertiary">
-                        {user.email}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            <CheckboxList
+              label="Existing customer users"
+              idPrefix="add-customer-user"
+              options={options.map((user) => ({
+                value: user.id,
+                label: user.name,
+                description: user.email,
+                leading: (
+                  <InitialsAvatar
+                    name={user.name}
+                    initials={initialsFromName(user.name) || "?"}
+                    size="xxs"
+                  />
+                ),
+              }))}
+              value={selectedIds}
+              onChange={setSelectedIds}
+              disabled={submitting}
+            />
           ) : allCustomerUsers.length > 0 ? (
             <p className="text-sm text-text-primary opacity-70">
               All customer users are already assigned to this customer.
@@ -175,31 +166,29 @@ export function AddCustomerUserModal({
           ) : null}
 
           <div>
-            <p className="mb-2 block text-sm font-medium text-text-primary">
-              Create new
-            </p>
+            <p className={`mb-2 ${modalFieldLabelClass}`}>Create new</p>
             <div className="space-y-3">
-              <Input
+              <ModalTextInput
+                id="add-customer-user-name"
                 label="Name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                modalStyle
               />
-              <Input
+              <ModalTextInput
+                id="add-customer-user-email"
                 type="email"
                 label="Email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                modalStyle
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={onClose}>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" size="sm" disabled={submitting}>
               {submitting ? "Adding…" : "Add"}
             </Button>
           </div>

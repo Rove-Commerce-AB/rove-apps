@@ -4,6 +4,10 @@ import { Children, type ReactNode } from "react";
 
 export type DrawerListBleed = "drawer" | "panel" | "none";
 
+/** Top padding for drawer tab bodies — matches `DrawerSection first` (`pt-4`). */
+export const drawerTabBodyClass =
+  "min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-6";
+
 const bleedClass: Record<DrawerListBleed, string> = {
   drawer: "-mx-6 px-6",
   panel: "-mx-3 px-3",
@@ -19,8 +23,8 @@ export function drawerListRowClass(bleed: DrawerListBleed = "drawer") {
 }
 
 /**
- * Muted uppercase group header for drawer / panel lists (Projects, People, Rates…).
- * Meta chrome — not a list row.
+ * Quiet group header for drawer / panel lists (Projects, People, Rates…).
+ * Same language as DrawerSection titles — not a filled bar / uppercase chrome.
  */
 export function DrawerListGroupHeader({
   title,
@@ -35,12 +39,12 @@ export function DrawerListGroupHeader({
 }) {
   return (
     <div
-      className={`${bleedClass[bleed]} flex items-center justify-between gap-2 rounded-md bg-bg-muted/60 py-1.5`}
+      className={`${bleedClass[bleed]} flex items-center justify-between gap-2 py-1`}
     >
-      <h3 className="min-w-0 truncate text-label-s font-semibold uppercase tracking-wide text-text-tertiary">
+      <h3 className="min-w-0 truncate text-[12px] font-medium text-text-secondary">
         {title}
         {count != null ? (
-          <span className="ml-1.5 font-medium normal-case tracking-normal text-text-tertiary">
+          <span className="ml-1.5 font-medium tabular-nums text-text-secondary">
             {count}
           </span>
         ) : null}

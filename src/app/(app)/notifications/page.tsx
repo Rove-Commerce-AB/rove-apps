@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { PageHeader, Panel, PanelSectionTitle } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 import { DashboardNotificationsPanel } from "@/components/DashboardNotificationsPanel";
 import { getNotificationsForCurrentUser } from "@/lib/userNotifications";
 
@@ -12,16 +12,9 @@ export default async function NotificationsPage() {
     appUserId != null ? await getNotificationsForCurrentUser(50) : [];
 
   return (
-    <div>
-      <div className="w-full max-w-2xl">
-        <PageHeader title="Notifications" className="mb-6" />
-        <Panel>
-          <PanelSectionTitle>Recent</PanelSectionTitle>
-          <div className="p-3 pt-0">
-            <DashboardNotificationsPanel notifications={notifications} />
-          </div>
-        </Panel>
-      </div>
+    <div className="w-full max-w-2xl">
+      <PageHeader title="Notifications" className="mb-4" />
+      <DashboardNotificationsPanel notifications={notifications} />
     </div>
   );
 }

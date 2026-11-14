@@ -280,6 +280,47 @@ export function DetailFieldStack({
 }
 
 /**
+ * Quiet drawer section: groups property rows by decision weight.
+ * First section has no top border; later sections use a hairline rule.
+ */
+export function DrawerSection({
+  title,
+  hint,
+  children,
+  first = false,
+  className = "",
+}: {
+  title?: string;
+  hint?: string;
+  children: React.ReactNode;
+  /** Omit top border / use top padding for the first block in a drawer tab. */
+  first?: boolean;
+  className?: string;
+}) {
+  return (
+    <section
+      className={`${
+        first
+          ? "px-6 pt-4 pb-3"
+          : "border-t border-border-subtle px-6 py-3"
+      } ${className}`.trim()}
+    >
+      {title ? (
+        <div className="mb-1.5 flex min-w-0 items-baseline gap-2">
+          <h3 className="text-[12px] font-medium text-text-secondary">{title}</h3>
+          {hint ? (
+            <span className="truncate text-[11px] text-text-tertiary">
+              {hint}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
+/**
  * Drawer field row (quiet fields): label left, value fills remaining width.
  * Values use quiet chrome (no permanent border) — see drawerEditTriggerClass.
  */
@@ -287,26 +328,12 @@ export function DrawerFieldRow({
   label,
   info,
   children,
-  variant = "field",
 }: {
   label: string;
   /** Helper copy shown on hover via an (i) icon next to the label. */
   info?: string;
   children: React.ReactNode;
-  variant?: "field" | "summary";
 }) {
-  if (variant === "summary") {
-    return (
-      <div className="flex items-center gap-3 py-2">
-        <span className="inline-flex w-36 shrink-0 items-center gap-1 text-[13px] font-semibold text-text-primary">
-          {label}
-          {info ? <FieldInfoTip text={info} /> : null}
-        </span>
-        <div className="min-w-0 flex-1">{children}</div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex items-center gap-3 py-1.5">
       <span className="inline-flex w-36 shrink-0 items-center gap-1 text-[13px] text-text-secondary">

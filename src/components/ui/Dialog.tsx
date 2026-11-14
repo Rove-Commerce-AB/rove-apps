@@ -28,22 +28,21 @@ export function Dialog({
   closeClassName,
   ...props
 }: DialogProps) {
-  const defaultOverlayClass =
-    "fixed inset-0 z-50 bg-black/18 backdrop-blur-[1px]";
+  const defaultOverlayClass = "fixed inset-0 z-50 bg-black/20";
   const defaultContentClass =
-    "fixed left-1/2 top-1/2 z-50 w-full max-w-[540px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-subtle bg-bg-default p-8 shadow-xl focus:outline-none";
-  const defaultSubtitleClass =
-    "pr-10 text-overline text-text-muted";
-  const defaultTitleClass = `pr-10 leading-tight text-text-primary ${
-    subtitle ? "text-heading-l" : "text-heading-m"
-  }`;
+    "fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border-subtle bg-bg-default p-5 shadow-lg focus:outline-none";
+  const defaultSubtitleClass = "pr-8 text-[12px] leading-snug text-text-tertiary";
+  const defaultTitleClass =
+    "pr-8 text-[15px] font-semibold leading-tight text-text-primary";
   const defaultCloseClass =
-    "absolute right-4 top-4 rounded-sm border border-transparent p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 focus:outline-none focus:border-form focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset";
+    "absolute right-3 top-3 rounded-md border border-transparent p-1 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset";
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className={`${defaultOverlayClass} ${overlayClassName ?? ""}`.trim()} />
+        <DialogPrimitive.Overlay
+          className={`${defaultOverlayClass} ${overlayClassName ?? ""}`.trim()}
+        />
         <DialogPrimitive.Content
           className={`${defaultContentClass} ${contentClassName ?? ""}`.trim()}
           onOpenAutoFocus={(event) => {
@@ -63,25 +62,30 @@ export function Dialog({
             const el =
               target instanceof Element
                 ? target
-                : (target as { parentElement?: Element | null } | null)?.parentElement ?? null;
+                : (target as { parentElement?: Element | null } | null)
+                    ?.parentElement ?? null;
             if (el?.closest?.("[data-combobox-list]")) e.preventDefault();
             else onOpenChange?.(false);
           }}
           onEscapeKeyDown={() => onOpenChange?.(false)}
         >
           {subtitle ? (
-            <p className={`${defaultSubtitleClass} ${subtitleClassName ?? ""}`.trim()}>
+            <p
+              className={`${defaultSubtitleClass} ${subtitleClassName ?? ""}`.trim()}
+            >
               {subtitle}
             </p>
           ) : null}
-          <DialogPrimitive.Title className={`${defaultTitleClass} ${titleClassName ?? ""}`.trim()}>
+          <DialogPrimitive.Title
+            className={`${defaultTitleClass} ${titleClassName ?? ""}`.trim()}
+          >
             {title}
           </DialogPrimitive.Title>
           <DialogPrimitive.Close
             className={`${defaultCloseClass} ${closeClassName ?? ""}`.trim()}
             aria-label="Close"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </DialogPrimitive.Close>
           {children}
         </DialogPrimitive.Content>

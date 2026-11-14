@@ -6,7 +6,8 @@ import {
   Dialog,
   Select,
   Button,
-  modalInputClass,
+  ModalField,
+  ModalTextInput,
   modalSelectTriggerClass,
 } from "@/components/ui";
 import { createWorkBoardAction } from "@/app/(app)/work/actions";
@@ -133,7 +134,7 @@ export function AddProjectModal({
           e.preventDefault();
           void handleSubmit();
         }}
-        className="modal-form-discreet mt-6 space-y-4"
+        className="modal-form-discreet mt-4 space-y-3"
       >
         {error && (
           <p className="text-sm text-danger" role="alert">
@@ -141,49 +142,40 @@ export function AddProjectModal({
           </p>
         )}
 
-        <div className="space-y-3">
-          <div>
-            <label
-              htmlFor="project-name"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Project name
-            </label>
-            <input
-              id="project-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Website redesign"
-              className={`mt-1 ${modalInputClass}`}
-              autoFocus
+        <ModalTextInput
+          id="project-name"
+          label="Project name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Website redesign"
+          autoFocus
+        />
+        <CreateProjectAppAvailability
+          createWork={alsoCreateWork}
+          onCreateWorkChange={setAlsoCreateWork}
+          idPrefix="modal-create-project-app"
+        />
+
+        {!initialCustomerId ? (
+          <ModalField id="project-customer" label="Customer">
+            <Select
+              id="project-customer"
+              value={customerId}
+              onValueChange={setCustomerId}
+              placeholder="Select customer"
+              variant="modal"
+              options={customers.map((c) => ({ value: c.id, label: c.name }))}
+              triggerClassName={modalSelectTriggerClass}
             />
-          </div>
-          <CreateProjectAppAvailability
-            createWork={alsoCreateWork}
-            onCreateWorkChange={setAlsoCreateWork}
-            idPrefix="modal-create-project-app"
-          />
-        </div>
+          </ModalField>
+        ) : null}
 
-        {!initialCustomerId && (
-          <Select
-            id="project-customer"
-            label="Customer"
-            value={customerId}
-            onValueChange={setCustomerId}
-            placeholder="Select customer"
-            variant="modal"
-            options={customers.map((c) => ({ value: c.id, label: c.name }))}
-            triggerClassName={modalSelectTriggerClass}
-          />
-        )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" size="sm" disabled={submitting}>
             {submitting ? "Creating…" : "Create project"}
           </Button>
         </div>

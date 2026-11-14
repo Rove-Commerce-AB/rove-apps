@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/rolesClient";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teamsClient";
 import { getCalendarsWithHolidayCount } from "@/lib/calendarsClient";
@@ -11,6 +11,7 @@ import {
   IconButton,
   ConfirmModal,
   InlineEditStatus,
+  ListAddAction,
   SavedCheckmark,
   PageHeader,
   Panel,
@@ -218,13 +219,10 @@ export function SettingsPageClient({
         <Panel>
           <PanelSectionTitle
             action={
-              <IconButton
-                aria-label="Add role"
+              <ListAddAction
+                label="Add role"
                 onClick={() => setAddRoleOpen(true)}
-                className="text-text-muted hover:text-text-primary"
-              >
-                <Plus className="h-4 w-4" />
-              </IconButton>
+              />
             }
           >
             ROLES
@@ -301,13 +299,10 @@ export function SettingsPageClient({
         <Panel>
           <PanelSectionTitle
             action={
-              <IconButton
-                aria-label="Add team"
+              <ListAddAction
+                label="Add team"
                 onClick={() => setAddTeamOpen(true)}
-                className="text-text-muted hover:text-text-primary"
-              >
-                <Plus className="h-4 w-4" />
-              </IconButton>
+              />
             }
           >
             TEAMS

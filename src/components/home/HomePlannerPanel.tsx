@@ -62,6 +62,7 @@ export function HomePlannerPanel({ planner }: Props) {
       title="Planner"
       href={ROUTES.plannerConsultant}
       icon={CalendarCheck}
+      brand="planner"
       description={
         planner.consultantName
           ? `Booked for ${planner.consultantName}`

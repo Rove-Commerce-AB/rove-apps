@@ -19,11 +19,14 @@ export function WorkScopeApproveButton({
 }) {
   const iconClass = size === "drawer" ? "h-3.5 w-3.5" : "h-3 w-3";
   const padClass = size === "drawer" ? "h-7 w-7" : "h-6 w-6";
+  // Native `disabled` skips hit-testing, so the card's pointer cursor shows on the
+  // icon; use aria-disabled so not-allowed covers the whole control.
+  const inert = disabled || (!approved && !canApprove);
 
   return (
     <button
       type="button"
-      disabled={disabled || (!approved && !canApprove)}
+      aria-disabled={inert}
       title={
         approved
           ? "Scope approved — click to unlock"
@@ -36,6 +39,7 @@ export function WorkScopeApproveButton({
       onClick={(event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
         event.preventDefault();
+        if (inert) return;
         onToggle();
       }}
       className={[
@@ -44,10 +48,12 @@ export function WorkScopeApproveButton({
         approved
           ? "border-[var(--color-green-300)] bg-[var(--color-green-50)] text-[var(--color-green-700)] hover:bg-[var(--color-green-100)]"
           : "border-border-form bg-bg-default text-text-tertiary hover:border-border-strong hover:text-text-secondary",
-        "disabled:cursor-not-allowed disabled:opacity-40",
+        inert
+          ? "cursor-not-allowed opacity-40"
+          : "",
       ].join(" ")}
     >
-      <Check className={iconClass} strokeWidth={approved ? 2.75 : 2} />
+      <Check className={iconClass} strokeWidth={approved ? 2.75 : 2} aria-hidden />
     </button>
   );
 }

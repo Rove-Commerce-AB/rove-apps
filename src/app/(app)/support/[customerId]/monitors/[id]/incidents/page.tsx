@@ -208,9 +208,9 @@ export default async function SupportMonitorIncidentsPage({
         </Link>
         <a
           href={exportHref(data)}
-          className="inline-flex h-10 items-center rounded-lg border border-form bg-bg-default px-4 text-sm font-medium text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal"
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-form bg-bg-default px-4 text-sm font-medium text-text-primary hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal"
         >
-          Export to Excel
+          Export downtime
         </a>
       </form>
       <p className="text-xs text-text-tertiary">

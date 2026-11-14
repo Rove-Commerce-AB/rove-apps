@@ -20,6 +20,8 @@ import {
 } from "@/lib/workEstimate";
 
 const TSHIRT_CLOSE_MS = 160;
+const LOCKED_SIZE_TITLE = "Scope approved — unlock to change size";
+const LOCKED_ESTIMATE_TITLE = "Scope approved — unlock to change estimate";
 
 export function WorkCardEstimate({
   estimateHours,
@@ -27,6 +29,7 @@ export function WorkCardEstimate({
   estimateUnit = "hours",
   billingCurrency = "SEK",
   disabled = false,
+  locked = false,
   onChange,
   onChangeSize,
   onError,
@@ -36,11 +39,16 @@ export function WorkCardEstimate({
   estimateUnit?: WorkEstimateUnit;
   billingCurrency?: BillingCurrency;
   disabled?: boolean;
+  /** Scope approved — show not-allowed cursor and lock tooltip. */
+  locked?: boolean;
   onChange: (value: number | null) => void;
   onChangeSize?: (value: WorkTshirtSize | null) => void;
   onError?: (message: string) => void;
 }) {
   const isTshirt = estimateUnit === "tshirt";
+  // Prefer aria-disabled so not-allowed cursor hits the whole control (native
+  // disabled lets the card's pointer show through on the icon/label).
+  const inert = disabled || locked;
   const [draft, setDraft] = useState(
     estimateHours == null ? "" : String(estimateHours)
   );
@@ -104,12 +112,18 @@ export function WorkCardEstimate({
     };
   }, [tshirtOpen]);
 
+  useEffect(() => {
+    if (!inert) return;
+    if (tshirtOpen || tshirtShown) closeTshirtPicker();
+    if (editing) setEditing(false);
+  }, [inert]);
+
   function stopCard(event: MouseEvent | KeyboardEvent) {
     event.stopPropagation();
   }
 
   function openTshirtPicker() {
-    if (disabled || tshirtOpen) return;
+    if (inert || tshirtOpen) return;
     if (tshirtCloseTimerRef.current) {
       clearTimeout(tshirtCloseTimerRef.current);
       tshirtCloseTimerRef.current = null;
@@ -137,12 +151,17 @@ export function WorkCardEstimate({
   }
 
   function pickTshirtSize(value: WorkTshirtSize | null) {
+    if (inert) return;
     setPickerDisplaySize(value);
     onChangeSize?.(value);
     closeTshirtPicker();
   }
 
   function commit() {
+    if (inert) {
+      setEditing(false);
+      return;
+    }
     const parsed = parseWorkEstimateValue(draft, estimateUnit);
     if (!parsed.ok) {
       setDraft(estimateHours == null ? "" : String(estimateHours));
@@ -159,13 +178,20 @@ export function WorkCardEstimate({
   if (isTshirt) {
     const triggerEmpty = visibleSize == null;
     const selectedInPicker = tshirtOpen ? pickerDisplaySize : estimateSize;
+    const triggerTitle = locked
+      ? LOCKED_SIZE_TITLE
+      : formatted == null
+        ? "Set size"
+        : `Size ${formatted} · click to edit`;
     return (
       <div
         ref={tshirtRootRef}
         className={`inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 transition-colors duration-150 ease-out ${
-          tshirtOpen || !triggerEmpty
-            ? "bg-bg-muted text-text-secondary"
-            : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
+          inert
+            ? "cursor-not-allowed bg-bg-muted text-text-secondary opacity-50"
+            : tshirtOpen || !triggerEmpty
+              ? "bg-bg-muted text-text-secondary"
+              : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
         }`}
         onClick={stopCard}
         onPointerDown={stopCard}
@@ -173,21 +199,24 @@ export function WorkCardEstimate({
       >
         <button
           type="button"
-          disabled={disabled}
-          title={
-            formatted == null
-              ? "Set size"
-              : `Size ${formatted} · click to edit`
+          aria-disabled={inert}
+          title={triggerTitle}
+          aria-label={
+            locked
+              ? LOCKED_SIZE_TITLE
+              : formatted == null
+                ? "Set size"
+                : `Size ${formatted}`
           }
-          aria-label={formatted == null ? "Set size" : `Size ${formatted}`}
           aria-expanded={tshirtOpen}
           onClick={() => {
+            if (inert) return;
             if (tshirtOpen) closeTshirtPicker();
             else openTshirtPicker();
           }}
-          className={`inline-flex h-3 shrink-0 items-center justify-center text-caption disabled:opacity-50 ${
-            triggerEmpty ? "w-3" : "min-w-0"
-          }`}
+          className={`inline-flex h-3 shrink-0 items-center justify-center text-caption ${
+            inert ? "cursor-not-allowed" : ""
+          } ${triggerEmpty ? "w-3" : "min-w-0"}`}
         >
           {triggerEmpty ? (
             <Shirt
@@ -222,9 +251,11 @@ export function WorkCardEstimate({
               <button
                 key={size}
                 type="button"
-                tabIndex={tshirtOpen ? 0 : -1}
-                disabled={disabled || !tshirtOpen}
-                className={`rounded px-1 text-caption font-medium transition-colors disabled:opacity-50 ${
+                tabIndex={tshirtOpen && !inert ? 0 : -1}
+                aria-disabled={inert || !tshirtOpen}
+                className={`rounded px-1 text-caption font-medium transition-colors ${
+                  inert || !tshirtOpen ? "cursor-not-allowed opacity-50" : ""
+                } ${
                   selectedInPicker === size
                     ? "bg-brand-signal/15 text-text-primary"
                     : "text-text-tertiary hover:bg-bg-default hover:text-text-primary"
@@ -237,11 +268,13 @@ export function WorkCardEstimate({
             {showClearInPicker ? (
               <button
                 type="button"
-                tabIndex={tshirtOpen ? 0 : -1}
-                disabled={disabled || !tshirtOpen}
+                tabIndex={tshirtOpen && !inert ? 0 : -1}
+                aria-disabled={inert || !tshirtOpen}
                 title="Clear size"
                 aria-label="Clear size"
-                className="inline-flex items-center justify-center rounded px-0.5 text-caption text-text-tertiary transition-colors hover:bg-bg-default hover:text-text-primary disabled:opacity-50"
+                className={`inline-flex items-center justify-center rounded px-0.5 text-caption text-text-tertiary transition-colors hover:bg-bg-default hover:text-text-primary ${
+                  inert || !tshirtOpen ? "cursor-not-allowed opacity-50" : ""
+                }`}
                 onClick={() => pickTshirtSize(null)}
               >
                 <Trash2 className="h-2.5 w-2.5" aria-hidden />
@@ -266,7 +299,7 @@ export function WorkCardEstimate({
           type="text"
           inputMode="decimal"
           autoFocus
-          disabled={disabled}
+          disabled={inert}
           aria-label={`Estimate in ${suffix}`}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -290,29 +323,37 @@ export function WorkCardEstimate({
     );
   }
 
+  const hoursTitle = locked
+    ? LOCKED_ESTIMATE_TITLE
+    : formatted == null
+      ? "Set estimate"
+      : `Estimate ${formatted} · click to edit`;
+
   return (
     <button
       type="button"
-      disabled={disabled}
-      title={
-        formatted == null
-          ? "Set estimate"
-          : `Estimate ${formatted} · click to edit`
-      }
+      aria-disabled={inert}
+      title={hoursTitle}
       aria-label={
-        formatted == null ? "Set estimate" : `Estimate ${formatted}`
+        locked
+          ? LOCKED_ESTIMATE_TITLE
+          : formatted == null
+            ? "Set estimate"
+            : `Estimate ${formatted}`
       }
       onClick={(event) => {
         stopCard(event);
-        if (disabled) return;
+        if (inert) return;
         setEditing(true);
       }}
       onPointerDown={stopCard}
       onKeyDown={stopCard}
-      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-caption tabular-nums transition-colors disabled:opacity-50 ${
-        estimateHours == null
-          ? "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
-          : "bg-bg-muted text-text-secondary hover:bg-border-subtle hover:text-text-primary"
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-caption tabular-nums transition-colors ${
+        inert
+          ? "cursor-not-allowed bg-bg-muted text-text-secondary opacity-50"
+          : estimateHours == null
+            ? "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
+            : "bg-bg-muted text-text-secondary hover:bg-border-subtle hover:text-text-primary"
       }`}
     >
       {formatted == null ? (

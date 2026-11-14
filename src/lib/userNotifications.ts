@@ -303,6 +303,29 @@ export async function markUserNotificationRead(notificationId: string): Promise<
   }
 }
 
+export async function markUserNotificationUnread(
+  notificationId: string
+): Promise<void> {
+  const appUserId = await getCurrentAppUserId();
+  if (!appUserId) return;
+  try {
+    await cloudSqlPool.query(
+      `UPDATE user_notifications SET read_at = NULL
+       WHERE id = $1 AND app_user_id = $2 AND read_at IS NOT NULL`,
+      [notificationId, appUserId]
+    );
+    const email = await getCurrentUserEmail();
+    if (email) revalidateNotificationCountForEmail(email);
+    else revalidateDashboardShell();
+  } catch (e) {
+    if (isUserNotificationsAccessError(e)) {
+      console.warn("[userNotifications] mark unread skipped (DB privileges)", e);
+      return;
+    }
+    throw e;
+  }
+}
+
 export async function markAllUserNotificationsRead(): Promise<void> {
   const appUserId = await getCurrentAppUserId();
   if (!appUserId) return;

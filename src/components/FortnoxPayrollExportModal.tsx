@@ -11,7 +11,13 @@ import type {
   PayrollAbsenceRow,
   PayrollExportPreview,
 } from "@/lib/paxml/payrollExportQueries";
-import { Button, DataTable, Dialog, Input, type DataTableColumn } from "@/components/ui";
+import {
+  Button,
+  DataTable,
+  Dialog,
+  ModalTextInput,
+  type DataTableColumn,
+} from "@/components/ui";
 
 type Props = {
   open: boolean;
@@ -224,27 +230,23 @@ export function FortnoxPayrollExportModal({ open, onOpenChange }: Props) {
       onOpenChange={onOpenChange}
       title="Export Fortnox PAXML"
       subtitle="Preview absence for payroll, then download a .pax file"
-      contentClassName="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,880px)] w-full max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-default p-8 shadow-xl focus:outline-none"
+      contentClassName="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,880px)] w-full max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-default p-5 shadow-lg focus:outline-none"
     >
-      <div className="mt-6 flex min-h-0 flex-1 flex-col gap-5">
+      <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-40">
-            <label className="mb-1 block text-label-s text-text-secondary" htmlFor="paxml-from">
-              From
-            </label>
-            <Input
+            <ModalTextInput
               id="paxml-from"
+              label="From"
               type="date"
               value={fromDate}
               onChange={(event) => setFromDate(event.target.value)}
             />
           </div>
           <div className="w-40">
-            <label className="mb-1 block text-label-s text-text-secondary" htmlFor="paxml-to">
-              To
-            </label>
-            <Input
+            <ModalTextInput
               id="paxml-to"
+              label="To"
               type="date"
               value={toDate}
               onChange={(event) => setToDate(event.target.value)}

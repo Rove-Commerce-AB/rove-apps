@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { getRoles } from "@/lib/rolesClient";
 import { updateAllocation } from "@/lib/allocationsClient";
 import {
@@ -9,8 +9,16 @@ import {
   logAllocationHistoryUpdate,
   deleteAllocationWithHistory,
 } from "@/app/(app)/allocation/actions";
-import { useEscToClose } from "@/lib/useEscToClose";
-import { Button, ConfirmModal, Select, modalFocusClass } from "@/components/ui";
+import {
+  Button,
+  ConfirmModal,
+  Dialog,
+  ModalField,
+  ModalReadonlyField,
+  ModalTextInput,
+  Select,
+  modalSelectTriggerClass,
+} from "@/components/ui";
 
 type AllocationData = {
   id: string;
@@ -110,53 +118,28 @@ export function EditAllocationModal({
     setError(null);
   };
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      resetForm();
+      onClose();
+    }
   };
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen || !allocation) return null;
+  if (!allocation) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-allocation-title"
+    <>
+      <Dialog
+        open={isOpen}
+        onOpenChange={handleOpenChange}
+        title="Edit allocation"
       >
-        <div className="flex items-center justify-between">
-          <h2
-            id="edit-allocation-title"
-            className="text-heading-m text-text-primary"
-          >
-            Edit allocation
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();
           }}
-          className="modal-form-discreet mt-6 space-y-4"
+          className="modal-form-discreet mt-4 space-y-3"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -164,65 +147,48 @@ export function EditAllocationModal({
             </p>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-text-primary">
-              Consultant
-            </label>
-            <p className="mt-1 text-text-primary">{allocation.consultantName}</p>
-          </div>
+          <ModalReadonlyField label="Consultant">
+            {allocation.consultantName}
+          </ModalReadonlyField>
 
-          <div>
-            <label className="block text-sm font-medium text-text-primary">
-              Project
-            </label>
-            <p className="mt-1 text-text-primary">
-              {allocation.projectName} ({allocation.customerName})
-            </p>
-          </div>
+          <ModalReadonlyField label="Project">
+            {allocation.projectName} ({allocation.customerName})
+          </ModalReadonlyField>
 
-          <div>
-            <label className="block text-sm font-medium text-text-primary">
-              Week
-            </label>
-            <p className="mt-1 text-text-primary">
-              v{allocation.week}, {allocation.year}
-            </p>
-          </div>
+          <ModalReadonlyField label="Week">
+            v{allocation.week}, {allocation.year}
+          </ModalReadonlyField>
 
-          <Select
-            id="edit-alloc-role"
-            label="Role"
-            value={roleId ?? ""}
-            onValueChange={(v) => setRoleId(v ? v : null)}
-            placeholder="No role"
-            variant="modal"
-            options={[
-              { value: "", label: "No role" },
-              ...roles.map((r) => ({ value: r.id, label: r.name })),
-              ...(allocation.roleId && allocation.roleName && !roles.some((r) => r.id === allocation.roleId)
-                ? [{ value: allocation.roleId, label: allocation.roleName }]
-                : []),
-            ]}
-          />
+          <ModalField id="edit-alloc-role" label="Role">
+            <Select
+              id="edit-alloc-role"
+              value={roleId ?? ""}
+              onValueChange={(v) => setRoleId(v ? v : null)}
+              placeholder="No role"
+              variant="modal"
+              triggerClassName={modalSelectTriggerClass}
+              options={[
+                { value: "", label: "No role" },
+                ...roles.map((r) => ({ value: r.id, label: r.name })),
+                ...(allocation.roleId && allocation.roleName && !roles.some((r) => r.id === allocation.roleId)
+                  ? [{ value: allocation.roleId, label: allocation.roleName }]
+                  : []),
+              ]}
+            />
+          </ModalField>
 
-          <div>
-            <label
-              htmlFor="edit-alloc-hours"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Hours
-            </label>
-            <input
+          <div className="w-24">
+            <ModalTextInput
               id="edit-alloc-hours"
+              label="Hours"
               type="number"
               min={0}
               step={0.5}
               value={hours}
               onChange={(e) => setHours(e.target.value)}
               onFocus={(e) => e.target.select()}
-              className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
             />
-            <p className="mt-1 text-xs text-text-primary opacity-60">
+            <p className="mt-1 text-[12px] text-text-tertiary">
               Set to 0 to remove the allocation
             </p>
           </div>
@@ -231,6 +197,7 @@ export function EditAllocationModal({
             <Button
               type="button"
               variant="dangerSecondary"
+              size="sm"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={deleting}
             >
@@ -238,16 +205,21 @@ export function EditAllocationModal({
               Delete
             </Button>
             <div className="flex gap-2">
-              <Button type="button" variant="secondary" onClick={handleClose}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => handleOpenChange(false)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting}>
+              <Button type="submit" size="sm" disabled={submitting}>
                 {submitting ? "Saving…" : "Save"}
               </Button>
             </div>
           </div>
         </form>
-      </div>
+      </Dialog>
 
       <ConfirmModal
         isOpen={showDeleteConfirm}
@@ -258,6 +230,6 @@ export function EditAllocationModal({
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDelete}
       />
-    </div>
+    </>
   );
 }

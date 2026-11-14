@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DrawerFieldRow,
+  DrawerSection,
   DrawerSelectField,
   InlineEditFieldContainer,
   InlineEditStatus,
@@ -370,11 +371,8 @@ export function CustomerDrawerOverview({
           </p>
         ) : null}
 
-        <div className="px-6 pt-4">
+        <DrawerSection first title="Identity">
           {textField("Name", "name", name)}
-          {textField("URL", "url", url, "url")}
-          {textField("Subscription ID", "subscriptionId", subscriptionId)}
-          {textField("Litium version", "litiumVersion", litiumVersion)}
           {customer.isInternal ? null : (
             <DrawerFieldRow label="Contact">
               <DrawerSelectField
@@ -407,7 +405,6 @@ export function CustomerDrawerOverview({
               />
             </DrawerFieldRow>
           )}
-
           <DrawerFieldRow label="Account manager">
             <DrawerSelectField
               value={accountManagerId}
@@ -437,9 +434,15 @@ export function CustomerDrawerOverview({
               placeholder="—"
             />
           </DrawerFieldRow>
-        </div>
+        </DrawerSection>
 
-        <div className="border-t border-border-subtle px-6">
+        <DrawerSection title="Delivery">
+          {textField("URL", "url", url, "url")}
+          {textField("Subscription ID", "subscriptionId", subscriptionId)}
+          {textField("Litium version", "litiumVersion", litiumVersion)}
+        </DrawerSection>
+
+        <DrawerSection title="Commercial">
           <DrawerFieldRow label="Type">
             <OptionSegments
               name="Type"
@@ -510,9 +513,9 @@ export function CustomerDrawerOverview({
               ]}
             />
           </DrawerFieldRow>
-        </div>
+        </DrawerSection>
 
-        <div className="border-t border-border-subtle px-6">
+        <DrawerSection title="Brand">
           {textField("Logo URL", "logoUrl", logoUrl, "url")}
           <DrawerFieldRow label="Color">
             <InlineEditFieldContainer
@@ -558,8 +561,7 @@ export function CustomerDrawerOverview({
               }
             />
           </DrawerFieldRow>
-        </div>
-
+        </DrawerSection>
       </div>
     </>
   );

@@ -4,12 +4,13 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DataTable,
-  FilterChip,
   PageHeader,
   Panel,
   PanelSectionTitle,
   Select,
 } from "@/components/ui";
+import { ListFilterMenu } from "@/components/ListFilterMenu";
+import { ListTableToolbar } from "@/components/ListTableToolbar";
 import { getTimeReportSummaryAction } from "@/app/(app)/time-report/actions";
 import { ROUTES } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
@@ -172,14 +173,6 @@ export function TimeReportSummaryClient({ initial }: Props) {
     typeFilterIds.length === 0 ||
     typeFilterIds.some((t) => t === "customer" || t === "internal");
 
-  function toggleTypeFilter(value: ProjectType) {
-    setTypeFilterIds((prev) =>
-      prev.includes(value)
-        ? prev.filter((item) => item !== value)
-        : [...prev, value]
-    );
-  }
-
   const byMonth = useMemo(() => {
     const hours = Array.from({ length: 12 }, () => 0);
     for (const b of monthChartBuckets) {
@@ -274,23 +267,27 @@ export function TimeReportSummaryClient({ initial }: Props) {
         />
       </PageHeader>
 
-      <div className="mb-1.5 flex flex-wrap gap-1.5">
-        <FilterChip
-          selected={typeFilterIds.length === 0}
-          onClick={() => setTypeFilterIds([])}
-        >
-          All
-        </FilterChip>
-        {TYPE_FILTERS.map((f) => (
-          <FilterChip
-            key={f.value}
-            selected={typeFilterIds.includes(f.value)}
-            onClick={() => toggleTypeFilter(f.value)}
-          >
-            {f.label}
-          </FilterChip>
-        ))}
-      </div>
+      <ListTableToolbar
+        className="mb-3"
+        trailing={
+          <ListFilterMenu
+            ariaLabel="Filter by type"
+            sections={[
+              {
+                id: "type",
+                label: "Type",
+                allLabel: "All types",
+                options: TYPE_FILTERS.map((f) => ({
+                  id: f.value,
+                  name: f.label,
+                })),
+                selectedIds: typeFilterIds,
+                onChange: (ids) => setTypeFilterIds(ids as ProjectType[]),
+              },
+            ]}
+          />
+        }
+      />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {(
@@ -379,14 +376,14 @@ export function TimeReportSummaryClient({ initial }: Props) {
                     onClick={() => toggleMonth(month)}
                     className={`min-w-0 rounded-md px-0.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 ${
                       selected
-                        ? "bg-interactive-primary/10 ring-1 ring-interactive-primary"
+                        ? "bg-accent-primary/10 ring-1 ring-accent-primary"
                         : "hover:bg-bg-muted"
                     }`}
                   >
                     <div className="flex h-16 items-end">
                       <div
                         className={`w-full rounded-sm ${
-                          selected ? "bg-interactive-primary" : "bg-brand-signal/80"
+                          selected ? "bg-accent-primary" : "bg-brand-signal/80"
                         }`}
                         style={{
                           height: `${Math.max(hours > 0 ? 8 : 0, (hours / maxMonth) * 100)}%`,

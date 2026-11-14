@@ -1,11 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
 import { updateProject, getProjectWithDetailsById } from "@/lib/projectsClient";
 import { deleteProjectAction } from "@/app/(app)/projects/actions";
-import { useEscToClose } from "@/lib/useEscToClose";
-import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
+import {
+  Button,
+  ConfirmModal,
+  Dialog,
+  ModalField,
+  ModalTextInput,
+  Select,
+  Switch,
+  modalSelectTriggerClass,
+} from "@/components/ui";
 import { getCustomers } from "@/lib/customersClient";
 import type { ProjectWithDetails } from "@/types";
 
@@ -123,54 +130,30 @@ export function EditProjectModal({
     setError(null);
   };
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      resetForm();
+      onClose();
+    }
   };
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen || !project) return null;
+  if (!project) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-project-title"
+    <>
+      <Dialog
+        open={isOpen}
+        onOpenChange={handleOpenChange}
+        title="Edit project"
+        contentClassName="max-h-[90vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between">
-          <h2
-            id="edit-project-title"
-            className="text-heading-m text-text-primary"
-          >
-            Edit project
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
         <form
           id="edit-project-form"
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();
           }}
-          className="modal-form-discreet mt-6 space-y-4"
+          className="modal-form-discreet mt-4 space-y-3"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -178,69 +161,46 @@ export function EditProjectModal({
             </p>
           )}
 
-          <div>
-            <label
-              htmlFor="edit-project-name"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Project name
-            </label>
-            <input
-              id="edit-project-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Website redesign"
-              className={`mt-1 ${modalInputClass}`}
-            />
-          </div>
-
-          <Select
-            id="edit-project-customer"
-            label="Customer"
-            value={customerId}
-            onValueChange={setCustomerId}
-            placeholder="Select customer"
-            variant="modal"
-            options={(
-              customerId && !customers.some((c) => c.id === customerId) && project
-                ? [{ value: customerId, label: project.customerName }]
-                : []
-            ).concat(customers.map((c) => ({ value: c.id, label: c.name })))}
-            triggerClassName={modalSelectTriggerClass}
+          <ModalTextInput
+            id="edit-project-name"
+            label="Project name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Website redesign"
           />
 
+          <ModalField id="edit-project-customer" label="Customer">
+            <Select
+              id="edit-project-customer"
+              value={customerId}
+              onValueChange={setCustomerId}
+              placeholder="Select customer"
+              variant="modal"
+              options={(
+                customerId && !customers.some((c) => c.id === customerId) && project
+                  ? [{ value: customerId, label: project.customerName }]
+                  : []
+              ).concat(customers.map((c) => ({ value: c.id, label: c.name })))}
+              triggerClassName={modalSelectTriggerClass}
+            />
+          </ModalField>
+
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="edit-project-start-date"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Start date
-              </label>
-              <input
-                id="edit-project-start-date"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className={`mt-1 ${modalInputClass}`}
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="edit-project-end-date"
-                className="block text-sm font-medium text-text-primary"
-              >
-                End date
-              </label>
-              <input
-                id="edit-project-end-date"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className={`mt-1 ${modalInputClass}`}
-              />
-            </div>
+            <ModalTextInput
+              id="edit-project-start-date"
+              label="Start date"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+            <ModalTextInput
+              id="edit-project-end-date"
+              label="End date"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
           </div>
 
           <Switch
@@ -251,11 +211,12 @@ export function EditProjectModal({
           />
         </form>
 
-        <div className="mt-6 flex items-center justify-between gap-2">
+        <div className="mt-4 flex items-center justify-between gap-2">
           {isAdmin ? (
             <Button
               type="button"
               variant="dangerSecondary"
+              size="sm"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={submitting || deleting}
             >
@@ -265,11 +226,17 @@ export function EditProjectModal({
             <span />
           )}
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={handleClose}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button
               type="submit"
+              size="sm"
               form="edit-project-form"
               disabled={submitting || deleting}
             >
@@ -277,7 +244,7 @@ export function EditProjectModal({
             </Button>
           </div>
         </div>
-      </div>
+      </Dialog>
 
       {isAdmin && (
         <ConfirmModal
@@ -290,6 +257,6 @@ export function EditProjectModal({
           onConfirm={handleDelete}
         />
       )}
-    </div>
+    </>
   );
 }

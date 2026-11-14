@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
 import { createCustomerAction } from "@/app/(app)/customers/actions";
 import { customerHref } from "@/lib/routes";
-import { useEscToClose } from "@/lib/useEscToClose";
-import { Button, modalInputClass } from "@/components/ui";
+import {
+  Button,
+  Dialog,
+  ModalTextInput,
+} from "@/components/ui";
 
 type Props = {
   isOpen: boolean;
@@ -17,7 +19,6 @@ type Props = {
 export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [isInternal, setIsInternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -32,7 +33,6 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
     try {
       const customer = await createCustomerAction({
         name: name.trim(),
-        is_internal: isInternal,
       });
       onSuccess();
       onClose();
@@ -45,98 +45,47 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
     }
   };
 
-  const handleClose = () => {
-    setName("");
-    setIsInternal(false);
-    setError(null);
-    onClose();
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setName("");
+      setError(null);
+      onClose();
+    }
   };
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="presentation"
-    >
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={handleClose}
-        aria-hidden
-      />
-      <div
-        className="relative z-10 w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-customer-title"
-      >
-        <div className="flex items-center justify-between">
-          <h2
-            id="add-customer-title"
-            className="text-heading-m text-text-primary"
-          >
-            Add customer
-          </h2>
-          <button
+    <Dialog open={isOpen} onOpenChange={handleOpenChange} title="Add customer">
+      <form onSubmit={handleSubmit} className="modal-form-discreet mt-4 space-y-3">
+        {error && (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+
+        <ModalTextInput
+          id="customer-name"
+          label="Company name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Company AB"
+          autoFocus
+        />
+
+        <div className="flex justify-end gap-2">
+          <Button
             type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
+            variant="secondary"
+            size="sm"
+            onClick={() => handleOpenChange(false)}
           >
-            <X className="h-5 w-5" />
-          </button>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={submitting}>
+            {submitting ? "Adding…" : "Add"}
+          </Button>
         </div>
-
-        <form onSubmit={handleSubmit} className="modal-form-discreet mt-6 space-y-4">
-          {error && (
-            <p className="text-sm text-danger" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div>
-            <label
-              htmlFor="customer-name"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Company name
-            </label>
-            <input
-              id="customer-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Company AB"
-              className={`mt-1 ${modalInputClass}`}
-              autoFocus
-            />
-          </div>
-
-          <label
-            htmlFor="customer-is-internal"
-            className="flex items-center gap-2 text-sm text-text-primary"
-          >
-            <input
-              id="customer-is-internal"
-              type="checkbox"
-              checked={isInternal}
-              onChange={(e) => setIsInternal(e.target.checked)}
-            />
-            Internal customer
-          </label>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Dialog>
   );
 }
