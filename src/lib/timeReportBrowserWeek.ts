@@ -137,3 +137,33 @@ export function getWeekDates(year: number, week: number): string[] {
 export function weekSliceKey(year: number, week: number): string {
   return `${year}-W${week}`;
 }
+
+/** Calendar year/month (1–12) for an ISO week, using that week’s Thursday. */
+export function getCalendarYearMonthForWeekLocal(
+  year: number,
+  week: number
+): { year: number; month: number } {
+  const { start } = getISOWeekDateRangeLocal(year, week);
+  const monday = new Date(start + "T12:00:00");
+  const thursday = new Date(monday);
+  thursday.setDate(monday.getDate() + 3);
+  return { year: thursday.getFullYear(), month: thursday.getMonth() + 1 };
+}
+
+/**
+ * Month selector + week-strip sync for ±1 week navigation.
+ * Stay on the current calendar month while the week still belongs to it;
+ * otherwise move to the week’s ISO (Thursday) month so the strip includes it.
+ */
+export function displayMonthForWeekNavigation(
+  displayYear: number,
+  displayMonth: number,
+  weekYear: number,
+  weekWeek: number
+): { year: number; month: number } {
+  const weeks = getWeeksInMonthLocal(displayMonth, displayYear);
+  if (weeks.some((w) => w.year === weekYear && w.week === weekWeek)) {
+    return { year: displayYear, month: displayMonth };
+  }
+  return getCalendarYearMonthForWeekLocal(weekYear, weekWeek);
+}
