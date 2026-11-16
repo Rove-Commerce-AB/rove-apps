@@ -1349,13 +1349,15 @@ export async function fetchWorkIssueNotifyMeta(
   number: number;
   title: string;
   owner_app_user_id: string | null;
+  created_by_app_user_id: string | null;
 } | null> {
   const { rows } = await cloudSqlPool.query<{
     number: number;
     title: string;
     owner_app_user_id: string | null;
+    created_by_app_user_id: string | null;
   }>(
-    `SELECT number, title, owner_app_user_id
+    `SELECT number, title, owner_app_user_id, created_by_app_user_id
      FROM work_issues
      WHERE id = $1 AND project_id = $2`,
     [issueId, boardId]

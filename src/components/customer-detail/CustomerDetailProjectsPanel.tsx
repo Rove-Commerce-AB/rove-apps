@@ -6,6 +6,7 @@ import { ListAddAction, Panel, PanelSectionTitle } from "@/components/ui";
 import { CustomerProjectGroup } from "@/components/CustomerProjectGroup";
 import { groupCustomerProjectsForList } from "@/lib/customerProjectsList";
 import type { CustomerWithDetails } from "@/types";
+import { projectHref } from "@/lib/routes";
 
 export function CustomerDetailProjectsPanel({
   projects,
@@ -20,7 +21,7 @@ export function CustomerDetailProjectsPanel({
 }) {
   const router = useRouter();
   const { confirmed, pipeline, inactive } = groupCustomerProjectsForList(projects);
-  const openProject = (id: string) => router.push(`/projects/${id}`);
+  const openProject = (id: string) => router.push(projectHref(id));
 
   return (
     <Panel>

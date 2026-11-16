@@ -28,7 +28,7 @@ import type {
   CustomerAppUser,
   CustomerAppUsersByCustomerId,
 } from "@/lib/customerAppUsersQueries";
-import { ROUTES, customerHref } from "@/lib/routes";
+import { ROUTES, customerSettingsHref } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
 import type { CustomerWithDetails } from "@/types";
 
@@ -325,7 +325,7 @@ export function CustomersPageClient({
   }, [customers]);
 
   function openCustomer(id: string) {
-    router.push(customerHref(id), { scroll: false });
+    router.push(customerSettingsHref(id), { scroll: false });
   }
 
   function closeDrawer() {

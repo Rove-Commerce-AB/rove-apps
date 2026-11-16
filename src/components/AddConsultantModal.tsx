@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createConsultantAndRevalidate } from "@/app/(app)/consultants/actions";
-import { consultantHref } from "@/lib/routes";
+import { consultantSettingsHref } from "@/lib/routes";
 import { getRoles } from "@/lib/rolesClient";
 import { getCalendars } from "@/lib/calendarsClient";
 import { Button, Dialog, ModalTextInput } from "@/components/ui";
@@ -56,7 +56,7 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
       resetForm();
       onClose();
       onSuccess();
-      window.location.href = consultantHref(result.id);
+      window.location.href = consultantSettingsHref(result.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add consultant");
     } finally {

@@ -8,7 +8,12 @@ import {
   getConsultantsList,
   linkNewInternalConsultantToInternalCustomer,
 } from "@/lib/consultants";
-import { customerHref, ROUTES, personHref } from "@/lib/routes";
+import {
+  customerHref,
+  customerSettingsHref,
+  ROUTES,
+  personHref,
+} from "@/lib/routes";
 import {
   isAppKey,
   isAppUserRole,
@@ -457,6 +462,7 @@ export async function createConsultantProfileForUser(input: {
   if (internalCustomerId) {
     revalidatePath(ROUTES.customers);
     revalidatePath(customerHref(internalCustomerId));
+    revalidatePath(customerSettingsHref(internalCustomerId));
   }
   return { consultantId };
 }

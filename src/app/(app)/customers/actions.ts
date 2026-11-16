@@ -12,7 +12,7 @@ import type {
 } from "@/lib/customers";
 import type { Customer } from "@/lib/customers";
 import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards";
-import { ROUTES, customerHref } from "@/lib/routes";
+import { ROUTES, customerHref, customerSettingsHref } from "@/lib/routes";
 
 export async function revalidateCustomers() {
   await assertNotSubcontractorForWrite();
@@ -36,6 +36,7 @@ export async function updateCustomerAction(
   const customer = await updateCustomer(id, input);
   revalidatePath(ROUTES.customers);
   revalidatePath(customerHref(id));
+  revalidatePath(customerSettingsHref(id));
   return customer;
 }
 

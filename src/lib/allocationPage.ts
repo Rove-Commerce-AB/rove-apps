@@ -224,17 +224,15 @@ export async function getAllocationPageData(
     }
   }
 
-  const projectIdsWithAllocations = new Set(
-    allocations.map((a) => a.project_id)
-  );
+  // Include every customer that has an active project so Customer view can
+  // show unbooked projects (filtered client-side via bookedOnly).
   const customerMap = new Map<string, { name: string; color: string }>();
   for (const p of projects) {
-    if (projectIdsWithAllocations.has(p.id)) {
-      customerMap.set(p.customer_id, {
-        name: p.customerName,
-        color: p.customerColor,
-      });
-    }
+    if (p.isActive === false || p.customerIsActive === false) continue;
+    customerMap.set(p.customer_id, {
+      name: p.customerName,
+      color: p.customerColor,
+    });
   }
   const customers: AllocationCustomer[] = Array.from(
     customerMap.entries()
@@ -446,4 +444,74 @@ export async function getAllocationPageDataForProject(
     projectRows: result.projects.length,
   });
   return result;
+}
+
+/** Allocation data scoped to one consultant (Planner consultant planning page). */
+export async function getAllocationPageDataForConsultant(
+  consultantId: string,
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): Promise<AllocationPageData> {
+  const data = await getAllocationPageData(year, weekFrom, weekTo);
+  const consultant = data.consultants.find((c) => c.id === consultantId);
+  if (!consultant) {
+    return {
+      ...data,
+      consultants: [],
+      allocations: [],
+      projects: [],
+      customers: [],
+    };
+  }
+  const allocations = data.allocations.filter(
+    (a) => a.consultant_id === consultantId
+  );
+  const projectIds = new Set(allocations.map((a) => a.project_id));
+  const projects = data.projects.filter((p) => projectIds.has(p.id));
+  const customerIds = new Set(projects.map((p) => p.customer_id));
+  return {
+    ...data,
+    consultants: [consultant],
+    allocations,
+    projects,
+    customers: data.customers.filter((c) => customerIds.has(c.id)),
+  };
+}
+
+/** Allocation data scoped to one customer (Planner customer planning page). */
+export async function getAllocationPageDataForCustomer(
+  customerId: string,
+  customerMeta: { name: string; color: string },
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): Promise<AllocationPageData> {
+  const data = await getAllocationPageData(year, weekFrom, weekTo);
+  const projects = data.projects.filter(
+    (p) =>
+      p.customer_id === customerId &&
+      p.isActive !== false &&
+      p.customerIsActive !== false
+  );
+  const projectIds = new Set(projects.map((p) => p.id));
+  const allocations = data.allocations.filter((a) =>
+    projectIds.has(a.project_id)
+  );
+  const consultantIds = new Set(
+    allocations
+      .map((a) => a.consultant_id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const consultants = data.consultants.filter(
+    (c) =>
+      c.id === TO_PLAN_CONSULTANT_ID || consultantIds.has(c.id)
+  );
+  return {
+    ...data,
+    projects,
+    allocations,
+    consultants,
+    customers: [{ id: customerId, name: customerMeta.name, color: customerMeta.color }],
+  };
 }

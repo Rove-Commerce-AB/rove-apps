@@ -1042,6 +1042,9 @@ export async function setWorkIssueStatus(
 
   const statuses = await assertBoardStatus(boardId, status);
   const target = statuses.find((row) => row.id === status)!;
+  const previousLock = target.isDone
+    ? await fetchWorkIssueScopeLockState(boardId, issueId)
+    : null;
   await assertCanEnterFixedPriceDone(board, boardId, issueId, target.isDone);
   const nextOrder = await moveWorkIssue({
     boardId,
@@ -1055,6 +1058,18 @@ export async function setWorkIssueStatus(
   });
 
   if (nextOrder === null) throw new WorkInputError("Issue not found in this project.");
+
+  const enteredDone = Boolean(target.isDone && previousLock && !previousLock.statusIsDone);
+  if (enteredDone) {
+    await notifyWorkIssueReporterMarkedDone({
+      boardId,
+      issueId,
+      actorId: actor.id,
+      customerId: board.customer_id,
+      boardTitle: board.title,
+      boardPrefix: board.prefix,
+    });
+  }
 
   return nextOrder;
 }
@@ -1166,6 +1181,36 @@ async function notifyWorkIssuePersonChange(input: {
     });
   } catch (error) {
     console.warn("[work] owner/assignee notification failed", error);
+  }
+}
+
+/** Notify the issue reporter when the card first enters a Done column (skip self). */
+async function notifyWorkIssueReporterMarkedDone(input: {
+  boardId: string;
+  issueId: string;
+  actorId: string;
+  customerId: string;
+  boardTitle: string;
+  boardPrefix: string;
+}): Promise<void> {
+  try {
+    const issue = await fetchWorkIssueNotifyMeta(input.boardId, input.issueId);
+    if (!issue?.created_by_app_user_id) return;
+    if (issue.created_by_app_user_id === input.actorId) return;
+    await insertUserNotification(
+      issue.created_by_app_user_id,
+      USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE,
+      {
+        customerId: input.customerId,
+        boardId: input.boardId,
+        boardTitle: input.boardTitle,
+        issueId: input.issueId,
+        issueKey: workIssueKey(input.boardPrefix, issue.number),
+        issueTitle: issue.title,
+      }
+    );
+  } catch (error) {
+    console.warn("[work] reporter Done notification failed", error);
   }
 }
 

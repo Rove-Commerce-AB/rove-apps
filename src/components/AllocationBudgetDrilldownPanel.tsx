@@ -7,6 +7,7 @@ import { isoWeeksInYear } from "@/lib/dateUtils";
 import type { AllocationBudgetDrilldownResult } from "@/types/allocationBudgetReport";
 import { getAllocationBudgetDrilldownAction } from "@/app/(app)/reports/actions";
 import { Button, Panel, PanelSectionTitle } from "@/components/ui";
+import { projectHref } from "@/lib/routes";
 
 function formatHours(n: number): string {
   const r = Math.round(n * 10) / 10;
@@ -277,7 +278,7 @@ export function AllocationBudgetDrilldownPanel({
                                   {p.projectName}
                                 </span>
                                 <Link
-                                  href={`/projects/${p.projectId}`}
+                                  href={projectHref(p.projectId)}
                                   prefetch={false}
                                   className="shrink-0 rounded p-0.5 text-text-primary opacity-50 hover:bg-bg-muted hover:opacity-100"
                                   aria-label={`Open ${p.projectName}`}

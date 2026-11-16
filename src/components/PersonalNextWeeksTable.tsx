@@ -6,6 +6,7 @@ import {
   useTimeGridColumnHighlight,
   timeGridColumnCellInteractionProps,
 } from "@/components/TimeGridColumnHighlight";
+import { projectHref } from "@/lib/routes";
 
 type RowKey = { projectId: string; roleId: string | null };
 type RowInfo = { customerName: string; projectName: string; roleName: string };
@@ -111,7 +112,7 @@ function PersonalNextWeeksTableInner({
                   <span className="opacity-90">{info.customerName}</span>
                   <span className="mx-1.5 opacity-50">·</span>
                   <Link
-                    href={`/projects/${key.projectId}`}
+                    href={projectHref(key.projectId)}
                     prefetch={false}
                     className="font-medium text-text-primary hover:underline"
                   >

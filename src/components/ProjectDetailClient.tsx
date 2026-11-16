@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { moveEntireBookingAction } from "@/app/(app)/projects/[id]/actions";
 import { ProjectSettingsDrawer } from "@/components/ProjectSettingsDrawer";
+import { projectHref } from "@/lib/routes";
 
 const AllocationPageClient = dynamic(
   () =>
@@ -124,7 +125,7 @@ export function ProjectDetailClient({
         setPlanningWeekFrom(weekFrom);
         setPlanningWeekTo(weekTo);
         const q = `year=${year}&from=${weekFrom}&to=${weekTo}`;
-        router.replace(`/projects/${initial.id}?${q}`, { scroll: false });
+        router.replace(`${projectHref(initial.id)}?${q}`, { scroll: false });
       } finally {
         if (gen === planningFetchGenRef.current) {
           setPlanningLoading(false);

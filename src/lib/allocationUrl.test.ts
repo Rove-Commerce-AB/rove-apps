@@ -14,7 +14,7 @@ describe("buildAllocationSearch", () => {
           role: [],
           prob: "weighted",
           projects: "all",
-          unbooked: false,
+          bookedOnly: false,
         }
       )
     ).toBe("year=2026&from=1&to=10");
@@ -29,13 +29,23 @@ describe("buildAllocationSearch", () => {
           role: ["r1"],
           prob: "none",
           projects: "hide100",
-          unbooked: true,
+          bookedOnly: true,
         },
         "foo=bar"
       )
     ).toBe(
-      "foo=bar&year=2026&from=1&to=10&team=t1%2Ct2&role=r1&prob=none&projects=hide100&unbooked=1"
+      "foo=bar&year=2026&from=1&to=10&team=t1%2Ct2&role=r1&prob=none&projects=hide100&bookedOnly=1"
     );
+  });
+
+  it("strips legacy unbooked param when applying filters", () => {
+    expect(
+      buildAllocationSearch(
+        { year: 2026, from: 1, to: 10 },
+        { bookedOnly: false },
+        "unbooked=1"
+      )
+    ).toBe("year=2026&from=1&to=10");
   });
 
   it("includes availability view", () => {
@@ -51,14 +61,14 @@ describe("buildAllocationSearch", () => {
 describe("readAllocationFilters", () => {
   it("reads filter params with defaults", () => {
     const params = new URLSearchParams(
-      "team=t1,t2&prob=none&projects=hideNon100&unbooked=1"
+      "team=t1,t2&prob=none&projects=hideNon100&bookedOnly=1"
     );
     expect(readAllocationFilters(params)).toEqual({
       team: ["t1", "t2"],
       role: [],
       prob: "none",
       projects: "hideNon100",
-      unbooked: true,
+      bookedOnly: true,
     });
   });
 
@@ -68,7 +78,19 @@ describe("readAllocationFilters", () => {
       role: [],
       prob: "weighted",
       projects: "all",
-      unbooked: false,
+      bookedOnly: false,
+    });
+  });
+
+  it("ignores legacy unbooked=1 (show-all is already the default)", () => {
+    expect(
+      readAllocationFilters(new URLSearchParams("unbooked=1"))
+    ).toEqual({
+      team: [],
+      role: [],
+      prob: "weighted",
+      projects: "all",
+      bookedOnly: false,
     });
   });
 
@@ -80,7 +102,7 @@ describe("readAllocationFilters", () => {
       role: [],
       prob: "weighted",
       projects: "availability",
-      unbooked: false,
+      bookedOnly: false,
     });
   });
 });

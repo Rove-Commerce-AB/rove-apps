@@ -186,13 +186,7 @@ export function WorkCardEstimate({
     return (
       <div
         ref={tshirtRootRef}
-        className={`inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 transition-colors duration-150 ease-out ${
-          inert
-            ? "cursor-not-allowed bg-bg-muted text-text-secondary opacity-50"
-            : tshirtOpen || !triggerEmpty
-              ? "bg-bg-muted text-text-secondary"
-              : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
-        }`}
+        className="inline-flex max-w-full items-center"
         onClick={stopCard}
         onPointerDown={stopCard}
         onKeyDown={stopCard}
@@ -214,9 +208,13 @@ export function WorkCardEstimate({
             if (tshirtOpen) closeTshirtPicker();
             else openTshirtPicker();
           }}
-          className={`inline-flex h-3 shrink-0 items-center justify-center text-caption ${
-            inert ? "cursor-not-allowed" : ""
-          } ${triggerEmpty ? "w-3" : "min-w-0"}`}
+          className={`inline-flex shrink-0 items-center justify-center rounded-md px-1.5 py-0.5 text-caption transition-colors duration-150 ease-out ${
+            inert
+              ? "cursor-not-allowed bg-bg-muted text-text-secondary opacity-50"
+              : tshirtOpen || !triggerEmpty
+                ? "bg-bg-muted text-text-secondary"
+                : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary"
+          }`}
         >
           {triggerEmpty ? (
             <Shirt
@@ -243,7 +241,7 @@ export function WorkCardEstimate({
           aria-hidden={!tshirtOpen}
         >
           <div
-            className={`ml-1 inline-flex items-center gap-0.5 transition-opacity duration-150 ease-out ${
+            className={`ml-1 inline-flex items-center gap-0.5 rounded-md bg-bg-muted px-1 py-0.5 transition-opacity duration-150 ease-out ${
               tshirtShown ? "opacity-100" : "opacity-0"
             }`}
           >

@@ -14,7 +14,7 @@ import { deleteProjectAction } from "@/app/(app)/projects/actions";
 import { getWorkProjectByPlannerProjectIdAction } from "@/app/(app)/work/actions";
 import { getConsultantsList } from "@/lib/consultantsClient";
 import { moneyLabel } from "@/lib/currency";
-import { workProjectHref } from "@/lib/routes";
+import { projectHref, workProjectHref } from "@/lib/routes";
 import type {
   ProjectBillingType,
   ProjectWithDetails,
@@ -557,7 +557,7 @@ export function ProjectSettingsPanel({
               <div className="flex shrink-0 items-center gap-0.5 pt-0.5">
                 {!hidePlanningLink ? (
                   <Link
-                    href={`/projects/${initial.id}`}
+                    href={projectHref(initial.id)}
                     title="Open in Planner"
                     aria-label="Open in Planner"
                     className={`inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 opacity-80 transition-colors hover:bg-bg-muted hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 ${APP_BRAND_BY_KEY.planner.icon}`}

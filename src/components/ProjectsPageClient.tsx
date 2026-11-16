@@ -13,6 +13,7 @@ import {
 import { EmptyState, Panel, Badge } from "@/components/ui";
 import type { ProjectWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+import { projectHref } from "@/lib/routes";
 
 type SortKey = "name" | "customer" | "status" | "dates" | "consultants" | "hours";
 type SortDir = "asc" | "desc";
@@ -254,7 +255,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
                         <tr
                           key={project.id}
                           className={`cursor-pointer transition-colors hover:bg-bg-muted/50 ${isInactive ? "opacity-70" : ""}`}
-                          onClick={() => router.push(`/projects/${project.id}`)}
+                          onClick={() => router.push(projectHref(project.id))}
                         >
                           <td className={`border-b ${tableBorder} px-4 py-3`}>
                             <div className="flex items-center gap-3">

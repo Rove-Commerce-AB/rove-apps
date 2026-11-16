@@ -35,6 +35,7 @@ export function notificationAppGroup(
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED ||
+    kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE ||
     kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_BOARD_INVITED ||
     kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_TODO_ASSIGNED
   ) {
@@ -193,7 +194,8 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
   if (
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED ||
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
-    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED
+    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED ||
+    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE
   ) {
     const actorName =
       (typeof p.mentionerName === "string" && p.mentionerName.trim()
@@ -259,6 +261,11 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
             {linkedIssue}.
           </>
         ),
+      };
+    }
+    if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE) {
+      return {
+        text: <>{linkedIssue} was marked Done.</>,
       };
     }
     return {

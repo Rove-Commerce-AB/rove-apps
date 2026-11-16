@@ -25,19 +25,51 @@ const nextConfig = {
         destination: "/settings/consultants/:id",
         permanent: false,
       },
-      { source: "/projekt", destination: "/projects", permanent: false },
-      { source: "/allokering", destination: "/planner/consultant", permanent: false },
-      { source: "/allocation", destination: "/planner/consultant", permanent: false },
-      { source: "/planner", destination: "/planner/consultant", permanent: false },
+      // Planner plan grids (legacy → /planner/plan/*)
+      {
+        source: "/planner",
+        destination: "/planner/plan/consultant",
+        permanent: true,
+      },
+      {
+        source: "/planner/consultant",
+        destination: "/planner/plan/consultant",
+        permanent: true,
+      },
+      {
+        source: "/planner/customer",
+        destination: "/planner/plan/customer",
+        permanent: true,
+      },
+      {
+        source: "/planner/project",
+        destination: "/planner/plan/project",
+        permanent: true,
+      },
+      {
+        source: "/planner/history",
+        destination: "/planner/plan/history",
+        permanent: true,
+      },
       {
         source: "/planner/overview",
-        destination: "/planner/consultant",
-        permanent: false,
+        destination: "/planner/plan/consultant",
+        permanent: true,
       },
       {
         source: "/planner/allocation",
-        destination: "/planner/consultant",
-        permanent: false,
+        destination: "/planner/plan/consultant",
+        permanent: true,
+      },
+      { source: "/allokering", destination: "/planner/plan/consultant", permanent: true },
+      { source: "/allocation", destination: "/planner/plan/consultant", permanent: true },
+      // Projects list removed — send to project plan grid
+      { source: "/projekt", destination: "/planner/plan/project", permanent: true },
+      { source: "/projects", destination: "/planner/plan/project", permanent: true },
+      {
+        source: "/projects/:id",
+        destination: "/planner/projects/:id",
+        permanent: true,
       },
       {
         source: "/time-report/project-manager",

@@ -1654,7 +1654,7 @@ export function WorkIssueDrawer({
                   />
                 </div>
               ) : null}
-              <div>
+              <div className="flex items-center justify-between gap-2">
                 {showDates ? (
                   <div className={`${propertyChipClass} gap-1.5`}>
                     <input
@@ -1687,6 +1687,14 @@ export function WorkIssueDrawer({
                     + Dates
                   </button>
                 )}
+                {issue.reporter ? (
+                  <p
+                    className="min-w-0 max-w-[9rem] shrink truncate text-[10px] leading-tight text-text-tertiary"
+                    title={`Reporter · ${issue.reporter.name}`}
+                  >
+                    Reporter · {issue.reporter.name}
+                  </p>
+                ) : null}
               </div>
             </div>
 

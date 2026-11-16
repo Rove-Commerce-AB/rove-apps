@@ -15,6 +15,7 @@ import { CreateProjectAppAvailability } from "@/components/CreateProjectAppAvail
 import { createProject } from "@/lib/projectsClient";
 import { getCustomers } from "@/lib/customersClient";
 import { suggestWorkBoardPrefix } from "@/lib/workIssueKey";
+import { projectHref } from "@/lib/routes";
 
 type Props = {
   isOpen: boolean;
@@ -93,7 +94,7 @@ export function AddProjectModal({
           onSuccess();
           router.refresh();
           if (redirectToProject) {
-            router.push(`/projects/${project.id}`);
+            router.push(projectHref(project.id));
           }
           return;
         }
@@ -104,7 +105,7 @@ export function AddProjectModal({
       onClose();
       router.refresh();
       if (redirectToProject) {
-        router.push(`/projects/${project.id}`);
+        router.push(projectHref(project.id));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create project");

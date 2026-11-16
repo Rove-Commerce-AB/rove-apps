@@ -34,10 +34,10 @@ describe("shortcutMatchKey", () => {
   it("keeps other filters", () => {
     expect(
       shortcutMatchKey(
-        "/planner/consultant?prob=none&projects=hide100&role=r1&team=t1&unbooked=1"
+        "/planner/consultant?prob=none&projects=hide100&role=r1&team=t1&bookedOnly=1"
       )
     ).toBe(
-      "/planner/consultant?prob=none&projects=hide100&role=r1&team=t1&unbooked=1"
+      "/planner/consultant?bookedOnly=1&prob=none&projects=hide100&role=r1&team=t1"
     );
   });
 });

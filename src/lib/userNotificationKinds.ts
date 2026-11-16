@@ -5,6 +5,8 @@ export const USER_NOTIFICATION_KIND = {
   WORK_ISSUE_MENTIONED: "work_issue_mentioned",
   WORK_ISSUE_OWNER_SET: "work_issue_owner_set",
   WORK_ISSUE_ASSIGNED: "work_issue_assigned",
+  /** Reporter notified when an issue first enters a Done column. */
+  WORK_ISSUE_MARKED_DONE: "work_issue_marked_done",
 } as const;
 
 /** Legacy Taskboard kinds (rows may still exist; not emitted anymore). */

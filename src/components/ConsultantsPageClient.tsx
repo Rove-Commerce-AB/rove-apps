@@ -25,7 +25,7 @@ import {
   type DataTableColumn,
 } from "@/components/ui";
 import type { ConsultantListItem } from "@/lib/consultants";
-import { ROUTES, consultantHref } from "@/lib/routes";
+import { ROUTES, consultantSettingsHref } from "@/lib/routes";
 
 type Props = {
   consultants: ConsultantListItem[];
@@ -213,7 +213,11 @@ export function ConsultantsPageClient({
 
   function openConsultant(id: string) {
     setOpenId(id);
-    router.push(consultantHref(id), { scroll: false });
+    const consultant = consultants.find((c) => c.id === id);
+    router.push(
+      consultantSettingsHref(id, consultant?.app_user_id ?? null),
+      { scroll: false }
+    );
   }
 
   function closeDrawer() {

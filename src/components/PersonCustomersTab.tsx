@@ -21,7 +21,7 @@ import {
   removeConsultantFromCustomer,
 } from "@/lib/customerConsultantsClient";
 import type { PersonListItem } from "@/lib/peopleTypes";
-import { customerHref } from "@/lib/routes";
+import { customerSettingsHref } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
 
 export type PersonCustomerOption = {
@@ -153,7 +153,7 @@ export function PersonCustomersTab({ person, customers }: Props) {
               className="relative -mx-6 flex items-center gap-3 px-6 py-3 transition-colors hover:bg-interactive-secondary"
             >
               <Link
-                href={customerHref(customer.id)}
+                href={customerSettingsHref(customer.id)}
                 scroll={false}
                 prefetch={false}
                 className="absolute inset-0"

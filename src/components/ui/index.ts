@@ -19,6 +19,7 @@ export {
 } from "./ModalReadonlyField";
 export { SideDrawer } from "./SideDrawer";
 export { FilterChip } from "./FilterChip";
+export { RemovableFilterChip } from "./RemovableFilterChip";
 export {
   CheckboxList,
   type CheckboxListOption,

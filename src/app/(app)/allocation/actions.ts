@@ -22,6 +22,11 @@ import {
   getAllocationPageDataForProject,
 } from "@/lib/allocationPage";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
+import {
+  getConsultantProjectPlanningPanels,
+  getCustomerProjectPlanningPanels,
+} from "@/lib/plannerMultiProjectPlanning";
+import type { PlannerProjectPlanningPanel } from "@/lib/plannerMultiProjectPlanningTypes";
 
 export async function revalidateAllocationPage(): Promise<void> {
   await assertNotSubcontractorForWrite();
@@ -187,5 +192,57 @@ export async function getProjectAllocationData(
   } catch (e) {
     const message = e instanceof Error ? e.message : "Could not load planning data";
     return { data: null, error: message };
+  }
+}
+
+export async function getCustomerProjectPlanningData(
+  customerId: string,
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): Promise<{
+  panels: PlannerProjectPlanningPanel[];
+  error: string | null;
+}> {
+  try {
+    const panels = await getCustomerProjectPlanningPanels(
+      customerId,
+      year,
+      weekFrom,
+      weekTo
+    );
+    return { panels, error: null };
+  } catch (e) {
+    return {
+      panels: [],
+      error:
+        e instanceof Error ? e.message : "Could not load planning data",
+    };
+  }
+}
+
+export async function getConsultantProjectPlanningData(
+  consultantId: string,
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): Promise<{
+  panels: PlannerProjectPlanningPanel[];
+  error: string | null;
+}> {
+  try {
+    const panels = await getConsultantProjectPlanningPanels(
+      consultantId,
+      year,
+      weekFrom,
+      weekTo
+    );
+    return { panels, error: null };
+  } catch (e) {
+    return {
+      panels: [],
+      error:
+        e instanceof Error ? e.message : "Could not load planning data",
+    };
   }
 }

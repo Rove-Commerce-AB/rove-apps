@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, Eye, ListFilter } from "lucide-react";
+import { RemovableFilterChip } from "@/components/ui";
 import type {
   ProbabilityDisplay,
   ProjectVisibility,
@@ -40,9 +41,10 @@ type Props = {
   /** Empty = all roles. */
   roleFilterIds: string[];
   onRoleFilterChange: (ids: string[]) => void;
-  showUnbookedToggle?: boolean;
-  showProjectsWithoutBooking?: boolean;
-  onShowProjectsWithoutBookingChange?: (value: boolean) => void;
+  /** Show Projects → Only with booking (Customer + Project plan grids). */
+  showBookedOnlyToggle?: boolean;
+  bookedOnly?: boolean;
+  onBookedOnlyChange?: (value: boolean) => void;
   /** When false, only the Filter control is shown (e.g. embed planning). */
   showView?: boolean;
   probabilityDisplay?: ProbabilityDisplay;
@@ -58,9 +60,9 @@ export function AllocationViewControls({
   onTeamFilterChange,
   roleFilterIds,
   onRoleFilterChange,
-  showUnbookedToggle = false,
-  showProjectsWithoutBooking = false,
-  onShowProjectsWithoutBookingChange,
+  showBookedOnlyToggle = false,
+  bookedOnly = false,
+  onBookedOnlyChange,
   showView = true,
   probabilityDisplay = "weighted",
   onProbabilityDisplayChange,
@@ -72,19 +74,11 @@ export function AllocationViewControls({
   const filterActive =
     teamFilterIds.length > 0 ||
     roleFilterIds.length > 0 ||
-    (showUnbookedToggle && showProjectsWithoutBooking);
+    (showBookedOnlyToggle && bookedOnly);
 
   const viewActive =
     showView &&
     (probabilityDisplay !== "weighted" || projectVisibility !== "all");
-
-  const filterLabel = filterSummary(
-    teams,
-    roles,
-    teamFilterIds,
-    roleFilterIds,
-    showUnbookedToggle && showProjectsWithoutBooking
-  );
 
   const viewLabel = viewSummary(probabilityDisplay, projectVisibility);
 
@@ -117,39 +111,87 @@ export function AllocationViewControls({
   }, [menu]);
 
   const hasFilterOptions =
-    teams.length > 0 || roles.length > 0 || showUnbookedToggle;
+    teams.length > 0 || roles.length > 0 || showBookedOnlyToggle;
   if (!hasFilterOptions && !showView) return null;
+
+  const teamChips = teamFilterIds
+    .map((id) => {
+      const team = teams.find((t) => t.id === id);
+      if (!team) return null;
+      return (
+        <RemovableFilterChip
+          key={`team-${id}`}
+          prefix="Team"
+          label={team.name}
+          onRemove={() =>
+            onTeamFilterChange(teamFilterIds.filter((x) => x !== id))
+          }
+        />
+      );
+    })
+    .filter(Boolean);
+
+  const roleChips = roleFilterIds
+    .map((id) => {
+      const role = roles.find((r) => r.id === id);
+      if (!role) return null;
+      return (
+        <RemovableFilterChip
+          key={`role-${id}`}
+          prefix="Role"
+          label={role.name}
+          onRemove={() =>
+            onRoleFilterChange(roleFilterIds.filter((x) => x !== id))
+          }
+        />
+      );
+    })
+    .filter(Boolean);
+
+  const bookedChip =
+    showBookedOnlyToggle && bookedOnly && onBookedOnlyChange ? (
+      <RemovableFilterChip
+        key="booked-only"
+        label="Only with booking"
+        onRemove={() => onBookedOnlyChange(false)}
+      />
+    ) : null;
+
+  const chips = [...teamChips, ...roleChips, bookedChip].filter(Boolean);
 
   return (
     <>
-      {hasFilterOptions ? (
-        <button
-          type="button"
-          data-allocation-view-menu
-          aria-label="Filter allocations"
-          aria-expanded={menu?.kind === "filter"}
-          aria-haspopup="menu"
-          className={triggerClass(filterActive)}
-          onClick={(event) => openMenu("filter", event)}
-        >
-          <ListFilter className="h-3.5 w-3.5" aria-hidden />
-          <span className="max-w-28 truncate">{filterLabel}</span>
-        </button>
-      ) : null}
-      {showView ? (
-        <button
-          type="button"
-          data-allocation-view-menu
-          aria-label="View options"
-          aria-expanded={menu?.kind === "view"}
-          aria-haspopup="menu"
-          className={triggerClass(viewActive)}
-          onClick={(event) => openMenu("view", event)}
-        >
-          <Eye className="h-3.5 w-3.5" aria-hidden />
-          <span className="max-w-36 truncate">{viewLabel}</span>
-        </button>
-      ) : null}
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+        {chips}
+        {hasFilterOptions ? (
+          <button
+            type="button"
+            data-allocation-view-menu
+            aria-label="Filter allocations"
+            aria-expanded={menu?.kind === "filter"}
+            aria-haspopup="menu"
+            className={triggerClass(filterActive)}
+            onClick={(event) => openMenu("filter", event)}
+          >
+            <ListFilter className="h-3.5 w-3.5" aria-hidden />
+            <span>Filter</span>
+          </button>
+        ) : null}
+        {showView ? (
+          <button
+            type="button"
+            data-allocation-view-menu
+            aria-label="View options"
+            aria-expanded={menu?.kind === "view"}
+            aria-haspopup="menu"
+            className={triggerClass(viewActive)}
+            onClick={(event) => openMenu("view", event)}
+          >
+            <Eye className="h-3.5 w-3.5" aria-hidden />
+            <span className="max-w-36 truncate">{viewLabel}</span>
+          </button>
+        ) : null}
+      </div>
       {menu
         ? createPortal(
             <div
@@ -160,9 +202,30 @@ export function AllocationViewControls({
             >
               {menu.kind === "filter" ? (
                 <>
-                  {teams.length > 0 ? (
+                  {showBookedOnlyToggle && onBookedOnlyChange ? (
                     <>
                       <p className="px-3 py-1.5 text-label-s text-text-tertiary">
+                        Projects
+                      </p>
+                      <MenuRow
+                        selected={bookedOnly}
+                        onSelect={() => onBookedOnlyChange(!bookedOnly)}
+                      >
+                        <span className="min-w-0 truncate">
+                          Only with booking
+                        </span>
+                      </MenuRow>
+                    </>
+                  ) : null}
+                  {teams.length > 0 ? (
+                    <>
+                      <p
+                        className={`px-3 py-1.5 text-label-s text-text-tertiary ${
+                          showBookedOnlyToggle
+                            ? "mt-1 border-t border-border-subtle"
+                            : ""
+                        }`}
+                      >
                         Team
                       </p>
                       <MenuRow
@@ -190,7 +253,7 @@ export function AllocationViewControls({
                     <>
                       <p
                         className={`px-3 py-1.5 text-label-s text-text-tertiary ${
-                          teams.length > 0
+                          showBookedOnlyToggle || teams.length > 0
                             ? "mt-1 border-t border-border-subtle"
                             : ""
                         }`}
@@ -218,25 +281,6 @@ export function AllocationViewControls({
                       ))}
                     </>
                   ) : null}
-                  {showUnbookedToggle && onShowProjectsWithoutBookingChange ? (
-                    <>
-                      <p className="mt-1 border-t border-border-subtle px-3 py-1.5 text-label-s text-text-tertiary">
-                        Projects
-                      </p>
-                      <MenuRow
-                        selected={showProjectsWithoutBooking}
-                        onSelect={() =>
-                          onShowProjectsWithoutBookingChange(
-                            !showProjectsWithoutBooking
-                          )
-                        }
-                      >
-                        <span className="min-w-0 truncate">
-                          Without booking
-                        </span>
-                      </MenuRow>
-                    </>
-                  ) : null}
                   {filterActive ? (
                     <button
                       type="button"
@@ -244,7 +288,7 @@ export function AllocationViewControls({
                       onClick={() => {
                         onTeamFilterChange([]);
                         onRoleFilterChange([]);
-                        onShowProjectsWithoutBookingChange?.(false);
+                        onBookedOnlyChange?.(false);
                         setMenu(null);
                       }}
                     >
@@ -327,30 +371,6 @@ export function AllocationViewControls({
         : null}
     </>
   );
-}
-
-function filterSummary(
-  teams: NamedOption[],
-  roles: NamedOption[],
-  teamFilterIds: string[],
-  roleFilterIds: string[],
-  unbooked: boolean
-) {
-  const parts: string[] = [];
-  if (teamFilterIds.length === 1) {
-    parts.push(teams.find((t) => t.id === teamFilterIds[0])?.name ?? "Team");
-  } else if (teamFilterIds.length > 1) {
-    parts.push(`${teamFilterIds.length} teams`);
-  }
-  if (roleFilterIds.length === 1) {
-    parts.push(roles.find((r) => r.id === roleFilterIds[0])?.name ?? "Role");
-  } else if (roleFilterIds.length > 1) {
-    parts.push(`${roleFilterIds.length} roles`);
-  }
-  if (unbooked) parts.push("Unbooked");
-  if (parts.length === 0) return "Filter";
-  if (parts.length === 1) return parts[0]!;
-  return `Filter · ${parts.length}`;
 }
 
 function viewSummary(

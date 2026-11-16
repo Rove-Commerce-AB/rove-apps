@@ -14,7 +14,7 @@ import {
   Percent,
 } from "lucide-react";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
-import { consultantHref, customerHref } from "@/lib/routes";
+import { consultantHref, customerHref, projectHref } from "@/lib/routes";
 
 export type EditingCellCustomerProject = {
   customerId: string;
@@ -49,6 +49,9 @@ export type AddInitialParams = {
   year: number;
   projectId?: string;
   projectLabel?: string;
+  /** Prefill/filter projects to this customer (Customer view +). */
+  customerId?: string;
+  customerName?: string;
 };
 
 /** Same payload as `AllocationPageClient` edit-range modal (consultant / project row drag). */
@@ -199,7 +202,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
     }`;
 
   const [customerDragState, setCustomerDragState] = useState<{
-    mode: "consultant" | "project";
+    mode: "consultant" | "project" | "customer";
     customerId: string;
     customerName: string;
     projectId: string;
@@ -300,6 +303,15 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
           p.setAddModalOpen(true);
           setPreventNextConsultantCellClick(true);
         }
+      } else if (drag.mode === "customer") {
+        p.setAddInitialParams({
+          year: wFrom.year,
+          weekFrom: wFrom.week,
+          weekTo: wTo.week,
+          customerId: drag.customerId,
+          customerName: drag.customerName,
+        });
+        p.setAddModalOpen(true);
       } else {
         p.setAddInitialParams({
           year: wFrom.year,
@@ -460,14 +472,73 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       const prev = data.weeks[i - 1];
                       const prevTotal = i > 0 && prev ? row.totalByWeek.get(`${prev.year}-${prev.week}`) ?? 0 : 0;
                       const showLeftBorder = hasBooking && (i === 0 || prevTotal === 0);
+                      const isCustomerDragRange =
+                        customerDragState?.mode === "customer" &&
+                        customerDragState.customerId === row.customer.id &&
+                        i >=
+                          Math.min(
+                            customerDragState.weekIndexStart,
+                            customerDragState.weekIndexEnd
+                          ) &&
+                        i <=
+                          Math.max(
+                            customerDragState.weekIndexStart,
+                            customerDragState.weekIndexEnd
+                          );
+                      const dragMin =
+                        customerDragState?.mode === "customer"
+                          ? Math.min(
+                              customerDragState.weekIndexStart,
+                              customerDragState.weekIndexEnd
+                            )
+                          : -1;
+                      const dragMax =
+                        customerDragState?.mode === "customer"
+                          ? Math.max(
+                              customerDragState.weekIndexStart,
+                              customerDragState.weekIndexEnd
+                            )
+                          : -1;
+                      const isDragLeft = isCustomerDragRange && i === dragMin;
+                      const isDragRight = isCustomerDragRange && i === dragMax;
+                      const colHl = timeGridColumnCellInteractionProps(
+                        i,
+                        setHighlightedColumnIndex
+                      );
                       return (
                         <td
                           key={`${w.year}-${w.week}`}
-                          {...timeGridColumnCellInteractionProps(
-                            i,
-                            setHighlightedColumnIndex
-                          )}
-                          className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${allocColHoverClass(i)}`}
+                          className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} cursor-crosshair select-none px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCustomerDragRange ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setCustomerDragState({
+                              mode: "customer",
+                              customerId: row.customer.id,
+                              customerName: row.customer.name,
+                              projectId: "",
+                              projectName: "",
+                              weekIndexStart: i,
+                              weekIndexEnd: i,
+                              startWeek: w.week,
+                              startYear: w.year,
+                            });
+                            setCustomerDragMoved(false);
+                          }}
+                          onMouseLeave={colHl.onMouseLeave}
+                          onFocusCapture={colHl.onFocusCapture}
+                          onBlurCapture={colHl.onBlurCapture}
+                          onMouseEnter={(e) => {
+                            colHl.onMouseEnter?.(e);
+                            if (
+                              customerDragState?.mode === "customer" &&
+                              customerDragState.customerId === row.customer.id
+                            ) {
+                              setCustomerDragState((prev) =>
+                                prev ? { ...prev, weekIndexEnd: i } : null
+                              );
+                              setCustomerDragMoved(true);
+                            }
+                          }}
                         >
                           {hasBooking ? `${total}h` : null}
                         </td>
@@ -492,7 +563,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         >
                           <td className="allocation-name-col border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
                             <Link
-                              href={`/projects/${pg.project.id}`}
+                              href={projectHref(pg.project.id)}
                               prefetch={false}
                               className="inline-block min-w-0 max-w-full truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
                             >
@@ -891,7 +962,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         </span>
                       </button>
                       <Link
-                        href={`/projects/${row.project.id}`}
+                        href={projectHref(row.project.id)}
                         prefetch={false}
                         className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                         aria-label={`Open ${row.project.label}`}

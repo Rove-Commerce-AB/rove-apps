@@ -3,6 +3,7 @@ import { Building2, Calendar, Users } from "lucide-react";
 import type { ProjectWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { Badge } from "@/components/ui";
+import { projectHref } from "@/lib/routes";
 
 type Props = {
   project: ProjectWithDetails;
@@ -28,7 +29,7 @@ export function ProjectCard({ project }: Props) {
 
   return (
     <Link
-      href={`/projects/${project.id}`}
+      href={projectHref(project.id)}
       prefetch={false}
       className={`flex overflow-hidden rounded-lg border border-form bg-bg-default shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 ${
         isInactive ? "opacity-60 grayscale" : ""

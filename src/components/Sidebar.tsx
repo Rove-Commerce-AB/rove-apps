@@ -598,7 +598,7 @@ export function Sidebar({
   // Warm Overview RSC payloads so app-name clicks feel instant.
   useEffect(() => {
     const hrefs: string[] = [];
-    if (appKeys.includes("planner")) hrefs.push(ROUTES.plannerConsultant);
+    if (appKeys.includes("planner")) hrefs.push(ROUTES.plannerPlanConsultant);
     if (appKeys.includes("time_report")) hrefs.push(ROUTES.timeReportOverview);
     if (appKeys.includes("work")) hrefs.push(ROUTES.workOverview);
     if (appKeys.includes("support")) {
@@ -722,45 +722,54 @@ export function Sidebar({
             <AppGroup
               label="Planner"
               icon={CalendarCheck}
-              href={ROUTES.plannerConsultant}
+              href={ROUTES.plannerPlanConsultant}
               pathname={activePath}
               open={openApps.planner}
               onToggle={() =>
                 setOpenApps((prev) => ({ ...prev, planner: !prev.planner }))
               }
               collapsed={collapsed}
-              collapsedHref={ROUTES.plannerConsultant}
+              collapsedHref={ROUTES.plannerPlanConsultant}
               active={plannerActive}
               onNavigate={markPending}
               brand="planner"
             >
               <NavLink
-                href={ROUTES.plannerConsultant}
+                href={ROUTES.plannerPlanConsultant}
                 label="Consultant"
                 pathname={activePath}
                 indent
-                activeMatch="prefix"
+                active={
+                  pathMatches(activePath, ROUTES.plannerPlanConsultant, "prefix") ||
+                  pathMatches(activePath, ROUTES.plannerConsultants, "prefix")
+                }
                 prefetch
                 onNavigate={markPending}
               />
               <NavLink
-                href={ROUTES.plannerCustomer}
+                href={ROUTES.plannerPlanCustomer}
                 label="Customer"
                 pathname={activePath}
                 indent
-                activeMatch="prefix"
+                active={
+                  pathMatches(activePath, ROUTES.plannerPlanCustomer, "prefix") ||
+                  pathMatches(activePath, ROUTES.plannerCustomers, "prefix")
+                }
                 onNavigate={markPending}
               />
               <NavLink
-                href={ROUTES.plannerProject}
+                href={ROUTES.plannerPlanProject}
                 label="Project"
                 pathname={activePath}
                 indent
-                activeMatch="prefix"
+                active={
+                  pathMatches(activePath, ROUTES.plannerPlanProject, "prefix") ||
+                  pathMatches(activePath, ROUTES.plannerProjects, "prefix")
+                }
                 onNavigate={markPending}
               />
               <NavLink
-                href={ROUTES.plannerHistory}
+                href={ROUTES.plannerPlanHistory}
                 label="Allocation history"
                 pathname={activePath}
                 indent

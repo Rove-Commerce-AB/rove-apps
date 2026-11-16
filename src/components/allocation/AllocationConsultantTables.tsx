@@ -33,7 +33,7 @@ import {
   useTimeGridColumnHighlight,
   timeGridColumnCellInteractionProps,
 } from "@/components/TimeGridColumnHighlight";
-import { consultantHref, customerHref } from "@/lib/routes";
+import { consultantHref, customerHref, projectHref } from "@/lib/routes";
 
 type PerConsultantRow = ReturnType<typeof buildPerConsultantView>[number];
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
@@ -611,7 +611,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                     )}
                                     {" - "}
                                     <Link
-                                      href={`/projects/${pr.projectId}`}
+                                      href={projectHref(pr.projectId)}
                                       prefetch={false}
                                       className="cursor-pointer hover:underline"
                                       onClick={(e) => e.stopPropagation()}
@@ -1212,7 +1212,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               )}
                               {" - "}
                               <Link
-                                href={`/projects/${pr.projectId}`}
+                                href={projectHref(pr.projectId)}
                                 prefetch={false}
                                 className="cursor-pointer hover:underline"
                                 onClick={(e) => e.stopPropagation()}

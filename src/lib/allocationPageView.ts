@@ -407,24 +407,33 @@ export function buildPerCustomerView(
       totalByWeek: Map<string, number>;
     }[] = [];
 
-    if (byProject) {
-      const sortedProjectIds = [...byProject.keys()].sort((a, b) => {
-        const aName = projectMap.get(a)?.name ?? "";
-        const bName = projectMap.get(b)?.name ?? "";
-        return compareTextSv(aName, bName);
-      });
+    const activeProjectsForCustomer = data.projects
+      .filter(
+        (p) =>
+          p.customer_id === cust.id &&
+          p.isActive !== false &&
+          p.customerIsActive !== false
+      )
+      .sort((a, b) => compareTextSv(a.name, b.name));
 
-      for (const projectId of sortedProjectIds) {
-        const byConsultantRole = byProject.get(projectId)!;
-        const consultantRows: {
+    for (const proj of activeProjectsForCustomer) {
+      const projectId = proj.id;
+      const byConsultantRole = byProject?.get(projectId);
+      const consultantRows: {
+        consultantId: string;
+        consultantName: string;
+        roleId: string | null;
+        roleName: string;
+        unavailableByWeek: boolean[];
+        weeks: { week: number; cells: CustomerViewCellItem[] }[];
+      }[] = [];
+
+      if (byConsultantRole) {
+        const rows: {
+          key: string;
           consultantId: string;
-          consultantName: string;
           roleId: string | null;
-          roleName: string;
-          unavailableByWeek: boolean[];
-          weeks: { week: number; cells: CustomerViewCellItem[] }[];
         }[] = [];
-        const rows: { key: string; consultantId: string; roleId: string | null }[] = [];
         for (const rowKey of byConsultantRole.keys()) {
           const [consultantId, rolePart] = rowKey.split(ROW_KEY_SEP);
           const roleId = rolePart === "__none__" ? null : rolePart;
@@ -468,39 +477,43 @@ export function buildPerCustomerView(
             consultantName: c?.name ?? "Unknown",
             roleId,
             roleName: roleName || (roleId ? "Unknown" : ""),
-            unavailableByWeek: c?.unavailableByWeek ?? data.weeks.map(() => false),
+            unavailableByWeek:
+              c?.unavailableByWeek ?? data.weeks.map(() => false),
             weeks,
           });
         }
+      }
 
-        const projectTotalByWeek = new Map<string, number>();
-        for (const cr of consultantRows) {
-          cr.weeks.forEach(({ cells }, j) => {
-            const w = data.weeks[j];
-            const sum = cells.reduce(
-              (s, x) => s + (x.isHidden ? 0 : x.displayHours),
-              0
+      const projectTotalByWeek = new Map<string, number>();
+      for (const cr of consultantRows) {
+        cr.weeks.forEach(({ cells }, j) => {
+          const w = data.weeks[j];
+          const sum = cells.reduce(
+            (s, x) => s + (x.isHidden ? 0 : x.displayHours),
+            0
+          );
+          if (sum > 0 && w) {
+            const key = weekKey(w.year, w.week);
+            projectTotalByWeek.set(
+              key,
+              (projectTotalByWeek.get(key) ?? 0) + sum
             );
-            if (sum > 0 && w) {
-              const key = weekKey(w.year, w.week);
-              projectTotalByWeek.set(key, (projectTotalByWeek.get(key) ?? 0) + sum);
-            }
-          });
-        }
-
-        projectGroups.push({
-          project: {
-            id: projectId,
-            name: formatProjectNameWithProbability(
-              projectMap.get(projectId)?.name ?? "Unknown",
-              projectId,
-              projectProbabilityMap
-            ),
-          },
-          consultantRows,
-          totalByWeek: projectTotalByWeek,
+          }
         });
       }
+
+      projectGroups.push({
+        project: {
+          id: projectId,
+          name: formatProjectNameWithProbability(
+            proj.name,
+            projectId,
+            projectProbabilityMap
+          ),
+        },
+        consultantRows,
+        totalByWeek: projectTotalByWeek,
+      });
     }
 
     const totalByWeek = new Map<string, number>();

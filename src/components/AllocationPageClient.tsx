@@ -125,6 +125,10 @@ type Props = {
    * Do not read useSearchParams during render for filter-dependent table output.
    */
   initialFilters?: AllocationFiltersState;
+  /** Hide the page title when wrapped in an entity planning header. */
+  suppressPageHeader?: boolean;
+  /** Hide week arrows (parent owns a shared week nav for multi-project pages). */
+  suppressWeekNav?: boolean;
 };
 
 export function AllocationPageClient(props: Props) {
@@ -149,6 +153,8 @@ function AllocationPageClientImpl({
   embedShowTeamFilter = false,
   view = "consultant",
   initialFilters,
+  suppressPageHeader = false,
+  suppressWeekNav = false,
 }: Props) {
   const { highlightedColumnIndex } = useTimeGridColumnHighlight();
   const router = useRouter();
@@ -190,6 +196,8 @@ function AllocationPageClientImpl({
     year: number;
     projectId?: string;
     projectLabel?: string;
+    customerId?: string;
+    customerName?: string;
   } | null>(null);
   const [cellDragConsultant, setCellDragConsultant] = useState<{
     id: string;
@@ -224,7 +232,7 @@ function AllocationPageClientImpl({
         role: [],
         prob: "weighted",
         projects: "all",
-        unbooked: false,
+        bookedOnly: false,
       }
   );
   const filtersRef = useRef(filters);
@@ -237,8 +245,7 @@ function AllocationPageClientImpl({
     useState<ProbabilityDisplay>("weighted");
   const [embedProjectVisibility, setEmbedProjectVisibility] =
     useState<ProjectVisibility>("all");
-  const [embedShowProjectsWithoutBooking, setEmbedShowProjectsWithoutBooking] =
-    useState(false);
+  const [embedBookedOnly, setEmbedBookedOnly] = useState(false);
 
   // After mount / when the URL changes (shortcuts, week nav), adopt URL filters.
   // Skip during the first render so SSR and hydration share `initialFilters`.
@@ -262,9 +269,7 @@ function AllocationPageClientImpl({
   const projectVisibility = embedMode
     ? embedProjectVisibility
     : filters.projects;
-  const showProjectsWithoutBooking = embedMode
-    ? embedShowProjectsWithoutBooking
-    : filters.unbooked;
+  const bookedOnly = embedMode ? embedBookedOnly : filters.bookedOnly;
 
   const replaceAllocationFilters = useCallback(
     (patch: AllocationFilterParams) => {
@@ -278,8 +283,8 @@ function AllocationPageClientImpl({
         if (patch.projects !== undefined && patch.projects) {
           setEmbedProjectVisibility(patch.projects);
         }
-        if (patch.unbooked !== undefined) {
-          setEmbedShowProjectsWithoutBooking(Boolean(patch.unbooked));
+        if (patch.bookedOnly !== undefined) {
+          setEmbedBookedOnly(Boolean(patch.bookedOnly));
         }
         return;
       }
@@ -295,10 +300,10 @@ function AllocationPageClientImpl({
           patch.projects !== undefined && patch.projects != null
             ? patch.projects
             : prev.projects,
-        unbooked:
-          patch.unbooked !== undefined
-            ? Boolean(patch.unbooked)
-            : prev.unbooked,
+        bookedOnly:
+          patch.bookedOnly !== undefined
+            ? Boolean(patch.bookedOnly)
+            : prev.bookedOnly,
       };
       setFilters(nextState);
       const q = buildAllocationSearch(
@@ -327,8 +332,8 @@ function AllocationPageClientImpl({
       replaceAllocationFilters({ projects: value }),
     [replaceAllocationFilters]
   );
-  const setShowProjectsWithoutBooking = useCallback(
-    (value: boolean) => replaceAllocationFilters({ unbooked: value }),
+  const setBookedOnly = useCallback(
+    (value: boolean) => replaceAllocationFilters({ bookedOnly: value }),
     [replaceAllocationFilters]
   );
 
@@ -936,11 +941,22 @@ function AllocationPageClientImpl({
   );
   const perProjectFiltered = useMemo(
     () =>
-      showProjectsWithoutBooking
-        ? perProject
-        : perProject.filter((r) => r.consultantRows.length > 0),
-    [showProjectsWithoutBooking, perProject]
+      bookedOnly
+        ? perProject.filter((r) => r.consultantRows.length > 0)
+        : perProject,
+    [bookedOnly, perProject]
   );
+  const perCustomerFiltered = useMemo(() => {
+    if (!bookedOnly) return perCustomer;
+    return perCustomer
+      .map((row) => ({
+        ...row,
+        projectGroups: row.projectGroups.filter(
+          (pg) => pg.consultantRows.length > 0
+        ),
+      }))
+      .filter((row) => row.projectGroups.length > 0);
+  }, [bookedOnly, perCustomer]);
   const perConsultantInternal = useMemo(
     () => perConsultant.filter((r) => !r.consultant.isExternal),
     [perConsultant]
@@ -976,11 +992,11 @@ function AllocationPageClientImpl({
   const expandableCustomerIds = useMemo(
     () =>
       new Set(
-        perCustomer
+        perCustomerFiltered
           .filter((r) => r.projectGroups.length > 0)
           .map((r) => r.customer.id)
       ),
-    [perCustomer]
+    [perCustomerFiltered]
   );
   const currentWeek = currentWeekProp;
   const currentYear = currentYearProp;
@@ -1078,7 +1094,9 @@ function AllocationPageClientImpl({
           consultants: data.consultants.length,
           allocations: data.allocations.length,
           perConsultantRows: perConsultant.length,
-          perCustomerRows: shouldComputeCustomerView ? perCustomer.length : 0,
+          perCustomerRows: shouldComputeCustomerView
+            ? perCustomerFiltered.length
+            : 0,
           perProjectRows: shouldComputeProjectView ? perProject.length : 0,
           activeTab,
           embedMode: Boolean(embedMode),
@@ -1089,7 +1107,7 @@ function AllocationPageClientImpl({
   }, [
     data,
     perConsultant.length,
-    perCustomer.length,
+    perCustomerFiltered.length,
     perProject.length,
     shouldComputeCustomerView,
     shouldComputeProjectView,
@@ -1105,7 +1123,7 @@ function AllocationPageClientImpl({
           : "flex min-h-0 flex-1 flex-col"
       }
     >
-      {!embedMode && (
+      {!embedMode && !suppressPageHeader && (
         <PageHeader
           title={
             activeTab === "consultant"
@@ -1125,51 +1143,63 @@ function AllocationPageClientImpl({
         />
       )}
 
-      {data && activeTab !== "history" ? (
-        <div
-          className={`flex shrink-0 items-center justify-end gap-1 ${
-            embedMode ? "mb-1.5 px-1" : "mb-1.5 px-2"
-          }`}
-        >
-          <div className="flex items-center gap-1">
-            {(!embedMode || embedShowTeamFilter) &&
-            (data.teams.length > 0 ||
-              data.roles.length > 0 ||
-              (!embedMode && activeTab === "project")) ? (
-              <AllocationViewControls
-                teams={data.teams}
-                roles={data.roles}
-                teamFilterIds={teamFilterIds}
-                onTeamFilterChange={setTeamFilterIds}
-                roleFilterIds={defaultRoleFilterIds}
-                onRoleFilterChange={setDefaultRoleFilterIds}
-                showUnbookedToggle={!embedMode && activeTab === "project"}
-                showProjectsWithoutBooking={showProjectsWithoutBooking}
-                onShowProjectsWithoutBookingChange={
-                  setShowProjectsWithoutBooking
-                }
-                showView={!embedMode}
-                probabilityDisplay={probabilityDisplay}
-                onProbabilityDisplayChange={setProbabilityDisplay}
-                projectVisibility={projectVisibility}
-                onProjectVisibilityChange={setProjectVisibility}
-              />
-            ) : null}
-            <AllocationWeekNav
-              onShift={shiftWeeks}
-              disabled={Boolean(embedMode && embedWeekNavLoading)}
-              getUrl={
-                embedMode && onWeekRangeChange ? undefined : getShiftUrl
-              }
-              prefetch={
-                embedMode && onWeekRangeChange
-                  ? undefined
-                  : router.prefetch.bind(router)
-              }
-            />
-          </div>
-        </div>
-      ) : null}
+      {data && activeTab !== "history"
+        ? (() => {
+            const showProjectBookingFilter =
+              !embedMode &&
+              (activeTab === "project" || activeTab === "customer");
+            const showEmbedFilters =
+              (!embedMode || embedShowTeamFilter) &&
+              (data.teams.length > 0 ||
+                data.roles.length > 0 ||
+                showProjectBookingFilter);
+            if (suppressWeekNav && !showEmbedFilters) return null;
+            return (
+              <div
+                className={`flex shrink-0 items-center justify-end gap-1 ${
+                  embedMode ? "mb-1.5 px-1" : "mb-1.5 px-2"
+                }`}
+              >
+                <div className="flex items-center gap-1">
+                  {showEmbedFilters ? (
+                    <AllocationViewControls
+                      teams={data.teams}
+                      roles={data.roles}
+                      teamFilterIds={teamFilterIds}
+                      onTeamFilterChange={setTeamFilterIds}
+                      roleFilterIds={defaultRoleFilterIds}
+                      onRoleFilterChange={setDefaultRoleFilterIds}
+                      showBookedOnlyToggle={showProjectBookingFilter}
+                      bookedOnly={bookedOnly}
+                      onBookedOnlyChange={setBookedOnly}
+                      showView={!embedMode}
+                      probabilityDisplay={probabilityDisplay}
+                      onProbabilityDisplayChange={setProbabilityDisplay}
+                      projectVisibility={projectVisibility}
+                      onProjectVisibilityChange={setProjectVisibility}
+                    />
+                  ) : null}
+                  {!suppressWeekNav ? (
+                    <AllocationWeekNav
+                      onShift={shiftWeeks}
+                      disabled={Boolean(embedMode && embedWeekNavLoading)}
+                      getUrl={
+                        embedMode && onWeekRangeChange
+                          ? undefined
+                          : getShiftUrl
+                      }
+                      prefetch={
+                        embedMode && onWeekRangeChange
+                          ? undefined
+                          : router.prefetch.bind(router)
+                      }
+                    />
+                  ) : null}
+                </div>
+              </div>
+            );
+          })()
+        : null}
 
       <div
         ref={allocationTablesRef}
@@ -1251,7 +1281,7 @@ function AllocationPageClientImpl({
               renderWeekHeaderCells={renderWeekHeaderCells}
               expandedCustomers={expandedCustomers}
               toggleCustomer={toggleCustomer}
-              perCustomer={perCustomer}
+              perCustomer={perCustomerFiltered}
               expandedProjects={expandedProjects}
               toggleProject={toggleProject}
               expandableCustomerIds={expandableCustomerIds}
@@ -1307,6 +1337,8 @@ function AllocationPageClientImpl({
         initialWeekTo={addInitialParams?.weekTo}
         initialProjectId={addInitialParams?.projectId}
         initialProjectLabel={addInitialParams?.projectLabel}
+        initialCustomerId={addInitialParams?.customerId}
+        initialCustomerName={addInitialParams?.customerName}
       />
 
       <Dialog

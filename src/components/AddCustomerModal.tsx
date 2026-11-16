@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createCustomerAction } from "@/app/(app)/customers/actions";
-import { customerHref } from "@/lib/routes";
+import { customerSettingsHref } from "@/lib/routes";
 import {
   Button,
   Dialog,
@@ -36,7 +36,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
       });
       onSuccess();
       onClose();
-      await router.push(customerHref(customer.id));
+      await router.push(customerSettingsHref(customer.id));
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add customer");

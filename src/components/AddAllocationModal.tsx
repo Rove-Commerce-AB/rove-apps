@@ -46,6 +46,9 @@ type Props = {
   /** Pre-fill and lock project when opening from project detail planning panel */
   initialProjectId?: string;
   initialProjectLabel?: string;
+  /** Prefill from Customer view +: filter project list to this customer (includes unbooked). */
+  initialCustomerId?: string;
+  initialCustomerName?: string;
 };
 
 type Consultant = { id: string; name: string; role_id: string | null };
@@ -73,6 +76,8 @@ export function AddAllocationModal({
   initialWeekTo,
   initialProjectId,
   initialProjectLabel,
+  initialCustomerId,
+  initialCustomerName,
 }: Props) {
   const [consultants, setConsultants] = useState<Consultant[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -89,6 +94,10 @@ export function AddAllocationModal({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  function filterProjectsForCustomer(list: Project[]): Project[] {
+    if (!initialCustomerId) return list;
+    return list.filter((p) => p.customer_id === initialCustomerId);
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -117,7 +126,7 @@ export function AddAllocationModal({
     if (!consultantId || consultantId === TO_PLAN_CONSULTANT_ID) {
       getProjectsWithCustomer()
         .then((list) => {
-          if (!cancelled) setProjects(list);
+          if (!cancelled) setProjects(filterProjectsForCustomer(list));
         })
         .catch(() => {
           if (!cancelled) setProjects([]);
@@ -129,7 +138,7 @@ export function AddAllocationModal({
     setProjects([]);
     getProjectsAvailableForConsultant(consultantId)
       .then((list) => {
-        if (!cancelled) setProjects(list);
+        if (!cancelled) setProjects(filterProjectsForCustomer(list));
       })
       .catch(() => {
         if (!cancelled) setProjects([]);
@@ -137,7 +146,7 @@ export function AddAllocationModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, consultantId]);
+  }, [isOpen, consultantId, initialCustomerId]);
 
   // Set initial consultant only when opening with a pre-selected consultant (e.g. from cell click)
   useEffect(() => {
@@ -203,10 +212,14 @@ export function AddAllocationModal({
     "";
   const dialogTitle = lockConsultant && selectedConsultantName
     ? selectedConsultantName
-    : "Add allocation";
+    : initialCustomerName
+      ? initialCustomerName
+      : "Add allocation";
   const dialogSubtitle = lockConsultant && selectedConsultantName
     ? "Add allocation"
-    : undefined;
+    : initialCustomerName
+      ? "Add allocation"
+      : undefined;
 
   const handleSubmit = async () => {
     setError(null);
@@ -390,7 +403,9 @@ export function AddAllocationModal({
                     .sort((a, b) => a.customerName.localeCompare(b.customerName))
                     .map((p) => ({
                       value: p.id,
-                      label: `${p.customerName} - ${p.name}`,
+                      label: initialCustomerId
+                        ? p.name
+                        : `${p.customerName} - ${p.name}`,
                     }))}
                 />
               </ModalField>

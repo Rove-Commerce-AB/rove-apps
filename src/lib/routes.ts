@@ -10,12 +10,24 @@ export type PlannerView = (typeof PLANNER_VIEWS)[number];
 export const ROUTES = {
   home: "/",
   planner: "/planner",
-  plannerConsultant: "/planner/consultant",
-  plannerCustomer: "/planner/customer",
-  plannerProject: "/planner/project",
-  plannerHistory: "/planner/history",
+  /** Plan grids (booking tools). */
+  plannerPlanConsultant: "/planner/plan/consultant",
+  plannerPlanCustomer: "/planner/plan/customer",
+  plannerPlanProject: "/planner/plan/project",
+  plannerPlanHistory: "/planner/plan/history",
+  /** @deprecated Use plannerPlanConsultant */
+  plannerConsultant: "/planner/plan/consultant",
+  /** @deprecated Use plannerPlanCustomer */
+  plannerCustomer: "/planner/plan/customer",
+  /** @deprecated Use plannerPlanProject */
+  plannerProject: "/planner/plan/project",
+  /** @deprecated Use plannerPlanHistory */
+  plannerHistory: "/planner/plan/history",
   /** Default planner allocation view (consultant). */
-  allocation: "/planner/consultant",
+  allocation: "/planner/plan/consultant",
+  plannerProjects: "/planner/projects",
+  plannerCustomers: "/planner/customers",
+  plannerConsultants: "/planner/consultants",
   timeReport: "/time-report/time-report",
   /** App index; redirects to timeReportOverview. */
   timeReportHome: "/time-report",
@@ -53,12 +65,34 @@ export function travelExpenseDetailHref(id: string): string {
   return `${ROUTES.travelExpense}/${id}`;
 }
 
+/** Planner planning page for a customer. */
 export function customerHref(id: string): string {
+  return `${ROUTES.plannerCustomers}/${id}`;
+}
+
+/** Settings masterdata drawer for a customer. */
+export function customerSettingsHref(id: string): string {
   return `${ROUTES.customers}/${id}`;
 }
 
+/** Planner planning page for a consultant. */
 export function consultantHref(id: string): string {
-  return `${ROUTES.consultants}/${id}`;
+  return `${ROUTES.plannerConsultants}/${id}`;
+}
+
+/** Settings / People masterdata for a consultant. */
+export function consultantSettingsHref(
+  consultantId: string,
+  appUserId?: string | null
+): string {
+  return personHref(
+    appUserId ? `user-${appUserId}` : `consultant-${consultantId}`
+  );
+}
+
+/** Planner project entity (planning + Edit in Settings). */
+export function projectHref(id: string): string {
+  return `${ROUTES.plannerProjects}/${id}`;
 }
 
 export function supportCustomerHref(customerId: string): string {

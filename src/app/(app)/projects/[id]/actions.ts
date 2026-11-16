@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { moveAllocationsForProject } from "@/lib/allocations";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
-import { ROUTES } from "@/lib/routes";
+import { ROUTES, projectHref } from "@/lib/routes";
 
 export async function moveEntireBookingAction(
   projectId: string,
@@ -12,6 +12,7 @@ export async function moveEntireBookingAction(
   try {
     await assertNotSubcontractorForWrite();
     const { moved } = await moveAllocationsForProject(projectId, deltaWeeks);
+    revalidatePath(projectHref(projectId));
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(ROUTES.planner, "layout");
     revalidatePath("/reports");

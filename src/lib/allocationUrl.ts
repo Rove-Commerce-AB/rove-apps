@@ -9,7 +9,8 @@ export type AllocationFilterParams = {
   role?: string[] | null;
   prob?: ProbabilityDisplay | null;
   projects?: ProjectVisibility | null;
-  unbooked?: boolean | null;
+  /** When true, hide projects with no booking in the visible weeks. Default false = show all. */
+  bookedOnly?: boolean | null;
 };
 
 export type AllocationWeekParams = {
@@ -72,10 +73,12 @@ export function applyAllocationFilters(
       params.delete("projects");
     }
   }
-  if (filters.unbooked !== undefined) {
-    if (filters.unbooked) params.set("unbooked", "1");
-    else params.delete("unbooked");
+  if (filters.bookedOnly !== undefined) {
+    if (filters.bookedOnly) params.set("bookedOnly", "1");
+    else params.delete("bookedOnly");
   }
+  // Drop legacy param so it does not linger after filter updates.
+  params.delete("unbooked");
 }
 
 export function readAllocationFilters(
@@ -85,7 +88,7 @@ export function readAllocationFilters(
   role: string[];
   prob: ProbabilityDisplay;
   projects: ProjectVisibility;
-  unbooked: boolean;
+  bookedOnly: boolean;
 } {
   const team = parseIdListParam(searchParams.get("team"));
   const role = parseIdListParam(searchParams.get("role"));
@@ -97,8 +100,10 @@ export function readAllocationFilters(
   )
     ? (projectsRaw as ProjectVisibility)
     : "all";
-  const unbooked = searchParams.get("unbooked") === "1";
-  return { team, role, prob, projects, unbooked };
+  // New default: show all projects. `bookedOnly=1` hides empty.
+  // Legacy `unbooked=1` meant "include empty" (old non-default) → treat as show-all.
+  const bookedOnly = searchParams.get("bookedOnly") === "1";
+  return { team, role, prob, projects, bookedOnly };
 }
 
 export type AllocationFiltersState = ReturnType<typeof readAllocationFilters>;
@@ -120,7 +125,7 @@ export function allocationFiltersKey(filters: AllocationFiltersState): string {
     filters.role.join(","),
     filters.prob,
     filters.projects,
-    filters.unbooked ? "1" : "0",
+    filters.bookedOnly ? "1" : "0",
   ].join("|");
 }
 

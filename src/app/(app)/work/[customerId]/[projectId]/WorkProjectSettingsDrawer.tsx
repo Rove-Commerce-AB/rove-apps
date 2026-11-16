@@ -21,7 +21,7 @@ import {
   WORK_ESTIMATE_UNIT_LABELS,
   type WorkEstimateUnit,
 } from "@/lib/workEstimate";
-import { customerHref } from "@/lib/routes";
+import { customerSettingsHref } from "@/lib/routes";
 import type { WorkProcess, WorkProcessStep } from "@/lib/workProcess";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
 import type { WorkComponent, WorkPerson } from "@/lib/workTypes";
@@ -369,7 +369,7 @@ export function WorkProjectSettingsDrawer({
                   </h2>
                   {!plannerProjectId ? (
                     <Link
-                      href={customerHref(customerId)}
+                      href={customerSettingsHref(customerId)}
                       className="shrink-0 text-sm text-text-secondary underline-offset-2 hover:text-text-primary hover:underline"
                     >
                       Create in Settings

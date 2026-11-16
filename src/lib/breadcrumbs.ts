@@ -28,16 +28,28 @@ export function breadcrumbsForPathname(
   if (pathname.startsWith(ROUTES.planner)) {
     const planner: Breadcrumb = {
       label: "Planner",
-      href: ROUTES.plannerConsultant,
+      href: ROUTES.plannerPlanConsultant,
     };
-    if (pathname.startsWith(ROUTES.plannerCustomer)) {
+    if (
+      pathname.startsWith(ROUTES.plannerPlanCustomer) ||
+      pathname.startsWith(ROUTES.plannerCustomers)
+    ) {
       return [root, planner, { label: "Customer" }];
     }
-    if (pathname.startsWith(ROUTES.plannerProject)) {
+    if (
+      pathname.startsWith(ROUTES.plannerPlanProject) ||
+      pathname.startsWith(ROUTES.plannerProjects)
+    ) {
       return [root, planner, { label: "Project" }];
     }
-    if (pathname.startsWith(ROUTES.plannerHistory)) {
+    if (pathname.startsWith(ROUTES.plannerPlanHistory)) {
       return [root, planner, { label: "Allocation history" }];
+    }
+    if (
+      pathname.startsWith(ROUTES.plannerPlanConsultant) ||
+      pathname.startsWith(ROUTES.plannerConsultants)
+    ) {
+      return [root, planner, { label: "Consultant" }];
     }
     return [root, planner, { label: "Consultant" }];
   }
@@ -113,8 +125,15 @@ export function breadcrumbsForPathname(
     return [root, { label: "Notifications" }];
   }
 
-  if (pathname.startsWith("/projects")) {
-    return [root, { label: "Projects" }];
+  if (
+    pathname.startsWith("/projects") ||
+    pathname.startsWith(ROUTES.plannerProjects)
+  ) {
+    return [
+      root,
+      { label: "Planner", href: ROUTES.plannerPlanConsultant },
+      { label: "Project" },
+    ];
   }
 
   if (pathname.startsWith(ROUTES.insights)) {
