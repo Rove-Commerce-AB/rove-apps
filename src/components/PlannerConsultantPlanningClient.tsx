@@ -97,6 +97,7 @@ export function PlannerConsultantPlanningClient({
       currentYear={currentYear}
       currentWeek={currentWeek}
       emptyMessage="No projects with bookings for this consultant in the selected weeks."
+      groupByCustomer
       onFetchPanels={onFetchPanels}
     />
   );

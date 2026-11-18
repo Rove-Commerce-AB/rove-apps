@@ -6,11 +6,13 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
   type ReactNode,
 } from "react";
+import { compareTextSv } from "@/lib/sort";
 import { useRouter } from "next/navigation";
 import { ArrowRightLeft, ExternalLink } from "lucide-react";
 import { AllocationWeekNav } from "@/components/allocation/AllocationWeekNav";
@@ -55,6 +57,8 @@ type Props = {
   currentYear: number;
   currentWeek: number;
   emptyMessage: string;
+  /** Group project panels under customer name headings (consultant planning). */
+  groupByCustomer?: boolean;
   onFetchPanels: (
     year: number,
     weekFrom: number,
@@ -75,6 +79,7 @@ export function PlannerMultiProjectPlanning({
   currentYear,
   currentWeek,
   emptyMessage,
+  groupByCustomer = false,
   onFetchPanels,
 }: Props) {
   const router = useRouter();
@@ -214,6 +219,31 @@ export function PlannerMultiProjectPlanning({
     }
   }, [onFetchPanels, year, weekFrom, weekTo]);
 
+  const panelGroups = useMemo(() => {
+    if (!groupByCustomer) {
+      return [{ customerId: "", customerName: "", panels }];
+    }
+    const byCustomer = new Map<
+      string,
+      { customerId: string; customerName: string; panels: PlannerProjectPlanningPanel[] }
+    >();
+    for (const panel of panels) {
+      const existing = byCustomer.get(panel.customerId);
+      if (existing) {
+        existing.panels.push(panel);
+      } else {
+        byCustomer.set(panel.customerId, {
+          customerId: panel.customerId,
+          customerName: panel.customerName,
+          panels: [panel],
+        });
+      }
+    }
+    return [...byCustomer.values()].sort((a, b) =>
+      compareTextSv(a.customerName, b.customerName)
+    );
+  }, [groupByCustomer, panels]);
+
   const handleMoveBookingSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!moveProjectId) return;
@@ -268,92 +298,104 @@ export function PlannerMultiProjectPlanning({
             <p className="px-3 pb-3 text-sm text-text-tertiary">{emptyMessage}</p>
           </Panel>
         ) : (
-          panels.map((panel) => {
-            const budgetSummary = [
-              panel.budgetHours != null ? `${panel.budgetHours} h` : null,
-              panel.budgetMoney != null
-                ? `${String(panel.budgetMoney).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0")} ${moneyLabel(panel.billingCurrency)}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
+          panelGroups.map((group) => (
+            <div
+              key={group.customerId || "projects"}
+              className="flex flex-col gap-3"
+            >
+              {groupByCustomer ? (
+                <h2 className="px-1 text-heading-m text-text-primary">
+                  {group.customerName}
+                </h2>
+              ) : null}
+              {group.panels.map((panel) => {
+                const budgetSummary = [
+                  panel.budgetHours != null ? `${panel.budgetHours} h` : null,
+                  panel.budgetMoney != null
+                    ? `${String(panel.budgetMoney).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0")} ${moneyLabel(panel.billingCurrency)}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
 
-            return (
-              <Panel key={panel.projectId}>
-                <PanelSectionTitle
-                  action={
-                    <div className="flex items-center gap-1">
-                      <Link
-                        href={projectHref(panel.projectId)}
-                        title="Open project"
-                        aria-label={`Open ${panel.projectName}`}
-                        className="inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 text-text-primary opacity-70 transition-opacity hover:bg-bg-muted/50 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-1"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMoveBookingError(null);
-                          setMoveWeeks("1");
-                          setMoveForward(true);
-                          setMoveProjectId(panel.projectId);
-                        }}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-primary opacity-80 transition-opacity hover:bg-bg-muted/50 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-1"
-                        aria-label={`Move entire booking for ${panel.projectName}`}
-                      >
-                        <ArrowRightLeft
-                          className="h-3.5 w-3.5 shrink-0"
-                          aria-hidden
-                        />
-                        <span>Move entire booking</span>
-                      </button>
-                    </div>
-                  }
-                >
-                  <span className="inline-flex min-w-0 items-baseline gap-2">
-                    <span className="truncate uppercase tracking-wide">
-                      {panel.projectName}
-                    </span>
-                    {budgetSummary ? (
-                      <span className="truncate font-normal normal-case opacity-70">
-                        Budget {budgetSummary}
+                return (
+                  <Panel key={panel.projectId}>
+                    <PanelSectionTitle
+                      action={
+                        <div className="flex items-center gap-1">
+                          <Link
+                            href={projectHref(panel.projectId)}
+                            title="Open project"
+                            aria-label={`Open ${panel.projectName}`}
+                            className="inline-flex cursor-pointer items-center justify-center rounded-sm p-1.5 text-text-primary opacity-70 transition-opacity hover:bg-bg-muted/50 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-1"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMoveBookingError(null);
+                              setMoveWeeks("1");
+                              setMoveForward(true);
+                              setMoveProjectId(panel.projectId);
+                            }}
+                            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-primary opacity-80 transition-opacity hover:bg-bg-muted/50 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-1"
+                            aria-label={`Move entire booking for ${panel.projectName}`}
+                          >
+                            <ArrowRightLeft
+                              className="h-3.5 w-3.5 shrink-0"
+                              aria-hidden
+                            />
+                            <span>Move entire booking</span>
+                          </button>
+                        </div>
+                      }
+                    >
+                      <span className="inline-flex min-w-0 items-baseline gap-2">
+                        <span className="truncate uppercase tracking-wide">
+                          {panel.projectName}
+                        </span>
+                        {budgetSummary ? (
+                          <span className="truncate font-normal normal-case opacity-70">
+                            Budget {budgetSummary}
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
-                  </span>
-                </PanelSectionTitle>
-                <div className="min-h-[200px] p-2">
-                  <Suspense
-                    fallback={
-                      <div className="flex items-center justify-center py-12">
-                        <PageLoading />
-                      </div>
-                    }
-                  >
-                    <AllocationPageClient
-                      data={panel.allocationData}
-                      error={null}
-                      year={year}
-                      weekFrom={weekFrom}
-                      weekTo={weekTo}
-                      currentYear={currentYear}
-                      currentWeek={currentWeek}
-                      embedMode={{
-                        projectId: panel.projectId,
-                        rates: panel.rates,
-                        budgetHours: panel.budgetHours ?? undefined,
-                        budgetMoney: panel.budgetMoney ?? undefined,
-                      }}
-                      onWeekRangeChange={handleWeekRangeChange}
-                      embedWeekNavLoading={loading}
-                      embedShowTeamFilter
-                      suppressWeekNav
-                    />
-                  </Suspense>
-                </div>
-              </Panel>
-            );
-          })
+                    </PanelSectionTitle>
+                    <div className="min-h-[200px] p-2">
+                      <Suspense
+                        fallback={
+                          <div className="flex items-center justify-center py-12">
+                            <PageLoading />
+                          </div>
+                        }
+                      >
+                        <AllocationPageClient
+                          data={panel.allocationData}
+                          error={null}
+                          year={year}
+                          weekFrom={weekFrom}
+                          weekTo={weekTo}
+                          currentYear={currentYear}
+                          currentWeek={currentWeek}
+                          embedMode={{
+                            projectId: panel.projectId,
+                            rates: panel.rates,
+                            budgetHours: panel.budgetHours ?? undefined,
+                            budgetMoney: panel.budgetMoney ?? undefined,
+                          }}
+                          onWeekRangeChange={handleWeekRangeChange}
+                          embedWeekNavLoading={loading}
+                          embedShowTeamFilter
+                          suppressWeekNav
+                        />
+                      </Suspense>
+                    </div>
+                  </Panel>
+                );
+              })}
+            </div>
+          ))
         )}
       </div>
 

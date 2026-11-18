@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildPaxmlDocument, encodeIso88591 } from "./buildPaxml";
 
 describe("buildPaxmlDocument", () => {
-  it("builds tidtransaktioner for Fortnox import", () => {
+  it("builds tidtransaktioner for Fortnox PAXml 2.3 import", () => {
     const xml = buildPaxmlDocument(
       [
         {
@@ -22,13 +22,19 @@ describe("buildPaxmlDocument", () => {
     );
 
     expect(xml).not.toContain("<format>");
-    expect(xml).toContain("<version>2.0</version>");
-    expect(xml).toContain('<tidtrans anstid="101">');
+    expect(xml).toContain("<version>2.3</version>");
+    expect(xml).toContain(
+      'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+    );
+    expect(xml).toContain(
+      'xsi:noNamespaceSchemaLocation="http://www.paxml.se/2.3/paxml.xsd"'
+    );
+    expect(xml).toContain('<tidtrans postid="1" anstid="101">');
     expect(xml).toContain("<tidkod>SEM</tidkod>");
     expect(xml).toContain("<datum>2026-07-01</datum>");
-    expect(xml).toContain("<timmar>8</timmar>");
-    expect(xml).toContain('<tidtrans anstid="102">');
-    expect(xml).toContain("<timmar>4.5</timmar>");
+    expect(xml).toContain("<timmar>8.00</timmar>");
+    expect(xml).toContain('<tidtrans postid="2" anstid="102">');
+    expect(xml).toContain("<timmar>4.50</timmar>");
   });
 
   it("encodes as ISO-8859-1 ASCII-safe bytes without LÖNIN", () => {
@@ -45,7 +51,13 @@ describe("buildPaxmlDocument", () => {
     );
     const bytes = encodeIso88591(xml);
     expect(Buffer.from(bytes).toString("latin1")).toContain(
-      "<version>2.0</version>"
+      "<version>2.3</version>"
+    );
+    expect(Buffer.from(bytes).toString("latin1")).toContain(
+      '<tidtrans postid="1" anstid="011">'
+    );
+    expect(Buffer.from(bytes).toString("latin1")).toContain(
+      "<timmar>6.00</timmar>"
     );
     expect([...bytes].every((b) => b <= 0x7f)).toBe(true);
   });

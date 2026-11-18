@@ -81,6 +81,7 @@ export async function getCustomerProjectPlanningPanels(
         projectId: p.id,
         projectName: p.name,
         customerId,
+        customerName: customer.name,
         budgetHours: p.budget_hours,
         budgetMoney: p.budget_money,
         billingCurrency,
@@ -115,7 +116,11 @@ export async function getConsultantProjectPlanningPanels(
         p.isActive !== false &&
         p.customerIsActive !== false
     )
-    .sort((a, b) => compareTextSv(a.name, b.name));
+    .sort((a, b) => {
+      const custCmp = compareTextSv(a.customerName, b.customerName);
+      if (custCmp !== 0) return custCmp;
+      return compareTextSv(a.name, b.name);
+    });
   if (projects.length === 0) return [];
 
   const projectIds = projects.map((p) => p.id);
@@ -162,6 +167,7 @@ export async function getConsultantProjectPlanningPanels(
         projectId: p.id,
         projectName: p.name,
         customerId: p.customer_id,
+        customerName: p.customerName,
         budgetHours: budget?.hours ?? null,
         budgetMoney: budget?.money ?? null,
         billingCurrency:

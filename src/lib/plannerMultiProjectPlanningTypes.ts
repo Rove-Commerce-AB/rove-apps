@@ -5,6 +5,7 @@ export type PlannerProjectPlanningPanel = {
   projectId: string;
   projectName: string;
   customerId: string;
+  customerName: string;
   budgetHours: number | null;
   budgetMoney: number | null;
   billingCurrency: BillingCurrency;
