@@ -16,6 +16,7 @@ import {
   MessageCircle,
   Sparkles,
   Star,
+  Radar,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import {
@@ -526,6 +527,7 @@ export function Sidebar({
     work: boolean;
     support: boolean;
     insights: boolean;
+    radar: boolean;
   }>({
     planner: false,
     timeReport: false,
@@ -533,6 +535,7 @@ export function Sidebar({
     work: false,
     support: false,
     insights: false,
+    radar: false,
   });
 
   // Optimistic path so Overview/app highlight updates before RSC finishes.
@@ -544,6 +547,7 @@ export function Sidebar({
   const workActive = pathMatches(activePath, ROUTES.work, "prefix");
   const supportActive = pathMatches(activePath, ROUTES.support, "prefix");
   const insightsActive = pathMatches(activePath, ROUTES.insights, "prefix");
+  const radarActive = pathMatches(activePath, ROUTES.radar, "prefix");
   const workSegment = activePath.startsWith(`${ROUTES.work}/`)
     ? activePath.slice(ROUTES.work.length + 1).split("/")[0] ?? null
     : null;
@@ -584,6 +588,7 @@ export function Sidebar({
       work: workActive ? true : prev.work,
       support: supportActive ? true : prev.support,
       insights: insightsActive ? true : prev.insights,
+      radar: radarActive ? true : prev.radar,
     }));
   }, [
     activePath,
@@ -593,6 +598,7 @@ export function Sidebar({
     workActive,
     supportActive,
     insightsActive,
+    radarActive,
   ]);
 
   // Warm Overview RSC payloads so app-name clicks feel instant.
@@ -608,6 +614,9 @@ export function Sidebar({
     }
     if (appKeys.includes("insights") && !isCustomerUser) {
       hrefs.push(ROUTES.insightsOverview);
+    }
+    if (appKeys.includes("radar") && !isCustomerUser) {
+      hrefs.push(ROUTES.radarOverview);
     }
     for (const href of hrefs) {
       router.prefetch(href);
@@ -964,6 +973,75 @@ export function Sidebar({
                 pathname={activePath}
                 indent
                 prefetch
+                onNavigate={markPending}
+              />
+            </AppGroup>
+          )}
+          {appKeys.includes("radar") && !isCustomerUser && (
+            <AppGroup
+              label="Radar"
+              icon={Radar}
+              href={ROUTES.radarOverview}
+              pathname={activePath}
+              open={openApps.radar}
+              onToggle={() =>
+                setOpenApps((prev) => ({
+                  ...prev,
+                  radar: !prev.radar,
+                }))
+              }
+              collapsed={collapsed}
+              collapsedHref={ROUTES.radarOverview}
+              active={radarActive}
+              onNavigate={markPending}
+              brand="radar"
+            >
+              <NavLink
+                href={ROUTES.radarOverview}
+                label="Overview"
+                pathname={activePath}
+                indent
+                prefetch
+                onNavigate={markPending}
+              />
+              <NavLink
+                href={ROUTES.radarAudiences}
+                label="Target groups"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
+              <NavLink
+                href={ROUTES.radarCompanies}
+                label="Companies"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
+              <NavLink
+                href={ROUTES.radarProspects}
+                label="Prospects"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
+              <NavLink
+                href={ROUTES.radarVerticals}
+                label="Verticals"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
+              <NavLink
+                href={ROUTES.radarJobs}
+                label="Jobs"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
                 onNavigate={markPending}
               />
             </AppGroup>

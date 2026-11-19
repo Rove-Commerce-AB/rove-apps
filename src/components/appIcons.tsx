@@ -3,6 +3,7 @@ import {
   CalendarCheck,
   Clock,
   MessageCircle,
+  Radar,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -16,6 +17,7 @@ export const APP_ICONS: Record<AppKey, LucideIcon> = {
   work: Briefcase,
   support: MessageCircle,
   insights: Sparkles,
+  radar: Radar,
 };
 
 /** Display name + icon + brand tile for access lists / create flows. */
@@ -47,5 +49,10 @@ export const APP_ACCESS_ITEMS: Record<
     name: "Rove Insights",
     icon: APP_ICONS.insights,
     tileClass: APP_BRAND_BY_KEY.insights.tile,
+  },
+  radar: {
+    name: "Rove Radar",
+    icon: APP_ICONS.radar,
+    tileClass: APP_BRAND_BY_KEY.radar.tile,
   },
 };

@@ -103,6 +103,8 @@ const config: Config = {
           "support-subtle": "var(--color-app-support-subtle)",
           insights: "var(--color-app-insights)",
           "insights-subtle": "var(--color-app-insights-subtle)",
+          radar: "var(--color-app-radar)",
+          "radar-subtle": "var(--color-app-radar-subtle)",
         },
         table: {
           header: "var(--color-table-header)",

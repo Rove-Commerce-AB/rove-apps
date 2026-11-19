@@ -7,6 +7,7 @@ export const APP_KEYS = [
   "work",
   "support",
   "insights",
+  "radar",
 ] as const;
 export type AppKey = (typeof APP_KEYS)[number];
 
@@ -16,6 +17,7 @@ export const APP_LABELS: Record<AppKey, string> = {
   work: "Work",
   support: "Support",
   insights: "Insights",
+  radar: "Radar",
 };
 
 export function isAppKey(value: string): value is AppKey {

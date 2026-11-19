@@ -1,4 +1,5 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { normalizeOrganizationNumber } from "@/lib/radar/orgNumber";
 
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import {
@@ -21,6 +22,7 @@ export type Customer = {
   color: string | null;
   logo_url: string | null;
   url: string | null;
+  organization_number: string | null;
   subscription_id: string | null;
   litium_version: string | null;
   billing_currency: BillingCurrency;
@@ -38,6 +40,7 @@ export type CreateCustomerInput = {
   color?: string | null;
   logo_url?: string | null;
   url?: string | null;
+  organization_number?: string | null;
   billing_currency?: BillingCurrency;
   is_internal?: boolean;
   work_show_estimates_to_customer_users?: boolean;
@@ -54,6 +57,7 @@ export type UpdateCustomerInput = {
   color?: string | null;
   logo_url?: string | null;
   url?: string | null;
+  organization_number?: string | null;
   subscription_id?: string | null;
   litium_version?: string | null;
   billing_currency?: BillingCurrency;
@@ -64,7 +68,7 @@ export type UpdateCustomerInput = {
 };
 
 const CUSTOMER_SELECT =
-  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, subscription_id, litium_version, billing_currency, is_internal, work_show_estimates_to_customer_users, work_show_reported_time_to_customer_users, is_active";
+  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, organization_number, subscription_id, litium_version, billing_currency, is_internal, work_show_estimates_to_customer_users, work_show_reported_time_to_customer_users, is_active";
 
 const SINGLE_INTERNAL_CUSTOMER_ERROR_PREFIX =
   "Only one customer can be internal";
@@ -116,6 +120,16 @@ function isSubscriptionIdUniqueError(error: unknown): boolean {
   return (
     maybePgError.code === "23505" &&
     maybePgError.constraint === "customers_subscription_id_lower_idx"
+  );
+}
+
+function isOrganizationNumberUniqueError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybePgError = error as { code?: string; constraint?: string };
+  return (
+    maybePgError.code === "23505" &&
+    (maybePgError.constraint === "customers_organization_number_uidx" ||
+      maybePgError.constraint === "customers_organization_number_key")
   );
 }
 
@@ -222,6 +236,7 @@ function toCustomerWithDetails(
     color: customer.color || DEFAULT_CUSTOMER_COLOR,
     logoUrl: customer.logo_url ?? null,
     url: customer.url ?? null,
+    organizationNumber: customer.organization_number ?? null,
     subscriptionId: customer.subscription_id ?? null,
     litiumVersion: customer.litium_version ?? null,
     billingCurrency: parseBillingCurrency(customer.billing_currency),
@@ -445,6 +460,10 @@ export async function updateCustomerQuery(
     sets.push(`url = $${i++}`);
     values.push(input.url?.trim() || null);
   }
+  if (input.organization_number !== undefined) {
+    sets.push(`organization_number = $${i++}`);
+    values.push(normalizeOrganizationNumber(input.organization_number));
+  }
   if (input.subscription_id !== undefined) {
     sets.push(`subscription_id = $${i++}`);
     values.push(parseSubscriptionIdInput(input.subscription_id));
@@ -514,6 +533,11 @@ export async function updateCustomerQuery(
     }
     if (isSubscriptionIdUniqueError(error)) {
       throw new Error("Subscription ID is already used by another customer");
+    }
+    if (isOrganizationNumberUniqueError(error)) {
+      throw new Error(
+        "Organization number is already used by another customer"
+      );
     }
     throw error;
   }

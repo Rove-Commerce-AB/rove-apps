@@ -22,6 +22,7 @@ import type { CustomerWithDetails } from "@/types";
 type EditField =
   | "name"
   | "url"
+  | "organizationNumber"
   | "subscriptionId"
   | "litiumVersion"
   | "contact"
@@ -45,6 +46,9 @@ export function CustomerDrawerOverview({
   const router = useRouter();
   const [name, setName] = useState(customer.name);
   const [url, setUrl] = useState(customer.url ?? "");
+  const [organizationNumber, setOrganizationNumber] = useState(
+    customer.organizationNumber ?? ""
+  );
   const [subscriptionId, setSubscriptionId] = useState(
     customer.subscriptionId ?? ""
   );
@@ -164,6 +168,12 @@ export function CustomerDrawerOverview({
         case "url":
           await updateCustomerAction(customer.id, { url: trimmed || null });
           setUrl(trimmed);
+          break;
+        case "organizationNumber":
+          await updateCustomerAction(customer.id, {
+            organization_number: trimmed || null,
+          });
+          setOrganizationNumber(trimmed);
           break;
         case "subscriptionId":
           await updateCustomerAction(customer.id, {
@@ -438,6 +448,11 @@ export function CustomerDrawerOverview({
 
         <DrawerSection title="Delivery">
           {textField("URL", "url", url, "url")}
+          {textField(
+            "Organization number",
+            "organizationNumber",
+            organizationNumber
+          )}
           {textField("Subscription ID", "subscriptionId", subscriptionId)}
           {textField("Litium version", "litiumVersion", litiumVersion)}
         </DrawerSection>

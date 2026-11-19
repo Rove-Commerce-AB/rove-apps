@@ -150,6 +150,35 @@ export function breadcrumbsForPathname(
     return [root, { label: "Insights" }];
   }
 
+  if (pathname.startsWith(ROUTES.radar)) {
+    const radar: Breadcrumb = {
+      label: "Radar",
+      href: ROUTES.radarOverview,
+    };
+    if (
+      pathname === ROUTES.radar ||
+      pathname.startsWith(ROUTES.radarOverview)
+    ) {
+      return [root, radar, { label: "Overview" }];
+    }
+    if (pathname.startsWith(ROUTES.radarAudiences)) {
+      return [root, radar, { label: "Target groups" }];
+    }
+    if (pathname.startsWith(ROUTES.radarCompanies)) {
+      return [root, radar, { label: "Companies" }];
+    }
+    if (pathname.startsWith(ROUTES.radarProspects)) {
+      return [root, radar, { label: "Prospects" }];
+    }
+    if (pathname.startsWith(ROUTES.radarVerticals)) {
+      return [root, radar, { label: "Verticals" }];
+    }
+    if (pathname.startsWith(ROUTES.radarJobs)) {
+      return [root, radar, { label: "Jobs" }];
+    }
+    return [root, { label: "Radar" }];
+  }
+
   if (pathname.startsWith(ROUTES.support)) {
     const support: Breadcrumb = {
       label: "Rove Support",

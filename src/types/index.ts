@@ -122,6 +122,7 @@ export type CustomerWithDetails = {
   color: string;
   logoUrl: string | null;
   url: string | null;
+  organizationNumber: string | null;
   subscriptionId: string | null;
   litiumVersion: string | null;
   billingCurrency: string;

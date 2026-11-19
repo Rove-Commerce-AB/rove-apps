@@ -7,7 +7,8 @@ export type AppThemeKey =
   | "work"
   | "time-report"
   | "support"
-  | "insights";
+  | "insights"
+  | "radar";
 
 export type AppBrandClasses = {
   /** Colored icon (sidebar, inline glyphs). */
@@ -52,6 +53,12 @@ export const APP_BRAND_BY_KEY: Record<AppKey, AppBrandClasses> = {
     tile: "bg-app-insights-subtle text-app-insights",
     dot: "bg-app-insights",
   },
+  radar: {
+    icon: "text-app-radar",
+    active: "bg-app-radar-subtle",
+    tile: "bg-app-radar-subtle text-app-radar",
+    dot: "bg-app-radar",
+  },
 };
 
 /** Same brand classes keyed by `data-app` / path theme. */
@@ -61,6 +68,7 @@ export const APP_BRAND_BY_THEME: Record<AppThemeKey, AppBrandClasses> = {
   work: APP_BRAND_BY_KEY.work,
   support: APP_BRAND_BY_KEY.support,
   insights: APP_BRAND_BY_KEY.insights,
+  radar: APP_BRAND_BY_KEY.radar,
 };
 
 export function appKeyToTheme(key: AppKey): AppThemeKey {
@@ -78,6 +86,7 @@ export function appThemeFromPathname(pathname: string): AppThemeKey | null {
   if (pathname.startsWith(ROUTES.work)) return "work";
   if (pathname.startsWith(ROUTES.support)) return "support";
   if (pathname.startsWith(ROUTES.insights)) return "insights";
+  if (pathname.startsWith(ROUTES.radar)) return "radar";
   return null;
 }
 
