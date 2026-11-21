@@ -51,6 +51,21 @@ export function isIssueBlocked(relations: WorkIssueRelations): boolean {
   return relations.blockedBy.some((issue) => !issue.isDone);
 }
 
+/** All issue ids linked to this issue (any relation role). */
+export function relatedIssueIds(relations: WorkIssueRelations): string[] {
+  const ids = new Set<string>();
+  if (relations.parent) ids.add(relations.parent.id);
+  for (const row of relations.children) ids.add(row.id);
+  for (const row of relations.blocks) ids.add(row.id);
+  for (const row of relations.blockedBy) ids.add(row.id);
+  for (const row of relations.relates) ids.add(row.id);
+  return [...ids];
+}
+
+export function issueHasRelations(relations: WorkIssueRelations): boolean {
+  return relatedIssueIds(relations).length > 0;
+}
+
 export function canonicalizeRelatePair(
   a: string,
   b: string

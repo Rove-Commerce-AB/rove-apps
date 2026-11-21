@@ -31,6 +31,10 @@ import {
   Select,
   SideDrawer,
 } from "@/components/ui";
+import {
+  usePresentingMode,
+  withPresentingVisibility,
+} from "@/components/PresentingModeContext";
 import { SetWorkTrail } from "@/components/WorkTrailContext";
 import { workBoardHref, workCustomerHref, workIssueHref } from "@/lib/routes";
 import type {
@@ -76,7 +80,21 @@ import {
   setWorkIssueScopeApprovedAction,
   updateWorkIssueOwnerAction,
   updateWorkIssueTypeAction,
+  addWorkIssueRelationAction,
 } from "../../actions";
+import {
+  isIssueBlocked,
+  issueHasRelations,
+  relatedIssueIds,
+} from "@/lib/workIssueRelations";
+import {
+  WorkBoardRelationOverlay,
+} from "./WorkBoardRelationOverlay";
+import {
+  WorkCardRelationHandle,
+  WORK_RELATION_DRAG_MIME,
+  isWorkRelationDrag,
+} from "./WorkCardRelationHandle";
 import {
   formatWorkEstimate,
   formatWorkMoneyAmount,
@@ -137,7 +155,6 @@ import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
 import { WorkTimelineView } from "./WorkTimelineView";
 import { WorkTimeGraph } from "./WorkTimeGraph";
-import { isIssueBlocked } from "@/lib/workIssueRelations";
 import { workProcessHasContent } from "@/lib/workProcess";
 
 type BoardMode = "board" | "sprint" | "timeline";
@@ -269,9 +286,32 @@ function computeMove(
 
 
 export function WorkBoardPageClient({
-  board,
+  board: boardProp,
   initialView = "board",
 }: Props) {
+  const presenting = usePresentingMode();
+  const board = useMemo(
+    () => withPresentingVisibility(boardProp, presenting),
+    [
+      boardProp,
+      presenting.active,
+      presenting.showEstimates,
+      presenting.showReportedTime,
+    ]
+  );
+
+  useEffect(() => {
+    presenting.setSuggestedDefaults({
+      showEstimates: boardProp.customerShowEstimates,
+      showReportedTime: boardProp.customerShowReportedTime,
+    });
+    return () => presenting.setSuggestedDefaults(null);
+  }, [
+    boardProp.customerShowEstimates,
+    boardProp.customerShowReportedTime,
+    presenting.setSuggestedDefaults,
+  ]);
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -307,6 +347,19 @@ export function WorkBoardPageClient({
   } | null>(null);
   const cardErrorTimerRef = useRef<number | null>(null);
   const cardErrorExitTimerRef = useRef<number | null>(null);
+  const [relationHoverIssueId, setRelationHoverIssueId] = useState<
+    string | null
+  >(null);
+  const [relationDragFromId, setRelationDragFromId] = useState<string | null>(
+    null
+  );
+  const [relationDropOverId, setRelationDropOverId] = useState<string | null>(
+    null
+  );
+  const [relationCursor, setRelationCursor] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const dragIssueIdRef = useRef<string | null>(null);
   const dragGhostRef = useRef<WorkCardDragGhost | null>(null);
   const dragSourceRef = useRef<HTMLElement | null>(null);
@@ -324,12 +377,20 @@ export function WorkBoardPageClient({
   );
   const [draftTitle, setDraftTitle] = useState("");
   const [draftIssueType, setDraftIssueType] = useState<WorkIssueType>("issue");
+  /** When set, the next created issue is related (Relates) to this issue. */
+  const [pendingRelateFromIssueId, setPendingRelateFromIssueId] = useState<
+    string | null
+  >(null);
+  const [relationAddIssueOverStatus, setRelationAddIssueOverStatus] = useState<
+    WorkIssueStatus | null
+  >(null);
   const addIssueFormRef = useRef<HTMLFormElement>(null);
 
   function cancelAddingIssue() {
     setAddingStatus(null);
     setDraftTitle("");
     setDraftIssueType("issue");
+    setPendingRelateFromIssueId(null);
   }
 
   useEffect(() => {
@@ -384,8 +445,13 @@ export function WorkBoardPageClient({
   const [estimateUnit, setEstimateUnit] = useState<WorkEstimateUnit>(
     board.estimateUnit
   );
-  const [showEstimateSum, setShowEstimateSum] = useState(true);
-  const [estimateSumApprovedOnly, setEstimateSumApprovedOnly] = useState(false);
+  /** Per-status: default true when missing. */
+  const [showEstimateSumByStatus, setShowEstimateSumByStatus] = useState<
+    Record<string, boolean>
+  >({});
+  /** Per-status: default false when missing. */
+  const [estimateSumApprovedOnlyByStatus, setEstimateSumApprovedOnlyByStatus] =
+    useState<Record<string, boolean>>({});
   const [fixedPriceEnabled, setFixedPriceEnabled] = useState(
     board.fixedPriceEnabled
   );
@@ -407,6 +473,14 @@ export function WorkBoardPageClient({
   const [processOpen, setProcessOpen] = useState(false);
   const [process, setProcess] = useState(board.process);
   const [jiraImportOpen, setJiraImportOpen] = useState(false);
+
+  useEffect(() => {
+    if (!presenting.active) return;
+    setSettingsOpen(false);
+    setJiraImportOpen(false);
+    setArchiveOpen(false);
+  }, [presenting.active]);
+
   const [doneCardMotion, setDoneCardMotion] = useState<{
     mode: "hiding" | "showing";
     ids: string[];
@@ -582,20 +656,38 @@ export function WorkBoardPageClient({
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(
-        `work.showEstimateSum.${board.id}`
-      );
-      if (raw === "0") setShowEstimateSum(false);
-      else if (raw === "1") setShowEstimateSum(true);
-      const approvedOnly = localStorage.getItem(
+      // Legacy board-wide prefs seed defaults until each status is set explicitly.
+      const legacyShow = localStorage.getItem(`work.showEstimateSum.${board.id}`);
+      const legacyApproved = localStorage.getItem(
         `work.estimateSumApprovedOnly.${board.id}`
       );
-      if (approvedOnly === "1") setEstimateSumApprovedOnly(true);
-      else if (approvedOnly === "0") setEstimateSumApprovedOnly(false);
+      const defaultShow = legacyShow !== "0";
+      const defaultApproved = legacyApproved === "1";
+
+      const showNext: Record<string, boolean> = {};
+      const approvedNext: Record<string, boolean> = {};
+      for (const status of board.statuses) {
+        const showRaw = localStorage.getItem(
+          `work.showEstimateSum.${board.id}.${status.id}`
+        );
+        showNext[status.id] =
+          showRaw === "0" ? false : showRaw === "1" ? true : defaultShow;
+        const approvedRaw = localStorage.getItem(
+          `work.estimateSumApprovedOnly.${board.id}.${status.id}`
+        );
+        approvedNext[status.id] =
+          approvedRaw === "1"
+            ? true
+            : approvedRaw === "0"
+              ? false
+              : defaultApproved;
+      }
+      setShowEstimateSumByStatus(showNext);
+      setEstimateSumApprovedOnlyByStatus(approvedNext);
     } catch {
       // ignore
     }
-  }, [board.id]);
+  }, [board.id, board.statuses]);
 
   useEffect(() => {
     setBoardTitle(board.title);
@@ -773,6 +865,13 @@ export function WorkBoardPageClient({
 
   function applyScopeApproved(issueId: string, approved: boolean) {
     const previous = issuesRef.current;
+    if (!approved) {
+      const issue = previous.find((row) => row.id === issueId);
+      if (issue && !canUnlockScope(issue)) {
+        setError("Can't unlock scope while the issue is Done.");
+        return;
+      }
+    }
     noteOptimisticIssuePatch(optimisticPatchesRef.current, issueId, {
       scopeApproved: approved,
     });
@@ -894,7 +993,31 @@ export function WorkBoardPageClient({
     }, 5000);
   }
 
+  function issueStatusIsDone(status: WorkIssueStatus): boolean {
+    return statuses.find((column) => column.id === status)?.isDone ?? false;
+  }
+
+  function canUnlockScope(issue: WorkIssue): boolean {
+    if (
+      !workScopeApprovalEnabled({
+        estimateUnit,
+        fixedPriceEnabled,
+      })
+    ) {
+      return true;
+    }
+    return !issueStatusIsDone(issue.status);
+  }
+
   function showCardUnlock(issueId: string) {
+    const issue = issuesRef.current.find((row) => row.id === issueId);
+    if (issue && !canUnlockScope(issue)) {
+      showCardError(
+        issueId,
+        "Can't unlock scope while the issue is Done."
+      );
+      return;
+    }
     clearCardErrorTimers();
     setCardError({
       issueId,
@@ -1253,11 +1376,136 @@ export function WorkBoardPageClient({
     return data;
   }
 
+  const relationFocusIssueId = relationDragFromId ?? relationHoverIssueId;
+  const relationFocusIssue = relationFocusIssueId
+    ? issues.find((row) => row.id === relationFocusIssueId)
+    : null;
+  const relationLineTargetIds = relationFocusIssue
+    ? relatedIssueIds(relationFocusIssue.relations)
+    : [];
+  const relationHighlightIds = (() => {
+    const ids = new Set(relationLineTargetIds);
+    if (relationFocusIssueId) ids.add(relationFocusIssueId);
+    if (relationDropOverId) ids.add(relationDropOverId);
+    return ids;
+  })();
+
+  useEffect(() => {
+    if (!relationDragFromId) return;
+    const onDragOver = (event: globalThis.DragEvent) => {
+      setRelationCursor({ x: event.clientX, y: event.clientY });
+    };
+    const onDragEnd = () => clearRelationDrag();
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragend", onDragEnd);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragend", onDragEnd);
+    };
+  }, [relationDragFromId]);
+
+  function clearRelationDrag() {
+    setRelationDragFromId(null);
+    setRelationDropOverId(null);
+    setRelationCursor(null);
+    setRelationAddIssueOverStatus(null);
+  }
+
+  function applyRelatesLink(fromIssueId: string, toIssueId: string) {
+    if (fromIssueId === toIssueId) return;
+    const previous = issuesRef.current;
+    const fromIssue = previous.find((row) => row.id === fromIssueId);
+    const toIssue = previous.find((row) => row.id === toIssueId);
+    if (!fromIssue || !toIssue) return;
+    if (fromIssue.relations.relates.some((row) => row.id === toIssueId)) {
+      return;
+    }
+    const fromDone =
+      statuses.find((column) => column.id === fromIssue.status)?.isDone ??
+      false;
+    const toDone =
+      statuses.find((column) => column.id === toIssue.status)?.isDone ?? false;
+    const next = previous.map((issue) => {
+      if (issue.id === fromIssueId) {
+        return {
+          ...issue,
+          relations: {
+            ...issue.relations,
+            relates: [
+              ...issue.relations.relates,
+              {
+                relationId: `temp-${toIssueId}`,
+                id: toIssue.id,
+                key: toIssue.key,
+                title: toIssue.title,
+                status: toIssue.status,
+                isDone: toDone,
+              },
+            ],
+          },
+        };
+      }
+      if (issue.id === toIssueId) {
+        return {
+          ...issue,
+          relations: {
+            ...issue.relations,
+            relates: [
+              ...issue.relations.relates,
+              {
+                relationId: `temp-${fromIssueId}`,
+                id: fromIssue.id,
+                key: fromIssue.key,
+                title: fromIssue.title,
+                status: fromIssue.status,
+                isDone: fromDone,
+              },
+            ],
+          },
+        };
+      }
+      return issue;
+    });
+    issuesRef.current = next;
+    setIssues(next);
+    setError(null);
+    void addWorkIssueRelationAction(
+      board.id,
+      fromIssueId,
+      toIssueId,
+      "relates"
+    ).then((result) => {
+      if (result.ok) {
+        router.refresh();
+        return;
+      }
+      setError(result.error);
+      issuesRef.current = previous;
+      setIssues(previous);
+    });
+  }
+
+  function handleRelationDropOnIssue(
+    event: DragEvent,
+    targetIssueId: string
+  ) {
+    if (!isWorkRelationDrag(event.dataTransfer)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const fromId =
+      event.dataTransfer.getData(WORK_RELATION_DRAG_MIME) ||
+      relationDragFromId;
+    clearRelationDrag();
+    if (fromId) applyRelatesLink(fromId, targetIssueId);
+    return true;
+  }
+
   function dropOnColumn(
     event: DragEvent,
     status: WorkIssueStatus,
     beforeIssueId: string | null
   ) {
+    if (isWorkRelationDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
     const issueId = draggedIssueId(event);
@@ -1273,6 +1521,7 @@ export function WorkBoardPageClient({
     status: WorkIssueStatus,
     beforeIssueId: string | null
   ) {
+    if (isWorkRelationDrag(event.dataTransfer)) return false;
     if (draggingStatusIdRef.current || !dragIssueIdRef.current) return false;
     event.preventDefault();
     event.stopPropagation();
@@ -1444,6 +1693,7 @@ export function WorkBoardPageClient({
   async function submitNewIssue(status: WorkIssueStatus, title: string) {
     const trimmed = title.trim();
     if (!trimmed || !status) return;
+    const relateFromId = pendingRelateFromIssueId;
     setError(null);
     const result = await createWorkIssueAction({
       boardId: board.id,
@@ -1455,10 +1705,34 @@ export function WorkBoardPageClient({
       setError(result.error);
       return;
     }
+    if (relateFromId && result.issueId) {
+      const linkResult = await addWorkIssueRelationAction(
+        board.id,
+        relateFromId,
+        result.issueId,
+        "relates"
+      );
+      if (!linkResult.ok) {
+        setError(linkResult.error);
+      }
+    }
     setDraftTitle("");
     setDraftIssueType("issue");
     setAddingStatus(null);
+    setPendingRelateFromIssueId(null);
     router.refresh();
+  }
+
+  function openAddIssueFromRelation(
+    status: WorkIssueStatus,
+    fromIssueId: string
+  ) {
+    setPendingRelateFromIssueId(fromIssueId);
+    setAddingStatus(status);
+    setDraftTitle("");
+    setDraftIssueType("issue");
+    setRelationAddIssueOverStatus(null);
+    clearRelationDrag();
   }
 
   return (
@@ -1475,22 +1749,35 @@ export function WorkBoardPageClient({
           </h1>
           <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[13px]">
             {plannerProjectId ? (
-              <button
-                type="button"
-                onClick={() => openProjectSettings("details")}
-                className="inline-flex min-w-0 items-center gap-1.5 text-left text-text-secondary hover:text-text-primary"
-                title="Open project settings"
-              >
-                <Link2
-                  className="h-3.5 w-3.5 shrink-0 text-text-tertiary"
-                  aria-hidden
-                />
-                <span className="min-w-0 truncate">
-                  <span className="text-text-tertiary">Project · </span>
-                  {plannerProjectName?.trim() || "Linked"}
+              presenting.active ? (
+                <span className="inline-flex min-w-0 items-center gap-1.5 text-text-secondary">
+                  <Link2
+                    className="h-3.5 w-3.5 shrink-0 text-text-tertiary"
+                    aria-hidden
+                  />
+                  <span className="min-w-0 truncate">
+                    <span className="text-text-tertiary">Project · </span>
+                    {plannerProjectName?.trim() || "Linked"}
+                  </span>
                 </span>
-              </button>
-            ) : (
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openProjectSettings("details")}
+                  className="inline-flex min-w-0 items-center gap-1.5 text-left text-text-secondary hover:text-text-primary"
+                  title="Open project settings"
+                >
+                  <Link2
+                    className="h-3.5 w-3.5 shrink-0 text-text-tertiary"
+                    aria-hidden
+                  />
+                  <span className="min-w-0 truncate">
+                    <span className="text-text-tertiary">Project · </span>
+                    {plannerProjectName?.trim() || "Linked"}
+                  </span>
+                </button>
+              )
+            ) : presenting.active ? null : (
               <button
                 type="button"
                 onClick={() => openProjectSettings("details")}
@@ -1544,13 +1831,15 @@ export function WorkBoardPageClient({
               <BookOpen className="h-4 w-4" aria-hidden />
             </IconButton>
           ) : null}
-          <IconButton
-            aria-label="Project settings"
-            title="Project settings"
-            onClick={() => openProjectSettings()}
-          >
-            <Settings className="h-4 w-4" aria-hidden />
-          </IconButton>
+          {!presenting.active ? (
+            <IconButton
+              aria-label="Project settings"
+              title="Project settings"
+              onClick={() => openProjectSettings()}
+            >
+              <Settings className="h-4 w-4" aria-hidden />
+            </IconButton>
+          ) : null}
         </div>
       </header>
 
@@ -1565,7 +1854,12 @@ export function WorkBoardPageClient({
           members={members}
           people={board.people}
           layout="summary"
-          onOpenSettings={() => openProjectSettings("access")}
+          disabled={presenting.active}
+          onOpenSettings={
+            presenting.active
+              ? undefined
+              : () => openProjectSettings("access")
+          }
         />
         <div className="relative w-44 shrink-0">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-tertiary" />
@@ -1664,7 +1958,7 @@ export function WorkBoardPageClient({
             "--work-customer-color": board.customerColor,
           } as CSSProperties
         }
-        className={`flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden ${
+        className={`relative flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden ${
           spacePanCursor === "grabbing"
             ? "cursor-grabbing select-none [&_*]:!cursor-grabbing"
             : spacePanCursor === "grab"
@@ -1712,6 +2006,12 @@ export function WorkBoardPageClient({
           setSpacePanCursor(spacePanRef.current.spaceDown ? "grab" : null);
         }}
         onDragOver={(event) => {
+          if (isWorkRelationDrag(event.dataTransfer)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "link";
+            setRelationCursor({ x: event.clientX, y: event.clientY });
+            return;
+          }
           if (draggingStatusIdRef.current) {
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
@@ -1736,6 +2036,18 @@ export function WorkBoardPageClient({
           }
         }}
       >
+        <WorkBoardRelationOverlay
+          containerRef={boardScrollRef}
+          fromIssueId={
+            relationFocusIssueId &&
+            (relationDragFromId != null ||
+              relationLineTargetIds.length > 0)
+              ? relationFocusIssueId
+              : null
+          }
+          toIssueIds={relationLineTargetIds}
+          cursorClient={relationDragFromId ? relationCursor : null}
+        />
         {statuses.map((column, columnIndex) => {
           const status = column.id;
           const allColumnIssues = issuesInStatus(issues, status).filter(
@@ -1754,8 +2066,12 @@ export function WorkBoardPageClient({
             estimateUnit,
             fixedPriceEnabled,
           });
+          const showColumnEstimateSum =
+            showEstimateSumByStatus[status] !== false;
+          const columnEstimateSumApprovedOnly =
+            estimateSumApprovedOnlyByStatus[status] === true;
           const estimateSumIssues =
-            sumScopeApproval && estimateSumApprovedOnly
+            sumScopeApproval && columnEstimateSumApprovedOnly
               ? visibleColumnIssues.filter((issue) => issue.scopeApproved)
               : visibleColumnIssues;
           const columnEstimateSum =
@@ -1817,6 +2133,12 @@ export function WorkBoardPageClient({
                   : ""
               }`}
               onDragOver={(event) => {
+                if (isWorkRelationDrag(event.dataTransfer)) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "link";
+                  if (dragOverStatus != null) setDragOverStatus(null);
+                  return;
+                }
                 if (handleStatusDragOver(event, status)) return;
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
@@ -1835,6 +2157,11 @@ export function WorkBoardPageClient({
                 if (dragOverStatus === status) setDragOverStatus(null);
               }}
               onDrop={(event) => {
+                if (isWorkRelationDrag(event.dataTransfer)) {
+                  event.preventDefault();
+                  clearRelationDrag();
+                  return;
+                }
                 if (handleStatusDrop(event)) return;
                 dropOnColumn(event, status, null);
               }}
@@ -1947,7 +2274,7 @@ export function WorkBoardPageClient({
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
                   {board.showEstimates &&
-                  showEstimateSum &&
+                  showColumnEstimateSum &&
                   columnEstimateLabel ? (
                     <span
                       className="tabular-nums text-caption text-current/55"
@@ -1988,8 +2315,14 @@ export function WorkBoardPageClient({
 
               <div
                 data-issue-scroll
-                className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+                className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
                 onDragOver={(event) => {
+                  if (isWorkRelationDrag(event.dataTransfer)) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "link";
+                    if (dragOverStatus != null) setDragOverStatus(null);
+                    return;
+                  }
                   if (handleStatusDragOver(event, status)) return;
                   previewIssueDrop(
                     event,
@@ -2001,6 +2334,11 @@ export function WorkBoardPageClient({
                   );
                 }}
                 onDrop={(event) => {
+                  if (isWorkRelationDrag(event.dataTransfer)) {
+                    event.preventDefault();
+                    clearRelationDrag();
+                    return;
+                  }
                   if (handleStatusDrop(event)) return;
                   dropOnColumn(
                     event,
@@ -2034,14 +2372,16 @@ export function WorkBoardPageClient({
                         <WorkColumnGroupHeader
                           groupBy={groupBy}
                           group={group}
-                          showEstimates={board.showEstimates && showEstimateSum}
+                          showEstimates={
+                            board.showEstimates && showColumnEstimateSum
+                          }
                           showReportedTime={board.showReportedTime}
                           estimateUnit={estimateUnit}
                           billingCurrency={billingCurrency}
                           fixedPriceEnabled={fixedPriceEnabled}
                           sizePrices={sizePrices}
                           estimateSumApprovedOnly={
-                            sumScopeApproval && estimateSumApprovedOnly
+                            sumScopeApproval && columnEstimateSumApprovedOnly
                           }
                           className={groupIndex === 0 ? "" : "mt-1"}
                         />
@@ -2077,6 +2417,19 @@ export function WorkBoardPageClient({
                         : undefined
                     }
                     onDragOver={(event) => {
+                      if (isWorkRelationDrag(event.dataTransfer)) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.dataTransfer.dropEffect = "link";
+                        if (relationDropOverId !== issue.id) {
+                          setRelationDropOverId(issue.id);
+                        }
+                        setRelationCursor({
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                        return;
+                      }
                       if (handleStatusDragOver(event, status)) return;
                       previewIssueDrop(
                         event,
@@ -2087,7 +2440,21 @@ export function WorkBoardPageClient({
                         )
                       );
                     }}
+                    onDragLeave={(event) => {
+                      if (!isWorkRelationDrag(event.dataTransfer)) return;
+                      const next = event.relatedTarget;
+                      if (
+                        next instanceof Node &&
+                        event.currentTarget.contains(next)
+                      ) {
+                        return;
+                      }
+                      if (relationDropOverId === issue.id) {
+                        setRelationDropOverId(null);
+                      }
+                    }}
                     onDrop={(event) => {
+                      if (handleRelationDropOnIssue(event, issue.id)) return;
                       if (handleStatusDrop(event)) return;
                       dropOnColumn(
                         event,
@@ -2122,6 +2489,12 @@ export function WorkBoardPageClient({
                         openIssue(issue.id);
                       }}
                       onDragStart={(event) => {
+                        if (
+                          event.target instanceof Element &&
+                          event.target.closest("[data-work-relation-handle]")
+                        ) {
+                          return;
+                        }
                         event.dataTransfer.setData("text/plain", issue.id);
                         event.dataTransfer.effectAllowed = "move";
                         dismissCardError(issue.id);
@@ -2155,14 +2528,56 @@ export function WorkBoardPageClient({
                         }, 0);
                       }}
                       data-issue-card
-                      className={`relative cursor-pointer select-none overflow-hidden rounded-lg border bg-bg-default p-3 shadow-sm ${
+                      className={`group/card relative cursor-pointer select-none rounded-lg border bg-bg-default p-3 shadow-sm ${
                         selectedIssueId === issue.id
                           ? "border-accent-primary"
                           : issue.scopeApproved
                             ? "border-[color:var(--color-green-500)] dark:border-[color:var(--color-green-400)]"
                             : "border-border-subtle hover:border-border-default"
-                      } ${landingIssueId === issue.id ? "opacity-0" : ""}`}
+                      } ${landingIssueId === issue.id ? "opacity-0" : ""                      } ${
+                        relationHighlightIds.has(issue.id) &&
+                        relationFocusIssueId !== issue.id
+                          ? "z-[1] bg-brand-signal/[0.07] shadow-[0_0_0_2px_var(--color-brand-signal)] ring-2 ring-brand-signal/30"
+                          : ""
+                      } ${
+                        relationDropOverId === issue.id &&
+                        relationDragFromId != null &&
+                        relationDragFromId !== issue.id
+                          ? "z-[1] bg-brand-signal/10 shadow-[0_0_0_2px_var(--color-brand-signal)] ring-2 ring-brand-signal"
+                          : ""
+                      }`}
                     >
+                      <WorkCardRelationHandle
+                        issueId={issue.id}
+                        hasRelations={issueHasRelations(issue.relations)}
+                        active={
+                          relationFocusIssueId === issue.id ||
+                          relationDragFromId === issue.id
+                        }
+                        onHoverChange={(hovering) => {
+                          setRelationHoverIssueId((current) => {
+                            if (hovering) return issue.id;
+                            return current === issue.id ? null : current;
+                          });
+                        }}
+                        onRelationDragStart={(id, event) => {
+                          setRelationHoverIssueId(null);
+                          setRelationDragFromId(id);
+                          setRelationCursor({
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                          setDragOverStatus(null);
+                          setIssueDropBefore(null);
+                          skipCardClickRef.current = true;
+                        }}
+                        onRelationDragEnd={() => {
+                          clearRelationDrag();
+                          window.setTimeout(() => {
+                            skipCardClickRef.current = false;
+                          }, 0);
+                        }}
+                      />
                       <div className="text-left">
                         <div className="flex items-center justify-between gap-2">
                           <span className="flex min-w-0 items-center gap-1.5 truncate text-label-s text-text-tertiary">
@@ -2379,6 +2794,7 @@ export function WorkBoardPageClient({
                                 <WorkScopeApproveButton
                                   approved={issue.scopeApproved}
                                   canApprove={issue.estimateSize != null}
+                                  canUnlock={canUnlockScope(issue)}
                                   onToggle={() => {
                                     if (issue.scopeApproved) {
                                       showCardUnlock(issue.id);
@@ -2450,12 +2866,25 @@ export function WorkBoardPageClient({
               {addingStatus === status ? (
                 <form
                   ref={addIssueFormRef}
-                  className="space-y-2 px-2 pb-3"
+                  className={`space-y-2 px-2 pb-3 ${
+                    pendingRelateFromIssueId
+                      ? "rounded-md ring-2 ring-brand-signal/40"
+                      : ""
+                  }`}
                   onSubmit={(event) => {
                     event.preventDefault();
                     startTransition(() => void submitNewIssue(status, draftTitle));
                   }}
                 >
+                  {pendingRelateFromIssueId ? (
+                    <p className="px-0.5 text-[11px] text-text-secondary">
+                      Will relate to{" "}
+                      <span className="font-medium text-text-primary">
+                        {issues.find((row) => row.id === pendingRelateFromIssueId)
+                          ?.key ?? "selected issue"}
+                      </span>
+                    </p>
+                  ) : null}
                   <div className="flex items-start gap-2">
                     <WorkIssueTypePicker
                       name={`New issue type ${status}`}
@@ -2478,15 +2907,61 @@ export function WorkBoardPageClient({
               ) : (
                 <button
                   type="button"
-                  className="mx-2 mb-3 flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-body-m text-text-secondary hover:bg-bg-muted hover:text-text-primary"
+                  className={`mx-2 mb-3 flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-body-m transition-colors ${
+                    relationAddIssueOverStatus === status
+                      ? "bg-brand-signal/15 text-text-primary ring-2 ring-brand-signal"
+                      : "text-text-secondary hover:bg-bg-muted hover:text-text-primary"
+                  }`}
                   onClick={() => {
                     setAddingStatus(status);
                     setDraftTitle("");
                     setDraftIssueType("issue");
+                    setPendingRelateFromIssueId(null);
+                  }}
+                  onDragOver={(event) => {
+                    if (!isWorkRelationDrag(event.dataTransfer)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.dataTransfer.dropEffect = "link";
+                    if (relationAddIssueOverStatus !== status) {
+                      setRelationAddIssueOverStatus(status);
+                    }
+                    if (dragOverStatus != null) setDragOverStatus(null);
+                    setRelationCursor({
+                      x: event.clientX,
+                      y: event.clientY,
+                    });
+                  }}
+                  onDragLeave={(event) => {
+                    const next = event.relatedTarget;
+                    if (
+                      next instanceof Node &&
+                      event.currentTarget.contains(next)
+                    ) {
+                      return;
+                    }
+                    if (relationAddIssueOverStatus === status) {
+                      setRelationAddIssueOverStatus(null);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    if (!isWorkRelationDrag(event.dataTransfer)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const fromId =
+                      event.dataTransfer.getData(WORK_RELATION_DRAG_MIME) ||
+                      relationDragFromId;
+                    if (!fromId) {
+                      clearRelationDrag();
+                      return;
+                    }
+                    openAddIssueFromRelation(status, fromId);
                   }}
                 >
                   <Plus className="h-4 w-4" aria-hidden />
-                  Add issue
+                  {relationDragFromId
+                    ? "Drop to create linked issue"
+                    : "Add issue"}
                 </button>
               )}
               </div>
@@ -2517,7 +2992,14 @@ export function WorkBoardPageClient({
                 aria-label="New status name"
                 autoFocus
                 onBlur={() => {
-                  if (!columnDraft.trim()) setAddingColumn(false);
+                  setColumnDraft("");
+                  setAddingColumn(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  setColumnDraft("");
+                  setAddingColumn(false);
                 }}
               />
             </form>
@@ -2564,8 +3046,12 @@ export function WorkBoardPageClient({
         estimateUnit={estimateUnit}
         fixedPriceEnabled={fixedPriceEnabled}
         billingCurrency={billingCurrency}
-        showDangerTab={board.viewerRole !== "customer"}
-        canEditAccess={board.viewerRole !== "customer"}
+        showDangerTab={
+          !presenting.active && board.viewerRole !== "customer"
+        }
+        canEditAccess={
+          !presenting.active && board.viewerRole !== "customer"
+        }
         onProcessSaved={setProcess}
         onSetEstimateUnit={async (unit) => {
           const previousUnit = estimateUnit;
@@ -2835,20 +3321,23 @@ export function WorkBoardPageClient({
                 <button
                   type="button"
                   role="menuitemcheckbox"
-                  aria-checked={showEstimateSum}
+                  aria-checked={
+                    showEstimateSumByStatus[statusMenu.id] !== false
+                  }
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
                   onClick={() => {
-                    setShowEstimateSum((current) => {
-                      const next = !current;
+                    const statusId = statusMenu.id;
+                    setShowEstimateSumByStatus((current) => {
+                      const nextValue = !(current[statusId] !== false);
                       try {
                         localStorage.setItem(
-                          `work.showEstimateSum.${board.id}`,
-                          next ? "1" : "0"
+                          `work.showEstimateSum.${board.id}.${statusId}`,
+                          nextValue ? "1" : "0"
                         );
                       } catch {
                         // ignore
                       }
-                      return next;
+                      return { ...current, [statusId]: nextValue };
                     });
                     setStatusMenu(null);
                   }}
@@ -2856,7 +3345,7 @@ export function WorkBoardPageClient({
                   <span className="min-w-0 flex-1">Show estimate sum</span>
                   <Check
                     className={`h-3.5 w-3.5 shrink-0 ${
-                      showEstimateSum
+                      showEstimateSumByStatus[statusMenu.id] !== false
                         ? "text-text-primary"
                         : "text-transparent"
                     }`}
@@ -2872,21 +3361,24 @@ export function WorkBoardPageClient({
                 <button
                   type="button"
                   role="menuitemcheckbox"
-                  aria-checked={estimateSumApprovedOnly}
-                  disabled={!showEstimateSum}
+                  aria-checked={
+                    estimateSumApprovedOnlyByStatus[statusMenu.id] === true
+                  }
+                  disabled={showEstimateSumByStatus[statusMenu.id] === false}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted disabled:opacity-40"
                   onClick={() => {
-                    setEstimateSumApprovedOnly((current) => {
-                      const next = !current;
+                    const statusId = statusMenu.id;
+                    setEstimateSumApprovedOnlyByStatus((current) => {
+                      const nextValue = !(current[statusId] === true);
                       try {
                         localStorage.setItem(
-                          `work.estimateSumApprovedOnly.${board.id}`,
-                          next ? "1" : "0"
+                          `work.estimateSumApprovedOnly.${board.id}.${statusId}`,
+                          nextValue ? "1" : "0"
                         );
                       } catch {
                         // ignore
                       }
-                      return next;
+                      return { ...current, [statusId]: nextValue };
                     });
                     setStatusMenu(null);
                   }}
@@ -2894,7 +3386,7 @@ export function WorkBoardPageClient({
                   <span className="min-w-0 flex-1">Sum approved only</span>
                   <Check
                     className={`h-3.5 w-3.5 shrink-0 ${
-                      estimateSumApprovedOnly
+                      estimateSumApprovedOnlyByStatus[statusMenu.id] === true
                         ? "text-text-primary"
                         : "text-transparent"
                     }`}
@@ -2966,7 +3458,12 @@ export function WorkBoardPageClient({
                   {workColumnSortLabel(sortBy)}
                 </button>
               ))}
-              {statuses.length > 1 ? (
+              {statuses.length > 1 &&
+              !(
+                menuColumn?.isDone &&
+                estimateUnit === "tshirt" &&
+                fixedPriceEnabled
+              ) ? (
                 <>
                   <div
                     className="my-1 border-t border-border-subtle"
@@ -3132,6 +3629,27 @@ export function WorkBoardPageClient({
               });
               setError(null);
               closeIssue();
+              router.refresh();
+            }}
+            onMoved={(target) => {
+              const movedId = selected.id;
+              clearOptimisticIssuePatch(
+                optimisticPatchesRef.current,
+                movedId
+              );
+              setIssues((current) => {
+                const next = current.filter((issue) => issue.id !== movedId);
+                issuesRef.current = next;
+                return next;
+              });
+              setError(null);
+              router.push(
+                workIssueHref(
+                  target.customerId,
+                  target.projectId,
+                  target.issueId
+                )
+              );
               router.refresh();
             }}
           />

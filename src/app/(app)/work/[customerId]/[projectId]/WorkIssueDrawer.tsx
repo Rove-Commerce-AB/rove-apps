@@ -59,6 +59,7 @@ import {
   type WorkIssue,
   type WorkIssuePriority,
   type WorkPerson,
+  type WorkSelectorBoard,
 } from "@/lib/workTypes";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import {
@@ -76,6 +77,8 @@ import {
   deleteWorkIssuePreDeployActionAction,
   deleteWorkIssueReferenceAction,
   deleteWorkIssueRequirementAction,
+  listSiblingWorkProjectsForMoveAction,
+  moveWorkIssueToProjectAction,
   removeWorkIssueAssigneeAction,
   removeWorkIssueLabelAction,
   removeWorkIssueRelationAction,
@@ -106,7 +109,11 @@ import { WorkCommentComposer, WorkInlineImageThumbs } from "./WorkCommentCompose
 import { WorkIssueComment } from "./WorkIssueComment";
 import { WorkIssueRelations } from "./WorkIssueRelations";
 import { WorkTimeGraph } from "./WorkTimeGraph";
-import { canDeleteWorkIssue } from "@/lib/workAccess";
+import { usePresentingMode } from "@/components/PresentingModeContext";
+import {
+  canDeleteWorkIssue,
+  isWorkActivityVisibleToActor,
+} from "@/lib/workAccess";
 import { encodeMentions, mentionPlainText } from "@/lib/workMentions";
 import {
   formatVisibleWorkEstimate,
@@ -405,6 +412,12 @@ type Props = {
   onError: (message: string) => void;
   onIssuePatch: (patch: Partial<WorkIssue>) => void;
   onDeleted: () => void;
+  onMoved: (target: {
+    customerId: string;
+    projectId: string;
+    issueId: string;
+    key: string;
+  }) => void;
 };
 
 export function WorkIssueDrawer({
@@ -416,11 +429,19 @@ export function WorkIssueDrawer({
   onError,
   onIssuePatch,
   onDeleted,
+  onMoved,
 }: Props & { initialTab?: string }) {
+  const presenting = usePresentingMode();
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState(initialTab);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [moveTargets, setMoveTargets] = useState<WorkSelectorBoard[] | null>(
+    null
+  );
+  const [moveTargetId, setMoveTargetId] = useState("");
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [unlockScopeBanner, setUnlockScopeBanner] = useState(false);
   const [unlockScopeBannerOpen, setUnlockScopeBannerOpen] = useState(false);
 
@@ -430,13 +451,47 @@ export function WorkIssueDrawer({
       fixedPriceEnabled: board.fixedPriceEnabled,
     }) || issue.scopeApproved;
   const scopeLocked = issue.scopeApproved;
+  const issueInDone =
+    board.statuses.find((column) => column.id === issue.status)?.isDone ===
+    true;
+  const canUnlockScope =
+    !workScopeApprovalEnabled({
+      estimateUnit: board.estimateUnit,
+      fixedPriceEnabled: board.fixedPriceEnabled,
+    }) || !issueInDone;
 
-  const canShowDangerTab = canDeleteWorkIssue(
-    { id: board.currentUser.id, role: board.viewerRole },
-    issue.reporter?.id ?? null
-  );
+  const canShowDangerTab =
+    !presenting.active &&
+    canDeleteWorkIssue(
+      { id: board.currentUser.id, role: board.viewerRole },
+      issue.reporter?.id ?? null
+    );
+
+  const visibleEvents = useMemo(() => {
+    if (!presenting.active) return issue.events;
+    return issue.events.filter((event) =>
+      isWorkActivityVisibleToActor(
+        { id: board.currentUser.id, role: "customer" },
+        event.kind,
+        {
+          showEstimates: board.showEstimates,
+          showReportedTime: board.showReportedTime,
+        }
+      )
+    );
+  }, [
+    presenting.active,
+    issue.events,
+    board.currentUser.id,
+    board.showEstimates,
+    board.showReportedTime,
+  ]);
 
   function applyScopeApproved(approved: boolean) {
+    if (!approved && !canUnlockScope) {
+      onError("Can't unlock scope while the issue is Done.");
+      return;
+    }
     onIssuePatch({ scopeApproved: approved });
     run(() => setWorkIssueScopeApprovedAction(board.id, issue.id, approved));
   }
@@ -454,6 +509,22 @@ export function WorkIssueDrawer({
   useEffect(() => {
     if (!canShowDangerTab && tab === "danger") setTab("details");
   }, [canShowDangerTab, tab]);
+
+  useEffect(() => {
+    if (!canShowDangerTab || tab !== "danger") return;
+    let cancelled = false;
+    setMoveTargets(null);
+    setMoveTargetId("");
+    void listSiblingWorkProjectsForMoveAction(board.id).then((projects) => {
+      if (cancelled) return;
+      setMoveTargets(projects);
+      setMoveTargetId(projects[0]?.id ?? "");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canShowDangerTab, tab, board.id, issue.id]);
+
   const [feed, setFeed] = useState<"comments" | "activity">("comments");
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(
@@ -1545,10 +1616,12 @@ export function WorkIssueDrawer({
                     <WorkScopeApproveButton
                       approved={issue.scopeApproved}
                       canApprove={issue.estimateSize != null}
+                      canUnlock={canUnlockScope}
                       disabled={pending}
                       size="drawer"
                       onToggle={() => {
                         if (issue.scopeApproved) {
+                          if (!canUnlockScope) return;
                           setUnlockScopeBanner(true);
                           setUnlockScopeBannerOpen(false);
                           requestAnimationFrame(() => {
@@ -1975,10 +2048,10 @@ export function WorkIssueDrawer({
                 </ul>
               ) : (
                 <ul className="mt-4 space-y-3">
-                  {issue.events.length === 0 ? (
+                  {visibleEvents.length === 0 ? (
                     <li className="text-sm text-text-tertiary">No activity yet.</li>
                   ) : (
-                    issue.events.map((event) => (
+                    visibleEvents.map((event) => (
                       <li
                         key={event.id}
                         className="flex items-baseline gap-3 text-body-m text-text-primary"
@@ -2762,24 +2835,75 @@ export function WorkIssueDrawer({
               <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
                 <h2 className="text-label-l text-danger">Danger zone</h2>
                 <p className="mt-1 text-sm text-text-secondary">
-                  Delete permanently removes this issue and its comments, files,
-                  and activity. This cannot be undone.
+                  Move this issue to another project for the same customer, or
+                  delete it permanently.
                 </p>
-                {issue.loggedHours > 0 ? (
-                  <p className="mt-3 text-sm text-text-secondary">
-                    This issue has logged time and cannot be deleted.
+
+                <div className="mt-4 space-y-2 border-t border-danger/20 pt-4">
+                  <h3 className="text-label-m text-text-primary">
+                    Move to another project
+                  </h3>
+                  <p className="text-sm text-text-secondary">
+                    Gets a new issue key on the target project. Sprint,
+                    component, labels, and relations are cleared.
                   </p>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="dangerSecondary"
-                  size="sm"
-                  className="mt-3"
-                  disabled={pending || issue.loggedHours > 0}
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  Delete issue
-                </Button>
+                  {moveTargets == null ? (
+                    <p className="text-sm text-text-tertiary">
+                      Loading projects…
+                    </p>
+                  ) : moveTargets.length === 0 ? (
+                    <p className="text-sm text-text-secondary">
+                      No other projects on this customer.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select
+                        value={moveTargetId}
+                        onValueChange={setMoveTargetId}
+                        options={moveTargets.map((project) => ({
+                          value: project.id,
+                          label: `${project.title} (${project.prefix})`,
+                        }))}
+                        disabled={pending || moving}
+                        placeholder="Select project"
+                        className="min-w-[12rem] flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="dangerSecondary"
+                        size="sm"
+                        disabled={pending || moving || !moveTargetId}
+                        onClick={() => setMoveOpen(true)}
+                      >
+                        Move issue
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-2 border-t border-danger/20 pt-4">
+                  <h3 className="text-label-m text-text-primary">
+                    Delete permanently
+                  </h3>
+                  <p className="text-sm text-text-secondary">
+                    Removes this issue and its comments, files, and activity.
+                    This cannot be undone.
+                  </p>
+                  {issue.loggedHours > 0 ? (
+                    <p className="text-sm text-text-secondary">
+                      This issue has logged time and cannot be deleted.
+                    </p>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="dangerSecondary"
+                    size="sm"
+                    disabled={pending || issue.loggedHours > 0}
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Delete issue
+                  </Button>
+                </div>
               </div>
             </TabsContent>
           ) : null}
@@ -2806,6 +2930,46 @@ export function WorkIssueDrawer({
             return;
           }
           onDeleted();
+        }}
+      />
+
+      <ConfirmModal
+        isOpen={moveOpen && canShowDangerTab}
+        title={`Move ${issue.key}?`}
+        message={
+          moveTargets?.find((project) => project.id === moveTargetId)
+            ? `Move this issue to “${
+                moveTargets.find((project) => project.id === moveTargetId)!
+                  .title
+              }”? It will get a new key. Sprint, component, labels, and relations are cleared.`
+            : "Move this issue to another project?"
+        }
+        confirmLabel={moving ? "Moving…" : "Move"}
+        variant="danger"
+        onClose={() => {
+          if (moving) return;
+          setMoveOpen(false);
+        }}
+        onConfirm={async () => {
+          if (moving || !canShowDangerTab || !moveTargetId) return;
+          setMoving(true);
+          const result = await moveWorkIssueToProjectAction(
+            board.id,
+            issue.id,
+            moveTargetId
+          );
+          setMoving(false);
+          if (!result.ok) {
+            onError(result.error);
+            return;
+          }
+          setMoveOpen(false);
+          onMoved({
+            customerId: result.customerId,
+            projectId: result.toBoardId,
+            issueId: result.issueId,
+            key: result.key,
+          });
         }}
       />
 

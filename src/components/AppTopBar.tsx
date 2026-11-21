@@ -7,10 +7,13 @@ import { breadcrumbsForPathname } from "@/lib/breadcrumbs";
 import { appBrandDotClass, appThemeFromPathname } from "@/lib/appTheme";
 import { useWorkTrail } from "@/components/WorkTrailContext";
 import { ShortcutStarButton } from "@/components/ShortcutStarButton";
+import { usePresentingMode } from "@/components/PresentingModeContext";
+import { PresentingModeToggle } from "@/components/PresentingModeToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function AppTopBar() {
   const pathname = usePathname();
+  const presenting = usePresentingMode();
   const workTrail = useWorkTrail();
   // Work trail is set by page children after mount. AppTopBar sits in a Suspense
   // boundary above them, so applying trail before mount causes hydration mismatch
@@ -89,7 +92,13 @@ export function AppTopBar() {
         </Suspense>
       </div>
 
-      <div className="flex shrink-0 items-center">
+      <div className="flex shrink-0 items-center gap-1">
+        {presenting.active ? (
+          <span className="mr-1 rounded-md bg-accent-primary-subtle px-2 py-0.5 text-[12px] font-medium text-accent-primary-text">
+            Presenting
+          </span>
+        ) : null}
+        <PresentingModeToggle />
         <ThemeToggle />
       </div>
     </header>

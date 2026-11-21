@@ -1,7 +1,7 @@
 "use server";
 
 import * as sizePrices from "./sizePrices";
-import type { WorkTshirtSize } from "./workEstimate";
+import type { WorkTshirtPricedSize } from "./workEstimate";
 
 export type { SizePriceRow } from "./sizePrices";
 
@@ -15,7 +15,7 @@ export async function getProjectSizePrices(projectId: string) {
 
 export async function upsertCustomerSizePrice(
   customerId: string,
-  size: WorkTshirtSize,
+  size: WorkTshirtPricedSize,
   amount: number,
   currency?: string
 ) {
@@ -29,7 +29,7 @@ export async function upsertCustomerSizePrice(
 
 export async function upsertProjectSizePrice(
   projectId: string,
-  size: WorkTshirtSize,
+  size: WorkTshirtPricedSize,
   amount: number,
   currency?: string
 ) {
@@ -38,14 +38,14 @@ export async function upsertProjectSizePrice(
 
 export async function deleteCustomerSizePrice(
   customerId: string,
-  size: WorkTshirtSize
+  size: WorkTshirtPricedSize
 ) {
   return sizePrices.deleteCustomerSizePrice(customerId, size);
 }
 
 export async function deleteProjectSizePrice(
   projectId: string,
-  size: WorkTshirtSize
+  size: WorkTshirtPricedSize
 ) {
   return sizePrices.deleteProjectSizePrice(projectId, size);
 }

@@ -35,7 +35,10 @@ export async function insertWorkIssueScopeApprovalIfPriced(
   }>(
     `SELECT
        i.estimate_size AS size,
-       COALESCE(psp.amount, csp.amount) AS amount,
+       CASE
+         WHEN i.estimate_size = 'free' THEN 0
+         ELSE COALESCE(psp.amount, csp.amount)
+       END AS amount,
        COALESCE(psp.currency, csp.currency, c.billing_currency, 'SEK') AS currency
      FROM work_issues i
      JOIN work_projects wp ON wp.id = i.project_id
@@ -49,7 +52,10 @@ export async function insertWorkIssueScopeApprovalIfPriced(
      WHERE i.id = $1
        AND i.project_id = $2
        AND i.estimate_size IS NOT NULL
-       AND COALESCE(psp.amount, csp.amount) IS NOT NULL`,
+       AND (
+         i.estimate_size = 'free'
+         OR COALESCE(psp.amount, csp.amount) IS NOT NULL
+       )`,
     [issueId, boardId]
   );
 

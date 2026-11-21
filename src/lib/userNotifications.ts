@@ -7,12 +7,17 @@ import {
   getCachedUnreadNotificationCount,
   revalidateUserNotificationCache,
 } from "@/lib/layoutShell";
+import { enqueueNotificationEmail } from "@/lib/notificationEmail";
 import {
   USER_NOTIFICATION_KIND,
   type AllocationInsertForNotify,
   type UserNotificationKind,
   type UserNotificationRow,
 } from "@/lib/userNotificationKinds";
+import {
+  channelsForNotificationKind,
+  getUserNotificationPrefs,
+} from "@/lib/userNotificationPrefs";
 
 function revalidateDashboardShell() {
   revalidatePath("/", "page");
@@ -62,12 +67,14 @@ async function insertNotificationRow(
   appUserId: string,
   kind: UserNotificationKind,
   payload: Record<string, unknown>
-): Promise<void> {
-  await cloudSqlPool.query(
+): Promise<string | null> {
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
     `INSERT INTO user_notifications (app_user_id, kind, payload)
-     VALUES ($1, $2, $3::jsonb)`,
+     VALUES ($1, $2, $3::jsonb)
+     RETURNING id`,
     [appUserId, kind, JSON.stringify(payload)]
   );
+  return rows[0]?.id ?? null;
 }
 
 export async function insertUserNotification(
@@ -75,13 +82,31 @@ export async function insertUserNotification(
   kind: UserNotificationKind,
   payload: Record<string, unknown>
 ): Promise<void> {
-  await insertNotificationRow(appUserId, kind, payload);
-  const { rows } = await cloudSqlPool.query<{ email: string }>(
-    `SELECT email FROM app_users WHERE id = $1 LIMIT 1`,
-    [appUserId]
-  );
-  if (rows[0]?.email) revalidateUserNotificationCache(rows[0].email);
-  revalidateDashboardShell();
+  const prefs = await getUserNotificationPrefs(appUserId);
+  const channels = channelsForNotificationKind(kind, prefs);
+  if (!channels.inApp && !channels.email) return;
+
+  let notificationId: string | null = null;
+  if (channels.inApp) {
+    notificationId = await insertNotificationRow(appUserId, kind, payload);
+  }
+  if (channels.email) {
+    await enqueueNotificationEmail({
+      appUserId,
+      notificationId,
+      kind,
+      payload,
+    });
+  }
+
+  if (channels.inApp) {
+    const { rows } = await cloudSqlPool.query<{ email: string }>(
+      `SELECT email FROM app_users WHERE id = $1 LIMIT 1`,
+      [appUserId]
+    );
+    if (rows[0]?.email) revalidateUserNotificationCache(rows[0].email);
+    revalidateDashboardShell();
+  }
 }
 
 /**

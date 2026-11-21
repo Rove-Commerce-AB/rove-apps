@@ -218,6 +218,23 @@ export async function listAccessibleWorkProjects(
   })));
 }
 
+/** Other accessible Work projects on the same customer (for Danger-zone move). */
+export async function listSiblingWorkProjectsForMove(
+  boardId: string
+): Promise<WorkSelectorBoard[]> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) {
+    throw new WorkInputError("Project not found or access denied.");
+  }
+  const projects = await listAccessibleWorkProjects(
+    visible.actor,
+    visible.board.customer_id
+  );
+  return projects
+    .filter((project) => project.id !== boardId)
+    .map(({ id, title, prefix }) => ({ id, title, prefix }));
+}
+
 export async function listWorkNavCustomers(): Promise<WorkSelectorCustomer[]> {
   const actor = await getWorkActor();
   if (!actor) return [];
@@ -691,6 +708,10 @@ export async function getWorkBoardView(
     billingCurrency: parseBillingCurrency(board.billing_currency),
     showEstimates,
     showReportedTime,
+    customerShowEstimates:
+      board.work_show_estimates_to_customer_users === true,
+    customerShowReportedTime:
+      board.work_show_reported_time_to_customer_users === true,
     viewerRole: user.role,
     currentUser: workPersonFromUser({
       id: user.id,
@@ -775,6 +796,21 @@ export async function deleteWorkBoardStatus(
 ): Promise<void> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
+
+  const statuses = await q.fetchWorkBoardStatuses(boardId);
+  const target = statuses.find((status) => status.id === statusId);
+  if (!target) throw new Error("Status not found");
+  const estimateUnit = parseWorkEstimateUnit(visible.board.estimate_unit);
+  if (
+    target.isDone &&
+    estimateUnit === "tshirt" &&
+    visible.board.fixed_price_enabled === true
+  ) {
+    throw new WorkInputError(
+      "Can't remove the Done column on a fixed-price T-shirt project."
+    );
+  }
+
   await q.deleteWorkBoardStatus({
     boardId,
     statusId,
@@ -865,11 +901,16 @@ export async function setWorkProjectEstimateUnit(
   await q.updateWorkProjectEstimateUnit(boardId, unit, {
     clearEstimates: shouldClear,
   });
+  const fixedPriceEnabled =
+    unit === "tshirt" ? visible.board.fixed_price_enabled === true : false;
+  if (fixedPriceEnabled) {
+    await q.ensureWorkBoardDoneStatus(boardId);
+  }
   return {
     estimateUnit: unit,
     clearedEstimates: shouldClear ? estimateCount : 0,
     customerId: visible.board.customer_id,
-    fixedPriceEnabled: unit === "tshirt" ? visible.board.fixed_price_enabled === true : false,
+    fixedPriceEnabled,
   };
 }
 
@@ -890,6 +931,9 @@ export async function setWorkProjectFixedPriceEnabled(
     throw new Error("Fixed price is only available with T-shirt estimates.");
   }
   await q.updateWorkProjectFixedPriceEnabled(boardId, enabled);
+  if (enabled) {
+    await q.ensureWorkBoardDoneStatus(boardId);
+  }
   return {
     fixedPriceEnabled: enabled,
     customerId: visible.board.customer_id,

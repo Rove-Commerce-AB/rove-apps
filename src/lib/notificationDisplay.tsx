@@ -35,6 +35,7 @@ export function notificationAppGroup(
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED ||
+    kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENTED ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE ||
     kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_BOARD_INVITED ||
     kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_TODO_ASSIGNED
@@ -195,6 +196,7 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED ||
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED ||
+    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENTED ||
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE
   ) {
     const actorName =
@@ -266,6 +268,30 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
     if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE) {
       return {
         text: <>{linkedIssue} was marked Done.</>,
+      };
+    }
+    if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENTED) {
+      const preview =
+        typeof p.commentPreview === "string" && p.commentPreview.trim()
+          ? p.commentPreview.trim()
+          : null;
+      return {
+        text: (
+          <>
+            <span className="font-medium">{actorName}</span> commented on{" "}
+            {linkedIssue}
+            {preview ? (
+              <>
+                :{" "}
+                <span className="font-medium opacity-90">
+                  &quot;{preview}&quot;
+                </span>
+              </>
+            ) : (
+              "."
+            )}
+          </>
+        ),
       };
     }
     return {

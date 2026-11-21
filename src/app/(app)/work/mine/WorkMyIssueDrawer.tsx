@@ -1,10 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmModal, PageLoading, SideDrawer } from "@/components/ui";
 import { WorkIssueDrawer } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueDrawer";
 import { moveWorkIssueAction } from "@/app/(app)/work/actions";
+import {
+  usePresentingMode,
+  withPresentingVisibility,
+} from "@/components/PresentingModeContext";
+import { workIssueHref } from "@/lib/routes";
 import { loadMyWorkIssue } from "@/lib/workMyIssueDrawer";
 import type { WorkBoardView, WorkIssue } from "@/lib/workTypes";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
@@ -20,6 +31,7 @@ type Props = {
 };
 
 export function WorkMyIssueDrawer({ selection, onOpenChange }: Props) {
+  const presenting = usePresentingMode();
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [loading, setLoading] = useState(false);
@@ -28,6 +40,32 @@ export function WorkMyIssueDrawer({ selection, onOpenChange }: Props) {
   const [issue, setIssue] = useState<WorkIssue | null>(null);
   const [leaveDoneStatus, setLeaveDoneStatus] =
     useState<WorkIssueStatus | null>(null);
+  const visibleBoard = useMemo(
+    () => (board ? withPresentingVisibility(board, presenting) : null),
+    [
+      board,
+      presenting.active,
+      presenting.showEstimates,
+      presenting.showReportedTime,
+    ]
+  );
+
+  useEffect(() => {
+    if (!board) {
+      presenting.setSuggestedDefaults(null);
+      return;
+    }
+    presenting.setSuggestedDefaults({
+      showEstimates: board.customerShowEstimates,
+      showReportedTime: board.customerShowReportedTime,
+    });
+    return () => presenting.setSuggestedDefaults(null);
+  }, [
+    board?.customerShowEstimates,
+    board?.customerShowReportedTime,
+    board,
+    presenting.setSuggestedDefaults,
+  ]);
 
   const reload = useCallback(async (boardId: string, issueId: string) => {
     const payload = await loadMyWorkIssue(boardId, issueId);
@@ -142,17 +180,19 @@ export function WorkMyIssueDrawer({ selection, onOpenChange }: Props) {
         <p role="alert" className="p-6 text-sm text-danger">
           {error}
         </p>
-      ) : board && issue ? (
+      ) : visibleBoard && issue ? (
         <WorkIssueDrawer
           key={issue.id}
-          board={board}
+          board={visibleBoard}
           issue={issue}
           onStatus={handleStatus}
           onChanged={() => {
             setError(null);
+            const boardId = visibleBoard.id;
+            const issueId = issue.id;
             startTransition(async () => {
               try {
-                await reload(board.id, issue.id);
+                await reload(boardId, issueId);
                 router.refresh();
               } catch (cause) {
                 setError(
@@ -189,6 +229,17 @@ export function WorkMyIssueDrawer({ selection, onOpenChange }: Props) {
           }}
           onDeleted={() => {
             onOpenChange(false);
+            router.refresh();
+          }}
+          onMoved={(target) => {
+            onOpenChange(false);
+            router.push(
+              workIssueHref(
+                target.customerId,
+                target.projectId,
+                target.issueId
+              )
+            );
             router.refresh();
           }}
         />

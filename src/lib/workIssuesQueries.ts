@@ -1365,6 +1365,18 @@ export async function fetchWorkIssueNotifyMeta(
   return rows[0] ?? null;
 }
 
+export async function fetchWorkIssueAssigneeAppUserIds(
+  issueId: string
+): Promise<string[]> {
+  const { rows } = await cloudSqlPool.query<{ app_user_id: string }>(
+    `SELECT app_user_id::text AS app_user_id
+     FROM work_issue_assignees
+     WHERE issue_id = $1`,
+    [issueId]
+  );
+  return rows.map((row) => row.app_user_id);
+}
+
 export async function fetchWorkIssueDescription(
   boardId: string,
   issueId: string

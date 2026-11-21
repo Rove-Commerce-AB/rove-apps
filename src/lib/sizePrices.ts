@@ -4,7 +4,7 @@ import * as q from "./sizePricesQueries";
 import { getCustomerById } from "./customers";
 import { getProjectWithDetailsById } from "./projects";
 import { parseBillingCurrency } from "./currency";
-import type { WorkTshirtSize } from "./workEstimate";
+import type { WorkTshirtPricedSize } from "./workEstimate";
 
 export type { SizePriceRow } from "./sizePricesQueries";
 
@@ -25,7 +25,7 @@ export async function getResolvedSizePriceMap(
 
 export async function upsertCustomerSizePrice(
   customerId: string,
-  size: WorkTshirtSize,
+  size: WorkTshirtPricedSize,
   amount: number,
   currency?: string
 ) {
@@ -43,7 +43,7 @@ export async function upsertCustomerSizePrice(
 
 export async function upsertProjectSizePrice(
   projectId: string,
-  size: WorkTshirtSize,
+  size: WorkTshirtPricedSize,
   amount: number,
   currency?: string
 ) {
@@ -61,14 +61,14 @@ export async function upsertProjectSizePrice(
 
 export async function deleteCustomerSizePrice(
   customerId: string,
-  size: WorkTshirtSize
+  size: WorkTshirtPricedSize
 ) {
   return q.deleteCustomerSizePriceQuery(customerId, size);
 }
 
 export async function deleteProjectSizePrice(
   projectId: string,
-  size: WorkTshirtSize
+  size: WorkTshirtPricedSize
 ) {
   return q.deleteProjectSizePriceQuery(projectId, size);
 }

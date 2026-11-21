@@ -146,7 +146,25 @@ export function WorkSprintView({
     }
   }
 
+  function canUnlockScope(issueId: string): boolean {
+    if (
+      !workScopeApprovalEnabled({
+        estimateUnit: board.estimateUnit,
+        fixedPriceEnabled: board.fixedPriceEnabled === true,
+      })
+    ) {
+      return true;
+    }
+    const issue = issues.find((row) => row.id === issueId);
+    if (!issue) return false;
+    return !doneStatusIds.has(issue.status);
+  }
+
   function showUnlockScopeBanner(issueId: string) {
+    if (!canUnlockScope(issueId)) {
+      onError("Can't unlock scope while the issue is Done.");
+      return;
+    }
     clearUnlockScopeExitTimer();
     setUnlockScopeIssueId(issueId);
     setUnlockScopeBannerOpen(false);
@@ -466,6 +484,10 @@ export function WorkSprintView({
   }
 
   function commitScopeApproved(issueId: string, approved: boolean) {
+    if (!approved && !canUnlockScope(issueId)) {
+      onError("Can't unlock scope while the issue is Done.");
+      return;
+    }
     onOptimisticIssuePatch?.(issueId, { scopeApproved: approved });
     onIssuesChange(
       issues.map((issue) =>
@@ -1597,6 +1619,17 @@ function SprintColumn({
                   <WorkScopeApproveButton
                     approved={issue.scopeApproved}
                     canApprove={issue.estimateSize != null}
+                    canUnlock={
+                      !(
+                        workScopeApprovalEnabled({
+                          estimateUnit: board?.estimateUnit ?? "hours",
+                          fixedPriceEnabled: board?.fixedPriceEnabled === true,
+                        }) &&
+                        (board?.statuses.find((s) => s.id === issue.status)
+                          ?.isDone ??
+                          false)
+                      )
+                    }
                     disabled={estimateDisabled}
                     onToggle={() =>
                       onScopeApproveToggle(issue.id, !issue.scopeApproved)

@@ -236,7 +236,7 @@ export function WorkCardEstimate({
 
         <div
           className={`inline-flex items-center overflow-hidden transition-[max-width] duration-150 ease-out ${
-            tshirtShown ? "max-w-[14rem]" : "max-w-0"
+            tshirtShown ? "max-w-[18rem]" : "max-w-0"
           }`}
           aria-hidden={!tshirtOpen}
         >
@@ -251,6 +251,9 @@ export function WorkCardEstimate({
                 type="button"
                 tabIndex={tshirtOpen && !inert ? 0 : -1}
                 aria-disabled={inert || !tshirtOpen}
+                title={
+                  size === "free" ? "Free of charge" : formatWorkTshirtSize(size)
+                }
                 className={`rounded px-1 text-caption font-medium transition-colors ${
                   inert || !tshirtOpen ? "cursor-not-allowed opacity-50" : ""
                 } ${

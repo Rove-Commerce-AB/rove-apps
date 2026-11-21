@@ -1,16 +1,15 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { parseBillingCurrency } from "@/lib/currency";
 import {
-  WORK_TSHIRT_SIZES,
   type WorkSizePriceMap,
-  type WorkTshirtSize,
-  isWorkTshirtSize,
+  type WorkTshirtPricedSize,
+  isWorkTshirtPricedSize,
 } from "@/lib/workEstimate";
 
 export type SizePriceRow = {
   id: string;
   ownerId: string;
-  size: WorkTshirtSize;
+  size: WorkTshirtPricedSize;
   amount: number;
   currency: string;
 };
@@ -22,7 +21,7 @@ function mapRow(r: {
   amount: string | number;
   currency: string | null;
 }): SizePriceRow | null {
-  if (!isWorkTshirtSize(r.size)) return null;
+  if (!isWorkTshirtPricedSize(r.size)) return null;
   return {
     id: r.id,
     ownerId: r.owner_id,
@@ -96,11 +95,11 @@ export async function fetchResolvedSizePriceMap(
 
 export async function upsertCustomerSizePriceQuery(
   customerId: string,
-  size: WorkTshirtSize,
+  size: WorkTshirtPricedSize,
   amount: number,
   currency: string
 ): Promise<SizePriceRow> {
-  if (!WORK_TSHIRT_SIZES.includes(size)) {
+  if (!isWorkTshirtPricedSize(size)) {
     throw new Error("Invalid size");
   }
   if (!Number.isFinite(amount) || amount < 0) {
@@ -129,11 +128,11 @@ export async function upsertCustomerSizePriceQuery(
 
 export async function upsertProjectSizePriceQuery(
   projectId: string,
-  size: WorkTshirtSize,
+  size: WorkTshirtPricedSize,
   amount: number,
   currency: string
 ): Promise<SizePriceRow> {
-  if (!WORK_TSHIRT_SIZES.includes(size)) {
+  if (!isWorkTshirtPricedSize(size)) {
     throw new Error("Invalid size");
   }
   if (!Number.isFinite(amount) || amount < 0) {
@@ -162,7 +161,7 @@ export async function upsertProjectSizePriceQuery(
 
 export async function deleteCustomerSizePriceQuery(
   customerId: string,
-  size: WorkTshirtSize
+  size: WorkTshirtPricedSize
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
     `DELETE FROM customer_size_prices
@@ -174,7 +173,7 @@ export async function deleteCustomerSizePriceQuery(
 
 export async function deleteProjectSizePriceQuery(
   projectId: string,
-  size: WorkTshirtSize
+  size: WorkTshirtPricedSize
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
     `DELETE FROM project_size_prices

@@ -13,6 +13,7 @@ import {
   listLinkablePlannerProjects,
   listWorkAccessPeople,
   listWorkCustomerPeople,
+  listSiblingWorkProjectsForMove,
   removeWorkBoardMember,
   renameWorkBoard,
   renameWorkBoardStatus,
@@ -36,6 +37,7 @@ import type {
   WorkPerson,
   WorkRequirementKind,
   WorkProcess,
+  WorkSelectorBoard,
 } from "@/lib/workTypes";
 import {
   addIssueAssignee,
@@ -50,6 +52,7 @@ import {
   deleteIssueComment,
   createWorkIssue,
   deleteWorkIssue,
+  moveWorkIssueToCustomerProject,
   removeBoardComponent,
   renameBoardComponentName,
   removeIssueAssignee,
@@ -474,6 +477,45 @@ export async function deleteWorkIssueAction(
     await deleteWorkIssue(boardId, issueId);
     revalidateBoard(boardId);
     return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function listSiblingWorkProjectsForMoveAction(
+  boardId: string
+): Promise<WorkSelectorBoard[]> {
+  try {
+    return await listSiblingWorkProjectsForMove(boardId);
+  } catch {
+    return [];
+  }
+}
+
+export async function moveWorkIssueToProjectAction(
+  boardId: string,
+  issueId: string,
+  toBoardId: string
+): Promise<
+  | {
+      ok: true;
+      customerId: string;
+      toBoardId: string;
+      issueId: string;
+      number: number;
+      key: string;
+    }
+  | Err
+> {
+  try {
+    const moved = await moveWorkIssueToCustomerProject(
+      boardId,
+      issueId,
+      toBoardId
+    );
+    revalidateBoard(boardId);
+    revalidateBoard(toBoardId);
+    return { ok: true, ...moved };
   } catch (error) {
     return fail(error);
   }

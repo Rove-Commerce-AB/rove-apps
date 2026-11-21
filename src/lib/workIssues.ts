@@ -17,6 +17,7 @@ import {
   addWorkIssueAssignee,
   deleteWorkIssueFile,
   fetchWorkIssueNotifyMeta,
+  fetchWorkIssueAssigneeAppUserIds,
   fetchWorkIssueDescription,
   fetchWorkIssueCreatedByAppUserId,
   fetchWorkBoardMembers,
@@ -40,6 +41,8 @@ import {
   linkWorkIssueLabel,
   hideDoneIssuesOnBoard,
   moveWorkIssue,
+  moveWorkIssueToProject,
+  fetchWorkIssueStatus,
   removeWorkIssueAssignee,
   reorderWorkIssuesInStatus,
   unhideHiddenIssuesOnBoard,
@@ -332,6 +335,66 @@ export async function deleteWorkIssue(
   }
   const ok = await deleteWorkIssueRow(boardId, issueId);
   if (!ok) throw new Error("Issue not found");
+}
+
+/**
+ * Move an issue to another Work project on the same customer.
+ * Allocates a new number; clears sprint, component, labels, and relations.
+ */
+export async function moveWorkIssueToCustomerProject(
+  fromBoardId: string,
+  issueId: string,
+  toBoardId: string
+): Promise<{
+  customerId: string;
+  toBoardId: string;
+  issueId: string;
+  number: number;
+  key: string;
+}> {
+  const { actor, board: fromBoard } = await requireBoardAccess(fromBoardId);
+  const createdByAppUserId = await fetchWorkIssueCreatedByAppUserId(
+    fromBoardId,
+    issueId
+  );
+  if (!canDeleteWorkIssue(actor, createdByAppUserId)) {
+    throw new WorkInputError("You can only move issues you created.");
+  }
+  if (fromBoardId === toBoardId) {
+    throw new WorkInputError("Issue is already on that project.");
+  }
+
+  const target = await requireVisibleWorkBoard(toBoardId, actor);
+  if (!target) {
+    throw new WorkInputError("Target project not found or access denied.");
+  }
+  if (target.board.customer_id !== fromBoard.customer_id) {
+    throw new WorkInputError(
+      "Can only move issues to another project on the same customer."
+    );
+  }
+
+  const statusId = await fetchWorkIssueStatus(fromBoardId, issueId);
+  const sourceStatuses = await fetchWorkBoardStatuses(fromBoardId);
+  const preferredStatusName =
+    sourceStatuses.find((column) => column.id === statusId)?.name ?? null;
+
+  const moved = await moveWorkIssueToProject({
+    issueId,
+    fromProjectId: fromBoardId,
+    toProjectId: toBoardId,
+    preferredStatusName,
+    actorAppUserId: actor.id,
+    eventSummary: `moved the issue to ${target.board.title}`,
+  });
+
+  return {
+    customerId: fromBoard.customer_id,
+    toBoardId,
+    issueId,
+    number: moved.number,
+    key: workIssueKey(target.board.prefix, moved.number),
+  };
 }
 
 export async function setWorkIssueOwner(
@@ -979,12 +1042,23 @@ export async function addIssueComment(
   });
   if (!commentId) throw new WorkInputError("Issue not found in this project.");
 
-  await notifyWorkIssueMentions({
+  const mentionedIds = await notifyWorkIssueMentions({
     boardId,
     issueId,
     body: trimmed,
     actorId: actor.id,
     memberIds: board.member_ids,
+    customerId: board.customer_id,
+    boardTitle: board.title,
+    boardPrefix: board.prefix,
+  });
+
+  await notifyWorkIssueCommented({
+    boardId,
+    issueId,
+    body: trimmed,
+    actorId: actor.id,
+    skipAppUserIds: mentionedIds,
     customerId: board.customer_id,
     boardTitle: board.title,
     boardPrefix: board.prefix,
@@ -1225,7 +1299,7 @@ async function notifyWorkIssueMentions(input: {
   customerId: string;
   boardTitle: string;
   boardPrefix: string;
-}): Promise<void> {
+}): Promise<string[]> {
   const previouslyMentioned = new Set(
     extractMentionedIds(input.previousBody ?? "")
   );
@@ -1235,13 +1309,13 @@ async function notifyWorkIssueMentions(input: {
       input.memberIds.includes(id) &&
       !previouslyMentioned.has(id)
   );
-  if (mentioned.length === 0) return;
+  if (mentioned.length === 0) return [];
   try {
     const [issue, mentionerName] = await Promise.all([
       fetchWorkIssueNotifyMeta(input.boardId, input.issueId),
       workIssueNotifyActorLabel(input.boardId, input.actorId),
     ]);
-    if (!issue) return;
+    if (!issue) return mentioned;
     const payload = {
       customerId: input.customerId,
       boardId: input.boardId,
@@ -1263,6 +1337,58 @@ async function notifyWorkIssueMentions(input: {
     );
   } catch (error) {
     console.warn("[work] mention notification failed", error);
+  }
+  return mentioned;
+}
+
+/** Notify assignee + owner when someone comments (skip author and @mentioned). */
+async function notifyWorkIssueCommented(input: {
+  boardId: string;
+  issueId: string;
+  body: string;
+  actorId: string;
+  skipAppUserIds: readonly string[];
+  customerId: string;
+  boardTitle: string;
+  boardPrefix: string;
+}): Promise<void> {
+  try {
+    const [issue, actorName, assigneeIds] = await Promise.all([
+      fetchWorkIssueNotifyMeta(input.boardId, input.issueId),
+      workIssueNotifyActorLabel(input.boardId, input.actorId),
+      fetchWorkIssueAssigneeAppUserIds(input.issueId),
+    ]);
+    if (!issue) return;
+
+    const skip = new Set([input.actorId, ...input.skipAppUserIds]);
+    const recipients = new Set<string>();
+    if (issue.owner_app_user_id) recipients.add(issue.owner_app_user_id);
+    for (const id of assigneeIds) recipients.add(id);
+
+    const payload = {
+      customerId: input.customerId,
+      boardId: input.boardId,
+      boardTitle: input.boardTitle,
+      issueId: input.issueId,
+      issueKey: workIssueKey(input.boardPrefix, issue.number),
+      issueTitle: issue.title,
+      actorName,
+      commentPreview: commentPreview(input.body),
+    };
+
+    await Promise.all(
+      [...recipients]
+        .filter((id) => !skip.has(id))
+        .map((appUserId) =>
+          insertUserNotification(
+            appUserId,
+            USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENTED,
+            payload
+          )
+        )
+    );
+  } catch (error) {
+    console.warn("[work] comment notification failed", error);
   }
 }
 

@@ -255,6 +255,16 @@ export type WorkBoardView = {
    * False for customer-role users when the customer setting is off.
    */
   showReportedTime: boolean;
+  /**
+   * Customer master setting: estimates visible to customer-role users.
+   * Used as presenting-mode default (staff always see estimates unless presenting).
+   */
+  customerShowEstimates: boolean;
+  /**
+   * Customer master setting: reported time visible to customer-role users.
+   * Used as presenting-mode default.
+   */
+  customerShowReportedTime: boolean;
   /** Role of the signed-in viewer (for UI gates such as Danger tabs). */
   viewerRole: AppUserRole;
   currentUser: WorkPerson;

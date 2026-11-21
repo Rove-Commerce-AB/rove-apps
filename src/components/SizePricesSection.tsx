@@ -16,10 +16,10 @@ import {
   type SizePriceRow,
 } from "@/lib/sizePricesClient";
 import {
-  WORK_TSHIRT_SIZES,
+  WORK_TSHIRT_PRICED_SIZES,
   WORK_TSHIRT_SIZE_LABELS,
   doubleSizePricesFromXs,
-  type WorkTshirtSize,
+  type WorkTshirtPricedSize,
 } from "@/lib/workEstimate";
 
 type Props = {
@@ -45,10 +45,10 @@ export function SizePricesSection({
 }: Props) {
   const [rows, setRows] = useState<SizePriceRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingSize, setEditingSize] = useState<WorkTshirtSize | null>(null);
+  const [editingSize, setEditingSize] = useState<WorkTshirtPricedSize | null>(null);
   const [editValue, setEditValue] = useState("");
   const originalValueRef = useRef("");
-  const [savingSize, setSavingSize] = useState<WorkTshirtSize | null>(null);
+  const [savingSize, setSavingSize] = useState<WorkTshirtPricedSize | null>(null);
   const [duplicating, setDuplicating] = useState(false);
   const currency = moneyLabel(billingCurrency);
 
@@ -88,7 +88,7 @@ export function SizePricesSection({
     setEditingSize(null);
     try {
       const savedRows: SizePriceRow[] = [];
-      for (const size of WORK_TSHIRT_SIZES) {
+      for (const size of WORK_TSHIRT_PRICED_SIZES) {
         const saved =
           scope === "customer"
             ? await upsertCustomerSizePrice(
@@ -108,8 +108,8 @@ export function SizePricesSection({
       setRows(
         savedRows.sort(
           (a, b) =>
-            WORK_TSHIRT_SIZES.indexOf(a.size) -
-            WORK_TSHIRT_SIZES.indexOf(b.size)
+            WORK_TSHIRT_PRICED_SIZES.indexOf(a.size) -
+            WORK_TSHIRT_PRICED_SIZES.indexOf(b.size)
         )
       );
     } catch (error) {
@@ -121,7 +121,7 @@ export function SizePricesSection({
     }
   }
 
-  async function saveSize(size: WorkTshirtSize, raw: string) {
+  async function saveSize(size: WorkTshirtPricedSize, raw: string) {
     const trimmed = raw.trim().replace(/\s/g, "").replace(",", ".");
     setSavingSize(size);
     try {
@@ -157,8 +157,8 @@ export function SizePricesSection({
           const without = prev.filter((row) => row.size !== size);
           return [...without, saved].sort(
             (a, b) =>
-              WORK_TSHIRT_SIZES.indexOf(a.size) -
-              WORK_TSHIRT_SIZES.indexOf(b.size)
+              WORK_TSHIRT_PRICED_SIZES.indexOf(a.size) -
+              WORK_TSHIRT_PRICED_SIZES.indexOf(b.size)
           );
         });
       }
@@ -188,7 +188,7 @@ export function SizePricesSection({
       ) : (
         <>
           <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
-            {WORK_TSHIRT_SIZES.map((size) => {
+            {WORK_TSHIRT_PRICED_SIZES.map((size) => {
               const amount = amountBySize.get(size) ?? null;
               const editing = editingSize === size;
               return (

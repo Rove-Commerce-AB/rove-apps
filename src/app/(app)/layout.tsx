@@ -3,6 +3,7 @@ import { Sidebar, SIDEBAR_COLLAPSED_COOKIE } from "@/components/Sidebar";
 import { AppTopBar } from "@/components/AppTopBar";
 import { FeatureRequestFab } from "@/components/FeatureRequestFab";
 import { AppThemeAttr } from "@/components/AppThemeAttr";
+import { PresentingModeProvider } from "@/components/PresentingModeContext";
 import { WorkTrailProvider } from "@/components/WorkTrailContext";
 import { ShortcutsProvider } from "@/components/ShortcutsProvider";
 import { getCurrentAppUser } from "@/lib/appUsers";
@@ -50,30 +51,32 @@ export default async function AppLayout({
     (await cookies()).get(SIDEBAR_COLLAPSED_COOKIE)?.value === "1";
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <AppThemeAttr />
-      <ShortcutsProvider initialShortcuts={shortcuts}>
-        <Sidebar
-          isAdmin={isAdmin}
-          canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
-          isCustomerUser={user?.role === "customer"}
-          appKeys={user?.appKeys ?? []}
-          workNav={workNav}
-          initialCollapsed={sidebarCollapsed}
-          unreadNotificationCount={unreadNotificationCount}
-        />
-        <WorkTrailProvider>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <Suspense fallback={<div className="h-[49px] shrink-0 border-b border-border-default bg-bg-default" />}>
-              <AppTopBar />
-            </Suspense>
-            <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-surface-page p-(--space-32)">
-              {children}
-            </main>
-          </div>
-        </WorkTrailProvider>
-      </ShortcutsProvider>
-      <FeatureRequestFab appKeys={user?.appKeys ?? []} />
-    </div>
+    <PresentingModeProvider>
+      <div className="flex h-full overflow-hidden">
+        <AppThemeAttr />
+        <ShortcutsProvider initialShortcuts={shortcuts}>
+          <Sidebar
+            isAdmin={isAdmin}
+            canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
+            isCustomerUser={user?.role === "customer"}
+            appKeys={user?.appKeys ?? []}
+            workNav={workNav}
+            initialCollapsed={sidebarCollapsed}
+            unreadNotificationCount={unreadNotificationCount}
+          />
+          <WorkTrailProvider>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <Suspense fallback={<div className="h-[49px] shrink-0 border-b border-border-default bg-bg-default" />}>
+                <AppTopBar />
+              </Suspense>
+              <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-surface-page p-(--space-32)">
+                {children}
+              </main>
+            </div>
+          </WorkTrailProvider>
+        </ShortcutsProvider>
+        <FeatureRequestFab appKeys={user?.appKeys ?? []} />
+      </div>
+    </PresentingModeProvider>
   );
 }

@@ -397,6 +397,53 @@ export async function getGmailMessageHeaders(messageId: string): Promise<{
   return { messageIdHeader, subject, fromEmail: email, references };
 }
 
+/** From-address for automated Work notification digests (alias on support mailbox). */
+export function notificationsFromAddress(): string {
+  return (
+    process.env.GMAIL_NOTIFICATIONS_FROM?.trim() || "noreply@rove.se"
+  );
+}
+
+/**
+ * Send a standalone notification email (not a support thread reply).
+ * Uses the support mailbox SA impersonation; From defaults to noreply@ alias.
+ */
+export async function sendGmailNotificationEmail(input: {
+  toEmail: string;
+  subject: string;
+  bodyText: string;
+  fromEmail?: string;
+}): Promise<{ id: string }> {
+  const from = input.fromEmail?.trim() || notificationsFromAddress();
+  const to = input.toEmail.trim().toLowerCase();
+  if (!to.includes("@")) throw new Error("Invalid notification recipient");
+
+  const subject = input.subject.trim() || "Rove notification";
+  const body = input.bodyText.replace(/\r\n/g, "\n").trim();
+  if (!body) throw new Error("Notification body is required");
+
+  const raw = buildRawMimeMessage({
+    from,
+    to,
+    subjectHeader: encodeHeaderWord(subject),
+    bodyText: body,
+    extraHeaders: [
+      "Auto-Submitted: auto-generated",
+      "X-Auto-Response-Suppress: All",
+    ],
+    attachments: [],
+  });
+  const encoded = encodeBase64Url(raw);
+
+  const sent = await gmailFetch<{ id: string }>("/messages/send", {
+    method: "POST",
+    body: JSON.stringify({ raw: encoded }),
+    headers: { "Content-Type": "application/json" },
+  });
+
+  return { id: sent.id };
+}
+
 /**
  * Send a reply into an existing Gmail thread as support@.
  * Optional image/video (or other) attachments use multipart/mixed.

@@ -22,6 +22,7 @@ import {
 import { WORK_FILE_MAX_BYTES, type WorkIssueType } from "@/lib/workTypes";
 import { WorkIssueTypePicker } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueTypeIcon";
 import { WorkInlineImageThumbs } from "@/app/(app)/work/[customerId]/[projectId]/WorkCommentComposer";
+import { usePresentingMode } from "@/components/PresentingModeContext";
 import { Select } from "@/components/ui";
 
 type PendingShot = {
@@ -45,6 +46,7 @@ export function FeatureRequestFab({
 }: {
   appKeys?: readonly string[];
 }) {
+  const presenting = usePresentingMode();
   const appOptions = featureRequestAppOptionsForKeys(appKeys);
   const [phase, setPhase] = useState<ComposerPhase>("closed");
   const [message, setMessage] = useState("");
@@ -255,6 +257,10 @@ export function FeatureRequestFab({
 
   const shellWidth = open ? OPEN_WIDTH : phase === "sent" ? SENT_WIDTH : CLOSED_SIZE;
   const shellHeight = open ? Math.max(formHeight + 2, CLOSED_SIZE) : CLOSED_SIZE;
+
+  if (presenting.active) {
+    return null;
+  }
 
   return (
     <div

@@ -14,7 +14,15 @@ export const WORK_ESTIMATE_UNIT_LABELS: Record<WorkEstimateUnit, string> = {
   tshirt: "T-shirt",
 };
 
-export const WORK_TSHIRT_SIZES = ["xs", "s", "m", "l", "xl"] as const;
+/** Priced ladder sizes (customer/project size catalogs). */
+export const WORK_TSHIRT_PRICED_SIZES = ["xs", "s", "m", "l", "xl"] as const;
+export type WorkTshirtPricedSize = (typeof WORK_TSHIRT_PRICED_SIZES)[number];
+
+/** All selectable estimate sizes, including free of charge. */
+export const WORK_TSHIRT_SIZES = [
+  ...WORK_TSHIRT_PRICED_SIZES,
+  "free",
+] as const;
 export type WorkTshirtSize = (typeof WORK_TSHIRT_SIZES)[number];
 
 export const WORK_TSHIRT_SIZE_LABELS: Record<WorkTshirtSize, string> = {
@@ -23,7 +31,14 @@ export const WORK_TSHIRT_SIZE_LABELS: Record<WorkTshirtSize, string> = {
   m: "M",
   l: "L",
   xl: "XL",
+  free: "Free",
 };
+
+export function isWorkTshirtPricedSize(
+  value: string
+): value is WorkTshirtPricedSize {
+  return (WORK_TSHIRT_PRICED_SIZES as readonly string[]).includes(value);
+}
 
 export const WORK_ESTIMATE_CURRENCY_MAX = 99_999_999.99;
 
@@ -116,7 +131,12 @@ export function formatWorkTshirtEstimatePair(
   const logged = formatWorkHours(loggedHours);
   if (size == null) return logged;
   const sizeLabel = formatWorkTshirtSize(size);
-  if (opts?.showPrice && opts.price != null) {
+  if (
+    opts?.showPrice &&
+    opts.price != null &&
+    size !== "free" &&
+    opts.price > 0
+  ) {
     return `${logged} · ${sizeLabel} · ${formatWorkMoneyAmount(
       opts.price,
       opts.currency ?? DEFAULT_BILLING_CURRENCY
@@ -152,7 +172,12 @@ export function formatVisibleWorkEstimate(
     if (opts.showReportedTime) return formatWorkHours(loggedHours);
     if (opts.showEstimates) {
       if (size == null) return null;
-      if (opts.fixedPriceEnabled && opts.sizePrice != null) {
+      if (
+        opts.fixedPriceEnabled &&
+        opts.sizePrice != null &&
+        size !== "free" &&
+        opts.sizePrice > 0
+      ) {
         return `${formatWorkTshirtSize(size)} · ${formatWorkMoneyAmount(
           opts.sizePrice,
           currency
@@ -217,7 +242,7 @@ export function parseWorkEstimateSizeValue(
   if (!isWorkTshirtSize(trimmed)) {
     return {
       ok: false,
-      message: "Size must be XS, S, M, L, or XL.",
+      message: "Size must be XS, S, M, L, XL, or Free.",
     };
   }
   return { ok: true, value: trimmed };
@@ -228,7 +253,7 @@ export function estimateParseError(unit: WorkEstimateUnit): string {
     return `Estimate must be between 0 and ${WORK_ESTIMATE_HOURS_MAX} hours.`;
   }
   if (unit === "tshirt") {
-    return "Size must be XS, S, M, L, or XL.";
+    return "Size must be XS, S, M, L, XL, or Free.";
   }
   return `Estimate must be between 0 and ${WORK_ESTIMATE_CURRENCY_MAX}.`;
 }
@@ -256,7 +281,7 @@ export type WorkSizePriceMap = Partial<Record<WorkTshirtSize, number>>;
  */
 export function doubleSizePricesFromXs(
   xsAmount: number
-): Record<WorkTshirtSize, number> | null {
+): Record<WorkTshirtPricedSize, number> | null {
   if (!Number.isFinite(xsAmount) || xsAmount < 0) return null;
   const roundMoney = (value: number) => Math.round(value * 100) / 100;
   const xs = roundMoney(xsAmount);
@@ -271,7 +296,9 @@ export function resolveSizePrice(
   size: WorkTshirtSize | null | undefined,
   prices: WorkSizePriceMap | null | undefined
 ): number | null {
-  if (size == null || prices == null) return null;
+  if (size == null) return null;
+  if (size === "free") return 0;
+  if (prices == null) return null;
   const amount = prices[size];
   return amount == null || !Number.isFinite(amount) ? null : amount;
 }
@@ -284,6 +311,11 @@ export function sumFixedSizePrices(
   let sum = 0;
   let any = false;
   for (const size of sizes) {
+    if (size === "free") {
+      // Free cards are sized but don't add catalog money; still count as a sum.
+      any = true;
+      continue;
+    }
     const amount = resolveSizePrice(size, prices);
     if (amount == null) continue;
     sum += amount;

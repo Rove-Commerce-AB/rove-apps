@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalizeRelatePair,
   childAlreadyHasParent,
+  emptyWorkIssueRelations,
   groupRelationsForIssues,
   isIssueBlocked,
+  relatedIssueIds,
   relationEdgeFromRole,
   wouldCreateBlocksCycle,
   wouldCreateParentCycle,
@@ -77,5 +79,30 @@ describe("groupRelationsForIssues", () => {
     expect(grouped.get("a")?.blockedBy.map((item) => item.id)).toEqual(["c"]);
     expect(isIssueBlocked(grouped.get("a")!)).toBe(false);
     expect(grouped.get("a")?.relates.map((item) => item.id)).toEqual(["c"]);
+  });
+});
+
+describe("relatedIssueIds", () => {
+  it("collects every linked issue id", () => {
+    const relations = emptyWorkIssueRelations();
+    relations.parent = {
+      relationId: "1",
+      id: "p",
+      key: "P-1",
+      title: "Parent",
+      status: "todo",
+      isDone: false,
+    };
+    relations.relates = [
+      {
+        relationId: "2",
+        id: "r",
+        key: "R-1",
+        title: "Related",
+        status: "todo",
+        isDone: false,
+      },
+    ];
+    expect(relatedIssueIds(relations).sort()).toEqual(["p", "r"]);
   });
 });

@@ -180,7 +180,7 @@ export async function setWorkIssuePlanning(
   if (changes.estimateHours !== undefined && changes.estimateHours !== null) {
     if (estimateUnit === "tshirt") {
       throw new WorkInputError(
-        "This project uses t-shirt sizes. Set estimateSize (xs–xl) instead of estimateHours."
+        "This project uses t-shirt sizes. Set estimateSize (xs–xl or free) instead of estimateHours."
       );
     }
     const check = parseWorkEstimateValue(

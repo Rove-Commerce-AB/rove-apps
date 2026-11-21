@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  Suspense,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -27,6 +34,7 @@ import {
 import type { AppKey } from "@/lib/peopleTypes";
 import type { WorkSelectorCustomer } from "@/lib/workTypes";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
+import { usePresentingMode } from "@/components/PresentingModeContext";
 import { useShortcuts } from "@/components/ShortcutsProvider";
 import {
   buildCurrentPageHref,
@@ -43,6 +51,49 @@ export const SIDEBAR_COLLAPSED_COOKIE = "rove-sidebar-collapsed";
 const SIDEBAR_COLLAPSED_MAX_AGE = 60 * 60 * 24 * 365;
 
 type AppBrand = AppThemeKey;
+
+/** Native tooltip only when the label is ellipsized. */
+function SidebarTruncatedLabel({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [truncated, setTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const measure = () => {
+      setTruncated(el.scrollWidth > el.clientWidth + 0.5);
+    };
+    measure();
+
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(measure)
+        : null;
+    ro?.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [text]);
+
+  return (
+    <span
+      ref={ref}
+      className={className}
+      title={truncated ? text : undefined}
+    >
+      {text}
+    </span>
+  );
+}
 
 function persistSidebarCollapsed(collapsed: boolean) {
   try {
@@ -157,8 +208,8 @@ function NavLink({
       ) : null}
       {!collapsed ? (
         <>
-          <span className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left max-w-[10rem] whitespace-nowrap">
-            <span className="truncate">{label}</span>
+          <span className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left max-w-[12rem] whitespace-nowrap">
+            <SidebarTruncatedLabel text={label} className="truncate" />
           </span>
           {showBadge ? (
             <span
@@ -259,9 +310,10 @@ function AppGroup({
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
               <Icon className={`h-4 w-4 ${iconClass}`.trim()} />
             </span>
-            <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
-              {label}
-            </span>
+            <SidebarTruncatedLabel
+              text={label}
+              className="min-w-0 flex-1 truncate text-left max-w-[12rem]"
+            />
           </Link>
         ) : (
           <button
@@ -273,9 +325,10 @@ function AppGroup({
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
               <Icon className={`h-4 w-4 ${iconClass}`.trim()} />
             </span>
-            <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
-              {label}
-            </span>
+            <SidebarTruncatedLabel
+              text={label}
+              className="min-w-0 flex-1 truncate text-left max-w-[12rem]"
+            />
           </button>
         )}
         <button
@@ -317,9 +370,10 @@ function NavPlaceholder({
         <Icon className="h-4 w-4" />
       </span>
       {!collapsed ? (
-        <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
-          {label}
-        </span>
+        <SidebarTruncatedLabel
+          text={label}
+          className="min-w-0 flex-1 truncate text-left max-w-[12rem]"
+        />
       ) : null}
     </div>
   );
@@ -381,14 +435,16 @@ function ShortcutsNav({
                     href={shortcut.href}
                     prefetch={false}
                     role="menuitem"
-                    title={shortcut.name}
-                    className={`block truncate px-3 py-1.5 text-body-m transition-colors hover:bg-nav-active hover:text-text-primary ${
+                    className={`block px-3 py-1.5 text-body-m transition-colors hover:bg-nav-active hover:text-text-primary ${
                       active
                         ? "bg-nav-active text-text-primary"
                         : "text-text-secondary"
                     }`}
                   >
-                    {shortcut.name}
+                    <SidebarTruncatedLabel
+                      text={shortcut.name}
+                      className="block truncate"
+                    />
                   </Link>
                 );
               })}
@@ -515,6 +571,7 @@ export function Sidebar({
   initialCollapsed = false,
   unreadNotificationCount = 0,
 }: SidebarProps) {
+  const presenting = usePresentingMode();
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(initialCollapsed);
@@ -656,10 +713,14 @@ export function Sidebar({
     paddingBottom: "0.375rem",
   };
 
+  if (presenting.active) {
+    return null;
+  }
+
   return (
     <aside
       className={`relative z-20 flex h-full flex-shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-bg-default shadow-lg transition-[width] duration-200 ease-out ${
-        collapsed ? "w-[52px]" : "w-52"
+        collapsed ? "w-[52px]" : "w-56"
       }`}
     >
       <div

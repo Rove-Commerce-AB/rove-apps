@@ -505,6 +505,7 @@ export async function fetchWorkBoardStatuses(
 export async function insertWorkBoardStatus(input: {
   boardId: string;
   name: string;
+  isDone?: boolean;
 }): Promise<WorkBoardStatus> {
   const { rows } = await cloudSqlPool.query<{
     id: string;
@@ -517,10 +518,10 @@ export async function insertWorkBoardStatus(input: {
        $1,
        $2,
        (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_project_statuses WHERE project_id = $1),
-       false
+       $3
      )
      RETURNING id, name, sort_order, is_done`,
-    [input.boardId, input.name]
+    [input.boardId, input.name, input.isDone === true]
   );
   const row = rows[0];
   if (!row) throw new Error("Failed to create status");
@@ -530,6 +531,23 @@ export async function insertWorkBoardStatus(input: {
     sortOrder: row.sort_order,
     isDone: row.is_done,
   };
+}
+
+/**
+ * Ensure the board has at least one Done column (is_done).
+ * Creates "Done" at the end when missing. Returns the Done status used.
+ */
+export async function ensureWorkBoardDoneStatus(
+  boardId: string
+): Promise<WorkBoardStatus> {
+  const statuses = await fetchWorkBoardStatuses(boardId);
+  const existing = statuses.find((status) => status.isDone);
+  if (existing) return existing;
+  return insertWorkBoardStatus({
+    boardId,
+    name: "Done",
+    isDone: true,
+  });
 }
 
 export async function renameWorkBoardStatus(input: {
