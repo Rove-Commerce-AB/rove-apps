@@ -11,7 +11,7 @@ import { usePresentingMode } from "@/components/PresentingModeContext";
 import { PresentingModeToggle } from "@/components/PresentingModeToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-export function AppTopBar() {
+export function AppTopBar({ isStaff = false }: { isStaff?: boolean }) {
   const pathname = usePathname();
   const presenting = usePresentingMode();
   const workTrail = useWorkTrail();
@@ -93,12 +93,12 @@ export function AppTopBar() {
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {presenting.active ? (
+        {isStaff && presenting.active ? (
           <span className="mr-1 rounded-md bg-accent-primary-subtle px-2 py-0.5 text-[12px] font-medium text-accent-primary-text">
             Presenting
           </span>
         ) : null}
-        <PresentingModeToggle />
+        {isStaff ? <PresentingModeToggle /> : null}
         <ThemeToggle />
       </div>
     </header>

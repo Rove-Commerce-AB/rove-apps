@@ -23,6 +23,7 @@ export default async function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentAppUser();
   const isAdmin = user?.role === "admin";
+  const isStaff = user != null && user.role !== "customer";
   let canSeeTimeReportProjectManager = false;
 
   if (isAdmin) {
@@ -51,7 +52,7 @@ export default async function AppLayout({
     (await cookies()).get(SIDEBAR_COLLAPSED_COOKIE)?.value === "1";
 
   return (
-    <PresentingModeProvider>
+    <PresentingModeProvider isStaff={isStaff}>
       <div className="flex h-full overflow-hidden">
         <AppThemeAttr />
         <ShortcutsProvider initialShortcuts={shortcuts}>
@@ -67,7 +68,7 @@ export default async function AppLayout({
           <WorkTrailProvider>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <Suspense fallback={<div className="h-[49px] shrink-0 border-b border-border-default bg-bg-default" />}>
-                <AppTopBar />
+                <AppTopBar isStaff={isStaff} />
               </Suspense>
               <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-surface-page p-(--space-32)">
                 {children}

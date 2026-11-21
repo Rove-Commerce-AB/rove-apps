@@ -79,51 +79,68 @@ function writeStored(prefs: PresentingPrefs) {
   }
 }
 
-export function PresentingModeProvider({ children }: { children: ReactNode }) {
+export function PresentingModeProvider({
+  children,
+  isStaff = false,
+}: {
+  children: ReactNode;
+  /** Presenting is a staff-only chrome feature. */
+  isStaff?: boolean;
+}) {
   const [prefs, setPrefs] = useState<PresentingPrefs>(DEFAULT_PREFS);
   const [hydrated, setHydrated] = useState(false);
   const [suggested, setSuggested] = useState<PresentingSuggested>(DEFAULT_SUGGESTED);
 
   useEffect(() => {
+    if (!isStaff) {
+      setPrefs(DEFAULT_PREFS);
+      setHydrated(true);
+      return;
+    }
     setPrefs(readStored());
     setHydrated(true);
-  }, []);
+  }, [isStaff]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !isStaff) return;
     writeStored(prefs);
-  }, [prefs, hydrated]);
+  }, [prefs, hydrated, isStaff]);
 
   const setSuggestedDefaults = useCallback((next: PresentingSuggested | null) => {
     setSuggested(next ?? DEFAULT_SUGGESTED);
   }, []);
 
   const setShowEstimates = useCallback((value: boolean) => {
+    if (!isStaff) return;
     setPrefs((current) => ({ ...current, showEstimates: value }));
-  }, []);
+  }, [isStaff]);
 
   const setShowReportedTime = useCallback((value: boolean) => {
+    if (!isStaff) return;
     setPrefs((current) => ({ ...current, showReportedTime: value }));
-  }, []);
+  }, [isStaff]);
 
   const startPresenting = useCallback(
     (next?: { showEstimates?: boolean; showReportedTime?: boolean }) => {
+      if (!isStaff) return;
       setPrefs((current) => ({
         active: true,
         showEstimates: next?.showEstimates ?? current.showEstimates,
         showReportedTime: next?.showReportedTime ?? current.showReportedTime,
       }));
     },
-    []
+    [isStaff]
   );
 
   const stopPresenting = useCallback(() => {
     setPrefs((current) => ({ ...current, active: false }));
   }, []);
 
+  const effectivePrefs = isStaff ? prefs : DEFAULT_PREFS;
+
   const value = useMemo(
     () => ({
-      ...prefs,
+      ...effectivePrefs,
       suggested,
       setSuggestedDefaults,
       setShowEstimates,
@@ -132,7 +149,7 @@ export function PresentingModeProvider({ children }: { children: ReactNode }) {
       stopPresenting,
     }),
     [
-      prefs,
+      effectivePrefs,
       suggested,
       setSuggestedDefaults,
       setShowEstimates,
