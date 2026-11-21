@@ -1,0 +1,50 @@
+# Cloud Run deploy for rove-planner.
+# Uses the repo Dockerfile (includes webanalyze) instead of pack/buildpacks.
+# Pack's "save to docker daemon" export has been failing with EOF / status 62
+# on Cloud Build workers (docker.sock dies during layer export).
+substitutions:
+  _AR_HOSTNAME: europe-north2-docker.pkg.dev
+  _AR_PROJECT_ID: continual-mind-442414-e0
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _DEPLOY_REGION: europe-north2
+  _SERVICE_NAME: rove-planner
+  _TRIGGER_ID: cloudrun-rove-apps-main
+  _IMAGE_PATH: europe-north2-docker.pkg.dev/continual-mind-442414-e0/cloud-run-source-deploy/rove-commerce-ab-rove-planner/rove-planner
+
+steps:
+  - id: Build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_IMAGE_PATH}:${COMMIT_SHA}
+      - .
+
+  - id: Push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_IMAGE_PATH}:${COMMIT_SHA}
+
+  - id: Deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - ${_SERVICE_NAME}
+      - --image=${_IMAGE_PATH}:${COMMIT_SHA}
+      - --region=${_DEPLOY_REGION}
+      - --quiet
+      - --update-labels=managed-by=gcp-cloud-build-deploy-cloud-run,gcb-trigger-id=${_TRIGGER_ID},gcb-trigger-region=$LOCATION,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID
+
+images:
+  - ${_IMAGE_PATH}:${COMMIT_SHA}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  substitutionOption: ALLOW_LOOSE
+
+timeout: 3600s
