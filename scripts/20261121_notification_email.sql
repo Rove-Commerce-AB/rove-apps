@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS user_notification_prefs (
 CREATE TABLE IF NOT EXISTS notification_email_outbox (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   app_user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-  notification_id uuid REFERENCES user_notifications(id) ON DELETE SET NULL,
+  -- Soft link only (no FK): deploy role may lack REFERENCES on user_notifications.
+  notification_id uuid,
   kind text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   status text NOT NULL DEFAULT 'pending',
