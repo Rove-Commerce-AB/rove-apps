@@ -404,6 +404,66 @@ export function notificationsFromAddress(): string {
   );
 }
 
+function notificationsFromDisplayName(): string {
+  return process.env.GMAIL_NOTIFICATIONS_FROM_NAME?.trim() || "Rove";
+}
+
+/** RFC 5322 From value: `Name <email@x>` (name encoded when needed). */
+export function formatMailboxFromHeader(email: string, displayName?: string): string {
+  const addr = email.trim().toLowerCase();
+  const name = (displayName ?? "").trim();
+  if (!name) return addr;
+  const encoded = encodeHeaderWord(name.replace(/[\r\n]+/g, " "));
+  // Quote when encodeHeaderWord left it as plain ASCII with specials.
+  const safe =
+    /^[\x20-\x7E]*$/.test(encoded) && /[",\\()]/.test(encoded)
+      ? `"${encoded.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+      : encoded;
+  return `${safe} <${addr}>`;
+}
+
+type GmailSendAs = {
+  sendAsEmail?: string;
+  isPrimary?: boolean;
+  treatAsAlias?: boolean;
+  verificationStatus?: string;
+};
+
+let cachedSendAsEmails: { at: number; emails: Set<string> } | null = null;
+
+async function listSendAsEmails(): Promise<Set<string>> {
+  const now = Date.now();
+  if (cachedSendAsEmails && now - cachedSendAsEmails.at < 5 * 60_000) {
+    return cachedSendAsEmails.emails;
+  }
+  const data = await gmailFetch<{ sendAs?: GmailSendAs[] }>("/settings/sendAs");
+  const emails = new Set(
+    (data.sendAs ?? [])
+      .map((row) => (row.sendAsEmail ?? "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  cachedSendAsEmails = { at: now, emails };
+  return emails;
+}
+
+/**
+ * Gmail silently rewrites From to the primary mailbox when the address is not
+ * a configured Send mail as / alias. Fail closed so digests never look like
+ * Support replies.
+ */
+async function assertCanSendAs(fromEmail: string): Promise<void> {
+  const want = fromEmail.trim().toLowerCase();
+  const allowed = await listSendAsEmails();
+  if (allowed.has(want)) return;
+  const listed = [...allowed].sort().join(", ") || "(none)";
+  throw new Error(
+    `Gmail cannot send as ${want} from ${impersonateEmail()}. ` +
+      `Add ${want} as an email alias on that mailbox in Google Admin ` +
+      `(Users → ${impersonateEmail()} → Email aliases), then retry. ` +
+      `Current send-as: ${listed}`
+  );
+}
+
 /**
  * Send a standalone notification email (not a support thread reply).
  * Uses the support mailbox SA impersonation; From defaults to noreply@ alias.
@@ -414,13 +474,22 @@ export async function sendGmailNotificationEmail(input: {
   bodyText: string;
   fromEmail?: string;
 }): Promise<{ id: string }> {
-  const from = input.fromEmail?.trim() || notificationsFromAddress();
+  const fromEmail = (
+    input.fromEmail?.trim() || notificationsFromAddress()
+  ).toLowerCase();
   const to = input.toEmail.trim().toLowerCase();
   if (!to.includes("@")) throw new Error("Invalid notification recipient");
+
+  await assertCanSendAs(fromEmail);
 
   const subject = input.subject.trim() || "Rove notification";
   const body = input.bodyText.replace(/\r\n/g, "\n").trim();
   if (!body) throw new Error("Notification body is required");
+
+  const from = formatMailboxFromHeader(
+    fromEmail,
+    notificationsFromDisplayName()
+  );
 
   const raw = buildRawMimeMessage({
     from,
