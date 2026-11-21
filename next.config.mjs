@@ -1,7 +1,10 @@
 const nextConfig = {
   // Feature/bug screenshots on create (up to 8 × 8 MB).
-  serverActions: {
-    bodySizeLimit: "40mb",
+  // bodySizeLimit remains under experimental in Next 16.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "40mb",
+    },
   },
   // unzipper optionally requires @aws-sdk/client-s3; keep it external so
   // Turbopack does not try to resolve that unused path.

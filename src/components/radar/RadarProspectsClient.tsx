@@ -120,7 +120,7 @@ function HubSpotMark({ className }: { className?: string }) {
   );
 }
 
-const PRIORITY_TECH_NAMES = new Set(
+const PRIORITY_TECH_NAMES = new Set<string>(
   RADAR_PRIORITY_TECHNOLOGIES.map((t) => t.name)
 );
 
