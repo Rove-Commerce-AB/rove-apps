@@ -18,6 +18,7 @@ import {
   formatOmsattningsklassOption,
   omsattningsklasserForCodes,
   omsattningsklasserForRevenueRange,
+  SCB_OMSATTNINGSKLASSER,
   type ScbOmsattningsklass,
 } from "@/lib/radar/scb/omsattningsklasser";
 import {
@@ -107,19 +108,14 @@ function omsClassesForAudience(audience: RadarAudience): ScbOmsattningsklass[] {
       audience.revenue_max_sek
     );
   }
-  return [];
+  // Empty turnover filter = Any → query every SCB omsättningsklass.
+  return [...SCB_OMSATTNINGSKLASSER];
 }
 
 function collectOmsClasses(audiences: RadarAudience[]): ScbOmsattningsklass[] {
   const byKod = new Map<number, ScbOmsattningsklass>();
   for (const a of audiences) {
-    const classes = omsClassesForAudience(a);
-    if (classes.length === 0) {
-      throw new Error(
-        `Target group "${a.name}" needs at least one turnover class so Radar can query SCB.`
-      );
-    }
-    for (const k of classes) byKod.set(k.kod, k);
+    for (const k of omsClassesForAudience(a)) byKod.set(k.kod, k);
   }
   return [...byKod.values()].sort((a, b) => a.kod - b.kod);
 }

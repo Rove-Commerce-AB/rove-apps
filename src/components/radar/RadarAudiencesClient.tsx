@@ -49,18 +49,48 @@ const emptyForm: FormState = {
   omsKlCodes: [],
 };
 
+const ALL_COUNTY_VALUES = SWEDEN_COUNTIES as readonly string[];
+const ALL_OMS_KL_VALUES = SCB_OMSATTNINGSKLASSER.map((row) => String(row.kod));
+
+/** Empty or every option selected → Any (stored/shown as empty). */
+function normalizeAnySelection(
+  selected: string[],
+  allValues: readonly string[]
+): string[] {
+  if (selected.length === 0) return [];
+  if (
+    selected.length === allValues.length &&
+    allValues.every((value) => selected.includes(value))
+  ) {
+    return [];
+  }
+  return selected;
+}
+
 function formFromAudience(audience: RadarAudience): FormState {
   return {
     name: audience.name,
     sniPrefixes: [...audience.sni_prefixes],
-    counties: [...audience.counties],
-    omsKlCodes: audience.oms_kl_codes.map((c) => String(c)),
+    counties: normalizeAnySelection([...audience.counties], ALL_COUNTY_VALUES),
+    omsKlCodes: normalizeAnySelection(
+      audience.oms_kl_codes.map((c) => String(c)),
+      ALL_OMS_KL_VALUES
+    ),
   };
 }
 
 function formatOmsKlSummary(codes: number[]): string {
-  if (codes.length === 0) return "—";
-  return codes.map((kod) => String(kod)).join(", ");
+  const normalized = normalizeAnySelection(
+    codes.map((kod) => String(kod)),
+    ALL_OMS_KL_VALUES
+  );
+  if (normalized.length === 0) return "Any";
+  return normalized.join(", ");
+}
+
+function formatCountiesSummary(counties: string[]): string {
+  const normalized = normalizeAnySelection(counties, ALL_COUNTY_VALUES);
+  return normalized.length === 0 ? "Any" : normalized.join(", ");
 }
 
 export function RadarAudiencesClient({ audiences }: Props) {
@@ -121,17 +151,19 @@ export function RadarAudiencesClient({ audiences }: Props) {
       setError("Select at least one SNI prefix");
       return;
     }
-    if (form.omsKlCodes.length === 0) {
-      setError("Select at least one turnover class");
-      return;
-    }
     if (editing == null) return;
+
+    const counties = normalizeAnySelection(form.counties, ALL_COUNTY_VALUES);
+    const omsKlCodes = normalizeAnySelection(
+      form.omsKlCodes,
+      ALL_OMS_KL_VALUES
+    );
 
     const payload = {
       name: form.name,
       sni_prefixes: form.sniPrefixes,
-      counties: form.counties,
-      oms_kl_codes: form.omsKlCodes.map((c) => Number(c)),
+      counties,
+      oms_kl_codes: omsKlCodes.map((c) => Number(c)),
     };
 
     startSaving(async () => {
@@ -179,7 +211,7 @@ export function RadarAudiencesClient({ audiences }: Props) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Target groups"
-        description="Define who Radar should collect. Only active target groups are processed by import jobs. SCB import queries by turnover class, then filters on SNI and county."
+        description="Define who Radar should collect. Only active target groups are processed by import jobs. Leave turnover class or counties empty for Any."
       >
         <Button size="sm" onClick={() => openForm("new")}>
           <Plus className="h-4 w-4" aria-hidden /> Add target group
@@ -198,7 +230,7 @@ export function RadarAudiencesClient({ audiences }: Props) {
       {audiences.length === 0 ? (
         <EmptyState
           title="No target groups yet"
-          description="Create a target group with SNI, turnover class, and optional geography."
+          description="Create a target group with SNI. Turnover class and counties are optional (empty = Any)."
           actionLabel="Add target group"
           onAction={() => openForm("new")}
         />
@@ -241,7 +273,7 @@ export function RadarAudiencesClient({ audiences }: Props) {
                       {formatOmsKlSummary(a.oms_kl_codes)}
                     </td>
                     <td className="px-4 py-3 text-text-secondary">
-                      {a.counties.join(", ") || "Any"}
+                      {formatCountiesSummary(a.counties)}
                     </td>
                     <td className="px-4 py-3 text-text-primary">
                       {a.company_count}
@@ -300,7 +332,7 @@ export function RadarAudiencesClient({ audiences }: Props) {
           if (!next) setEditing(null);
         }}
         title={title}
-        subtitle="SCB is queried by turnover class; SNI and county filter the results."
+        subtitle="None selected for turnover class or counties means Any. Selecting every option is stored as Any."
         contentClassName="max-h-[90vh] max-w-lg overflow-y-auto"
       >
         <form onSubmit={save} className="modal-form-discreet mt-4 space-y-3">
@@ -325,22 +357,24 @@ export function RadarAudiencesClient({ audiences }: Props) {
             idPrefix="radar-audience-sni"
           />
           <CheckboxList
-            label="Turnover class (SCB)"
+            label="Turnover class (none = Any)"
             options={omsOptions}
             value={form.omsKlCodes}
             onChange={(next) =>
               setForm((prev) => ({ ...prev, omsKlCodes: next }))
             }
+            selectAll
             maxHeightClassName="max-h-48"
             idPrefix="radar-audience-oms"
           />
           <CheckboxList
-            label="Counties (optional)"
+            label="Counties (none = Any)"
             options={countyOptions}
             value={form.counties}
             onChange={(next) =>
               setForm((prev) => ({ ...prev, counties: next }))
             }
+            selectAll
             maxHeightClassName="max-h-40"
             idPrefix="radar-audience-county"
           />

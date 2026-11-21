@@ -199,11 +199,15 @@ function PersonAppIcons({ appKeys }: { appKeys: AppKey[] }) {
   if (appKeys.length === 0) return null;
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="flex max-w-full min-w-0 flex-wrap items-center gap-1">
       {APP_KEYS.filter((key) => appKeys.includes(key)).map((key) => {
         const Icon = APP_ICONS[key];
         return (
-          <span key={key} title={APP_LABELS[key]} className={APP_BRAND_BY_KEY[key].icon}>
+          <span
+            key={key}
+            title={APP_LABELS[key]}
+            className={`inline-flex shrink-0 ${APP_BRAND_BY_KEY[key].icon}`}
+          >
             <Icon className="h-4 w-4" aria-hidden />
             <span className="sr-only">{APP_LABELS[key]}</span>
           </span>
@@ -1445,7 +1449,7 @@ export function PeoplePageClient({
       header: "Apps",
       sortable: true,
       secondary: true,
-      width: "7rem",
+      width: "8.5rem",
       cell: (person) => <PersonAppIcons appKeys={person.appKeys} />,
     },
     {

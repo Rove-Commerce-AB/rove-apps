@@ -59,7 +59,7 @@ export type RadarAudience = {
   counties: string[];
   employee_min: number | null;
   employee_max: number | null;
-  /** Selected SCB omsättningsklass codes (0–12). Empty = no revenue filter. */
+  /** Selected SCB omsättningsklass codes (0–12). Empty = Any (all classes). */
   oms_kl_codes: number[];
   revenue_min_sek: number | null;
   revenue_max_sek: number | null;
