@@ -73,7 +73,7 @@ export default async function AppLayout({
           </div>
         </WorkTrailProvider>
       </ShortcutsProvider>
-      <FeatureRequestFab />
+      <FeatureRequestFab appKeys={user?.appKeys ?? []} />
     </div>
   );
 }

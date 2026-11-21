@@ -11,7 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { Check, MessageCirclePlus, X } from "lucide-react";
 import { createFeatureRequest } from "@/lib/featureRequests";
-import { FEATURE_REQUEST_APP_OPTIONS } from "@/lib/featureRequestApps";
+import { featureRequestAppOptionsForKeys } from "@/lib/featureRequestApps";
 import {
   collectClipboardMediaFiles,
   extractVideoPosterJpeg,
@@ -40,7 +40,12 @@ const OPEN_WIDTH = 320;
 
 type ComposerPhase = "closed" | "open" | "sent";
 
-export function FeatureRequestFab() {
+export function FeatureRequestFab({
+  appKeys = [],
+}: {
+  appKeys?: readonly string[];
+}) {
+  const appOptions = featureRequestAppOptionsForKeys(appKeys);
   const [phase, setPhase] = useState<ComposerPhase>("closed");
   const [message, setMessage] = useState("");
   const [app, setApp] = useState("");
@@ -214,7 +219,7 @@ export function FeatureRequestFab() {
     e.preventDefault();
     const trimmed = message.trim();
     if (!trimmed) return;
-    if (!app) {
+    if (!app || !appOptions.some((opt) => opt.value === app)) {
       setError("Select an app");
       return;
     }
@@ -340,14 +345,13 @@ export function FeatureRequestFab() {
             </div>
             <div>
               <Select
-                label="App"
                 size="sm"
                 variant="modal"
                 value={app}
                 onValueChange={setApp}
                 disabled={submitting}
                 placeholder="Select app…"
-                options={[...FEATURE_REQUEST_APP_OPTIONS]}
+                options={appOptions}
               />
             </div>
             <div>

@@ -2,7 +2,10 @@
 
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { featureRequestAppLabel } from "@/lib/featureRequestApps";
+import {
+  featureRequestAppLabel,
+  isFeatureRequestAppAllowed,
+} from "@/lib/featureRequestApps";
 import { joinWorkInlineImages } from "@/lib/workInlineImages";
 import { isVideoPosterFileName } from "@/lib/workMedia";
 import { findOrCreateBoardComponent } from "@/lib/workIssuesQueries";
@@ -121,13 +124,16 @@ export async function createFeatureRequest(
 ): Promise<void> {
   const trimmed = String(formData.get("content") ?? "").trim();
   if (!trimmed) throw new Error("Content is required");
-  const appLabel = featureRequestAppLabel(formData.get("app"));
-  if (!appLabel) throw new Error("Select an app");
   const type = formData.get("issueType") === "bug" ? "bug" : "issue";
   const screenshots = collectMediaFiles(formData);
 
   const user = await getCurrentAppUser();
   if (!user?.id) throw new Error("Unauthorized");
+  if (!isFeatureRequestAppAllowed(formData.get("app"), user.appKeys ?? [])) {
+    throw new Error("Select an app you have access to");
+  }
+  const appLabel = featureRequestAppLabel(formData.get("app"));
+  if (!appLabel) throw new Error("Select an app");
 
   const { boardId, requestStatusId } = await resolveFeatureRequestBoard();
   const component = await findOrCreateBoardComponent(boardId, appLabel);
