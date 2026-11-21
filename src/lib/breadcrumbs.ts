@@ -9,6 +9,7 @@ export type BreadcrumbExtras = {
   workCustomerName?: string;
   workBoardTitle?: string;
   workIssueKey?: string;
+  radarCompanyName?: string;
 };
 
 /**
@@ -165,7 +166,22 @@ export function breadcrumbsForPathname(
       return [root, radar, { label: "Target groups" }];
     }
     if (pathname.startsWith(ROUTES.radarCompanies)) {
+      const detail =
+        pathname.length > ROUTES.radarCompanies.length &&
+        pathname[ROUTES.radarCompanies.length] === "/";
+      if (detail) {
+        const name = extras?.radarCompanyName?.trim();
+        return [
+          root,
+          radar,
+          { label: "Companies", href: ROUTES.radarCompanies },
+          { label: name || "Company" },
+        ];
+      }
       return [root, radar, { label: "Companies" }];
+    }
+    if (pathname.startsWith(ROUTES.radarSearch)) {
+      return [root, radar, { label: "Search" }];
     }
     if (pathname.startsWith(ROUTES.radarProspects)) {
       return [root, radar, { label: "Prospects" }];

@@ -3,12 +3,14 @@ import "server-only";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { buildOfferSignals } from "@/lib/radar/matching";
 import { normalizeHostname, normalizeOrganizationNumber } from "@/lib/radar/orgNumber";
+import { workPersonFromUser } from "@/lib/workIssueKey";
 import type {
   RadarBusinessModel,
   RadarCompanyDetail,
   RadarCompanyListItem,
   RadarDomain,
   RadarFinancialsOrigin,
+  RadarOrphanCompany,
   RadarProspectStatus,
   RadarTechnology,
 } from "@/lib/radar/types";
@@ -20,6 +22,8 @@ export type RadarCompanyFilters = {
   sniPrefix?: string;
   technologyKey?: string;
   prospectStatus?: RadarProspectStatus | "none";
+  /** Restrict to members of a prospect list. */
+  prospectListId?: string;
   businessModel?: RadarBusinessModel;
   existingCustomer?: "yes" | "no";
   includeDemo?: boolean;
@@ -36,6 +40,10 @@ function mapListItem(row: Record<string, unknown>): RadarCompanyListItem {
     employee_count:
       row.employee_count == null ? null : Number(row.employee_count),
     revenue_sek: row.revenue_sek == null ? null : Number(row.revenue_sek),
+    oms_kl: row.oms_kl == null ? null : Number(row.oms_kl),
+    oms_kl_label: (row.oms_kl_label as string | null) ?? null,
+    anst_kl: row.anst_kl == null ? null : Number(row.anst_kl),
+    anst_kl_label: (row.anst_kl_label as string | null) ?? null,
     financials_origin: row.financials_origin as RadarFinancialsOrigin,
     business_model: (row.business_model as RadarBusinessModel | null) ?? null,
     source: String(row.source),
@@ -46,6 +54,18 @@ function mapListItem(row: Record<string, unknown>): RadarCompanyListItem {
     technologies: (row.technologies as string[]) ?? [],
     prospect_status: (row.prospect_status as RadarProspectStatus | null) ?? null,
     audience_names: (row.audience_names as string[]) ?? [],
+    owner:
+      row.owner_id != null
+        ? workPersonFromUser({
+            id: String(row.owner_id),
+            name: (row.owner_name as string | null) ?? null,
+            email: String(row.owner_email ?? ""),
+          })
+        : null,
+    hubspot_company_id: (row.hubspot_company_id as string | null) ?? null,
+    hubspot_exported_at: row.hubspot_exported_at
+      ? new Date(String(row.hubspot_exported_at)).toISOString()
+      : null,
   };
 }
 
@@ -99,6 +119,15 @@ export async function listRadarCompanies(
     params.push(filters.prospectStatus);
     where.push(`p.status = $${params.length}`);
   }
+  if (filters.prospectListId) {
+    params.push(filters.prospectListId);
+    where.push(
+      `EXISTS (
+         SELECT 1 FROM radar_prospect_list_members m
+         WHERE m.company_id = c.id AND m.list_id = $${params.length}
+       )`
+    );
+  }
   if (filters.businessModel) {
     params.push(filters.businessModel);
     where.push(`c.business_model = $${params.length}`);
@@ -119,6 +148,10 @@ export async function listRadarCompanies(
        c.sni_description,
        c.employee_count,
        c.revenue_sek,
+       c.oms_kl,
+       c.oms_kl_label,
+       c.anst_kl,
+       c.anst_kl_label,
        c.financials_origin,
        c.business_model,
        c.source,
@@ -142,10 +175,16 @@ export async function listRadarCompanies(
          FROM radar_company_audiences ca
          JOIN radar_audiences a ON a.id = ca.audience_id
          WHERE ca.company_id = c.id
-       ), '{}') AS audience_names
+       ), '{}') AS audience_names,
+       ou.id AS owner_id,
+       ou.name AS owner_name,
+       ou.email AS owner_email,
+       c.hubspot_company_id,
+       c.hubspot_exported_at
      FROM radar_companies c
      LEFT JOIN customers cust ON cust.id = c.matched_customer_id
      LEFT JOIN radar_prospects p ON p.company_id = c.id
+     LEFT JOIN app_users ou ON ou.id = p.owner_app_user_id
      WHERE ${where.join(" AND ")}
      ORDER BY c.name ASC
      LIMIT 500`,
@@ -170,6 +209,10 @@ export async function getRadarCompany(
        c.sni_description,
        c.employee_count,
        c.revenue_sek,
+       c.oms_kl,
+       c.oms_kl_label,
+       c.anst_kl,
+       c.anst_kl_label,
        c.financials_origin,
        c.business_model,
        c.source,
@@ -201,10 +244,16 @@ export async function getRadarCompany(
          SELECT count(*)::int FROM radar_company_audiences ca
          JOIN radar_audiences a ON a.id = ca.audience_id
          WHERE ca.company_id = c.id AND a.status = 'active'
-       ) AS active_audience_count
+       ) AS active_audience_count,
+       ou.id AS owner_id,
+       ou.name AS owner_name,
+       ou.email AS owner_email,
+       c.hubspot_company_id,
+       c.hubspot_exported_at
      FROM radar_companies c
      LEFT JOIN customers cust ON cust.id = c.matched_customer_id
      LEFT JOIN radar_prospects p ON p.company_id = c.id
+     LEFT JOIN app_users ou ON ou.id = p.owner_app_user_id
      WHERE c.id = $1`,
     [id]
   );
@@ -292,11 +341,31 @@ export async function updateRadarCompanyBusinessModel(
   );
 }
 
+/** Delete one domain by hostname, or all domains for the company. */
+export async function deleteRadarDomain(input: {
+  companyId: string;
+  hostname?: string | null;
+}): Promise<void> {
+  if (input.hostname?.trim()) {
+    const hostname = normalizeHostname(input.hostname);
+    if (!hostname) throw new Error("Invalid hostname");
+    await cloudSqlPool.query(
+      `DELETE FROM radar_domains WHERE company_id = $1 AND hostname = $2`,
+      [input.companyId, hostname]
+    );
+  } else {
+    await cloudSqlPool.query(
+      `DELETE FROM radar_domains WHERE company_id = $1`,
+      [input.companyId]
+    );
+  }
+}
+
 export async function addRadarDomain(input: {
   companyId: string;
   hostname: string;
   isPrimary?: boolean;
-  source?: "manual" | "customer" | "import" | "demo";
+  source?: "manual" | "customer" | "import" | "demo" | "lookup";
 }): Promise<RadarDomain> {
   const hostname = normalizeHostname(input.hostname);
   if (!hostname) throw new Error("Invalid hostname");
@@ -355,6 +424,12 @@ export type UpsertRadarCompanyInput = {
   sni_description?: string | null;
   employee_count?: number | null;
   revenue_sek?: number | null;
+  oms_kl?: number | null;
+  oms_kl_label?: string | null;
+  oms_ar?: number | null;
+  anst_kl?: number | null;
+  anst_kl_label?: string | null;
+  lan_kod?: string | null;
   financials_origin?: RadarFinancialsOrigin;
   business_model?: RadarBusinessModel | null;
   source: string;
@@ -375,10 +450,13 @@ export async function upsertRadarCompany(
     `INSERT INTO radar_companies (
        organization_number, name, legal_form, county, municipality,
        sni_code, sni_description, employee_count, revenue_sek,
+       oms_kl, oms_kl_label, oms_ar, anst_kl, anst_kl_label, lan_kod,
        financials_origin, business_model, source, source_ref,
        source_fetched_at, is_demo
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), $14
+       $1, $2, $3, $4, $5, $6, $7, $8, $9,
+       $10, $11, $12, $13, $14, $15,
+       $16, $17, $18, $19, now(), $20
      )
      ON CONFLICT (organization_number) DO UPDATE SET
        name = EXCLUDED.name,
@@ -393,14 +471,22 @@ export async function upsertRadarCompany(
          ELSE COALESCE(EXCLUDED.employee_count, radar_companies.employee_count)
        END,
        revenue_sek = CASE
+         WHEN EXCLUDED.financials_origin IN ('scb', 'licensed') THEN NULL
          WHEN EXCLUDED.financials_origin = 'demo' AND radar_companies.financials_origin <> 'demo'
            THEN radar_companies.revenue_sek
          ELSE COALESCE(EXCLUDED.revenue_sek, radar_companies.revenue_sek)
        END,
+       oms_kl = COALESCE(EXCLUDED.oms_kl, radar_companies.oms_kl),
+       oms_kl_label = COALESCE(EXCLUDED.oms_kl_label, radar_companies.oms_kl_label),
+       oms_ar = COALESCE(EXCLUDED.oms_ar, radar_companies.oms_ar),
+       anst_kl = COALESCE(EXCLUDED.anst_kl, radar_companies.anst_kl),
+       anst_kl_label = COALESCE(EXCLUDED.anst_kl_label, radar_companies.anst_kl_label),
+       lan_kod = COALESCE(EXCLUDED.lan_kod, radar_companies.lan_kod),
        financials_origin = CASE
          WHEN radar_companies.financials_origin = 'licensed' THEN radar_companies.financials_origin
          WHEN EXCLUDED.financials_origin = 'licensed' THEN 'licensed'
-         WHEN radar_companies.financials_origin = 'demo' THEN radar_companies.financials_origin
+         WHEN EXCLUDED.financials_origin = 'scb' THEN 'scb'
+         WHEN radar_companies.financials_origin IN ('scb', 'demo') THEN radar_companies.financials_origin
          ELSE EXCLUDED.financials_origin
        END,
        source = EXCLUDED.source,
@@ -418,6 +504,12 @@ export async function upsertRadarCompany(
       input.sni_description ?? null,
       input.employee_count ?? null,
       input.revenue_sek ?? null,
+      input.oms_kl ?? null,
+      input.oms_kl_label ?? null,
+      input.oms_ar ?? null,
+      input.anst_kl ?? null,
+      input.anst_kl_label ?? null,
+      input.lan_kod ?? null,
       input.financials_origin ?? "unknown",
       input.business_model ?? null,
       input.source,
@@ -436,4 +528,81 @@ export async function upsertRadarCompany(
     );
   }
   return companyId;
+}
+
+/** All organization numbers currently in Radar (digits-only). */
+export async function listRadarOrganizationNumbers(): Promise<Set<string>> {
+  const { rows } = await cloudSqlPool.query<{ organization_number: string }>(
+    `SELECT organization_number FROM radar_companies`
+  );
+  return new Set(rows.map((row) => String(row.organization_number)));
+}
+
+/** Hard-delete a company. Domains, tech, audience links, prospects cascade. */
+export async function deleteRadarCompany(id: string): Promise<void> {
+  const { rowCount } = await cloudSqlPool.query(
+    `DELETE FROM radar_companies WHERE id = $1`,
+    [id]
+  );
+  if (!rowCount) throw new Error("Company not found");
+}
+
+/**
+ * Orphans: no audience link, no prospect, no list membership, no domain,
+ * and not matched to a Rove customer.
+ */
+const ORPHAN_WHERE = `
+  NOT EXISTS (
+    SELECT 1 FROM radar_company_audiences ca WHERE ca.company_id = c.id
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM radar_prospects p WHERE p.company_id = c.id
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM radar_prospect_list_members m WHERE m.company_id = c.id
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM radar_domains d WHERE d.company_id = c.id
+  )
+  AND c.matched_customer_id IS NULL
+`;
+
+export async function countRadarOrphanCompanies(): Promise<number> {
+  const { rows } = await cloudSqlPool.query<{ count: string }>(
+    `SELECT count(*)::text AS count
+     FROM radar_companies c
+     WHERE ${ORPHAN_WHERE}`
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function listRadarOrphanCompanies(
+  limit = 50
+): Promise<RadarOrphanCompany[]> {
+  const { rows } = await cloudSqlPool.query(
+    `SELECT c.id, c.organization_number, c.name, c.county
+     FROM radar_companies c
+     WHERE ${ORPHAN_WHERE}
+     ORDER BY c.name ASC
+     LIMIT $1`,
+    [limit]
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    organization_number: String(row.organization_number),
+    name: String(row.name),
+    county: (row.county as string | null) ?? null,
+  }));
+}
+
+/** Deletes all orphan companies. Returns how many were removed. */
+export async function deleteRadarOrphanCompanies(): Promise<number> {
+  const { rowCount } = await cloudSqlPool.query(
+    `DELETE FROM radar_companies
+     WHERE id IN (
+       SELECT c.id FROM radar_companies c
+       WHERE ${ORPHAN_WHERE}
+     )`
+  );
+  return rowCount ?? 0;
 }

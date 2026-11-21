@@ -158,4 +158,28 @@ describe("breadcrumbsForPathname", () => {
       { label: "Edit" },
     ]);
   });
+
+  it("shows Radar company detail with company name", () => {
+    expect(breadcrumbsForPathname("/radar/companies")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Radar", href: "/radar/overview" },
+      { label: "Companies" },
+    ]);
+    expect(
+      breadcrumbsForPathname("/radar/companies/abc", {
+        radarCompanyName: "Adobe Systems Nordic Aktiebolag",
+      })
+    ).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Radar", href: "/radar/overview" },
+      { label: "Companies", href: "/radar/companies" },
+      { label: "Adobe Systems Nordic Aktiebolag" },
+    ]);
+    expect(breadcrumbsForPathname("/radar/companies/abc")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Radar", href: "/radar/overview" },
+      { label: "Companies", href: "/radar/companies" },
+      { label: "Company" },
+    ]);
+  });
 });

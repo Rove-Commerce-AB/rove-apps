@@ -22,7 +22,11 @@ export type BulkImportResult = {
   scbMatched: number;
   bvEnriched: number;
   bvDeregisteredSkipped: number;
-  source: "scb_bolagsverket_bulk" | "demo_fallback" | "json_path";
+  source:
+    | "scb_api"
+    | "scb_bolagsverket_bulk"
+    | "demo_fallback"
+    | "json_path";
   message: string;
 };
 
@@ -110,15 +114,21 @@ export type BulkImportProgress = {
 };
 
 /**
- * Import from SCB (+ optional Bolagsverket) bulk files when paths are set.
- * Falls back to JSON path or built-in demo extract.
+ * Prefer SCB AFR API when RADAR_SCB_API_KEY is set (omsättningsklass + client filters).
+ * Else SCB/Bolagsverket bulk files, JSON path, or demo extract.
  */
 export async function runCompanyBulkImport(options?: {
   maxItems?: number;
   onProgress?: (progress: BulkImportProgress) => void | Promise<void>;
 }): Promise<BulkImportResult> {
-  const maxItems = options?.maxItems ?? 100;
+  const maxItems = options?.maxItems ?? 5000;
   const onProgress = options?.onProgress;
+
+  if (process.env.RADAR_SCB_API_KEY?.trim()) {
+    const { importFromScbApi } = await import("@/lib/radar/scb/importFromApi");
+    return importFromScbApi({ maxItems, onProgress });
+  }
+
   const scbPath = process.env.RADAR_SCB_BULK_PATH?.trim();
   const bvPath = process.env.RADAR_BOLAGSVERKET_PATH?.trim();
 

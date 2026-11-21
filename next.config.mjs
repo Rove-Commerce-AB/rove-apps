@@ -3,6 +3,9 @@ const nextConfig = {
   serverActions: {
     bodySizeLimit: "40mb",
   },
+  // unzipper optionally requires @aws-sdk/client-s3; keep it external so
+  // Turbopack does not try to resolve that unused path.
+  serverExternalPackages: ["unzipper"],
   async redirects() {
     return [
       { source: "/clients", destination: "/settings/customers", permanent: false },

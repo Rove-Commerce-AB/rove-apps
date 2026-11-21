@@ -41,6 +41,7 @@ export const ROUTES = {
   radarOverview: "/radar/overview",
   radarAudiences: "/radar/audiences",
   radarCompanies: "/radar/companies",
+  radarSearch: "/radar/search",
   radarProspects: "/radar/prospects",
   radarVerticals: "/radar/verticals",
   radarJobs: "/radar/jobs",

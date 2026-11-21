@@ -54,6 +54,27 @@ const FINGERPRINTS: {
     category: "ecommerce",
     patterns: [/centra\./i, /centrausercontent/i],
   },
+  {
+    key: "wordpress",
+    name: "WordPress",
+    category: "cms",
+    patterns: [
+      /wp-content\//i,
+      /wp-includes\//i,
+      /wp-json\//i,
+      /name=["']generator["'][^>]*wordpress/i,
+    ],
+  },
+  {
+    key: "woocommerce",
+    name: "WooCommerce",
+    category: "ecommerce",
+    patterns: [
+      /woocommerce/i,
+      /wc-ajax/i,
+      /wp-content\/plugins\/woocommerce/i,
+    ],
+  },
 ];
 
 function detectionsFromHtml(html: string, source: string): TechDetection[] {
@@ -76,16 +97,19 @@ function detectionsFromHtml(html: string, source: string): TechDetection[] {
 async function tryWebanalyze(hostname: string): Promise<TechDetection[] | null> {
   const bin = process.env.RADAR_WEBANALYZE_BIN?.trim();
   if (!bin) return null;
+  const apps =
+    process.env.RADAR_WEBANALYZE_APPS?.trim() || "technologies.json";
   try {
     const { stdout } = await execFileAsync(
       bin,
-      ["-host", hostname, "-apps", process.env.RADAR_WEBANALYZE_APPS || "technologies.json"],
-      { timeout: 45000, maxBuffer: 2 * 1024 * 1024 }
+      ["-host", hostname, "-apps", apps, "-output", "json", "-silent"],
+      { timeout: 45000, maxBuffer: 4 * 1024 * 1024 }
     );
     const parsed = JSON.parse(stdout) as {
       matches?: { app_name?: string; app_npm?: string }[];
     };
     const detections: TechDetection[] = [];
+    const seen = new Set<string>();
     for (const match of parsed.matches ?? []) {
       const name = (match.app_name || match.app_npm || "").trim();
       if (!name) continue;
@@ -95,14 +119,26 @@ async function tryWebanalyze(hostname: string): Promise<TechDetection[] | null> 
           t.name.toLowerCase() === name.toLowerCase() ||
           t.key === key
       );
+      const technology_key = priority?.key ?? key;
+      if (!technology_key || seen.has(technology_key)) continue;
+      seen.add(technology_key);
+      const categoryNames = (
+        match as { app?: { category_names?: string[] } }
+      ).app?.category_names;
       detections.push({
-        technology_key: priority?.key ?? key,
+        technology_key,
         technology_name: priority?.name ?? name,
-        category: priority?.category ?? "other",
+        category:
+          priority?.category ??
+          categoryNames?.[0]?.toLowerCase().replace(/\s+/g, "_") ??
+          "other",
         outcome: "identified",
         confidence: 0.9,
         source: "webanalyze",
-        raw: match as Record<string, unknown>,
+        raw: {
+          app_name: name,
+          ...(categoryNames ? { category_names: categoryNames } : {}),
+        },
       });
     }
     return detections;
@@ -141,9 +177,13 @@ async function fetchHomepage(hostname: string): Promise<{
   }
 }
 
-export async function scanRadarDomain(domainId: string): Promise<{
+export async function scanRadarDomain(
+  domainId: string,
+  options?: { force?: boolean }
+): Promise<{
   detections: number;
   skipped: boolean;
+  scan_status: string;
 }> {
   const { rows } = await cloudSqlPool.query<{
     id: string;
@@ -156,7 +196,7 @@ export async function scanRadarDomain(domainId: string): Promise<{
     [domainId]
   );
   const domain = rows[0];
-  if (!domain) return { detections: 0, skipped: true };
+  if (!domain) return { detections: 0, skipped: true, scan_status: "skipped" };
 
   if (domain.hostname.endsWith(".example")) {
     await cloudSqlPool.query(
@@ -165,7 +205,7 @@ export async function scanRadarDomain(domainId: string): Promise<{
        WHERE id = $1`,
       [domainId]
     );
-    return { detections: 0, skipped: true };
+    return { detections: 0, skipped: true, scan_status: "skipped" };
   }
 
   const page = await fetchHomepage(domain.hostname);
@@ -185,13 +225,14 @@ export async function scanRadarDomain(domainId: string): Promise<{
          detected_at = now(), confidence = EXCLUDED.confidence`,
       [domainId, domain.company_id]
     );
-    return { detections: 0, skipped: false };
+    return { detections: 0, skipped: false, scan_status: "failed" };
   }
 
   const configRows = await cloudSqlPool.query<{ skip_unchanged: boolean }>(
     `SELECT skip_unchanged FROM radar_job_configs WHERE job_type = 'tech_scan'`
   );
   if (
+    !options?.force &&
     configRows.rows[0]?.skip_unchanged &&
     domain.content_hash &&
     domain.content_hash === page.hash
@@ -202,12 +243,14 @@ export async function scanRadarDomain(domainId: string): Promise<{
        WHERE id = $1`,
       [domainId]
     );
-    return { detections: 0, skipped: true };
+    return { detections: 0, skipped: true, scan_status: "skipped" };
   }
 
+  const fromWebanalyze = await tryWebanalyze(domain.hostname);
   let detections =
-    (await tryWebanalyze(domain.hostname)) ??
-    detectionsFromHtml(page.html, "fingerprint");
+    fromWebanalyze && fromWebanalyze.length > 0
+      ? fromWebanalyze
+      : detectionsFromHtml(page.html, "fingerprint");
 
   if (detections.length === 0) {
     detections = [
@@ -217,7 +260,8 @@ export async function scanRadarDomain(domainId: string): Promise<{
         category: "other",
         outcome: "not_identified",
         confidence: 0.4,
-        source: process.env.RADAR_WEBANALYZE_BIN ? "webanalyze" : "fingerprint",
+        source:
+          fromWebanalyze != null ? "webanalyze" : "fingerprint",
       },
     ];
   }
@@ -259,5 +303,48 @@ export async function scanRadarDomain(domainId: string): Promise<{
     [domainId, page.hash]
   );
 
-  return { detections: detections.length, skipped: false };
+  return {
+    detections: detections.length,
+    skipped: false,
+    scan_status: "scanned",
+  };
+}
+
+/** Scan every domain for a company (manual UI). Force bypasses skip_unchanged. */
+export async function scanRadarCompanyDomains(companyId: string): Promise<{
+  technologies: string[];
+  scan_status: string;
+  scanned: number;
+}> {
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id FROM radar_domains
+     WHERE company_id = $1
+     ORDER BY is_primary DESC, hostname`,
+    [companyId]
+  );
+  if (rows.length === 0) {
+    throw new Error("Add a domain before scanning");
+  }
+
+  let lastStatus = "scanned";
+  let scanned = 0;
+  for (const row of rows) {
+    const result = await scanRadarDomain(row.id, { force: true });
+    if (!result.skipped) scanned += 1;
+    lastStatus = result.scan_status;
+  }
+
+  const tech = await cloudSqlPool.query<{ technology_name: string }>(
+    `SELECT DISTINCT technology_name
+     FROM radar_technologies
+     WHERE company_id = $1 AND outcome = 'identified'
+     ORDER BY technology_name`,
+    [companyId]
+  );
+
+  return {
+    technologies: tech.rows.map((r) => r.technology_name),
+    scan_status: lastStatus,
+    scanned,
+  };
 }

@@ -104,6 +104,22 @@ export async function updateRadarJobConfig(
   return config;
 }
 
+/** Merge keys into radar_job_configs.settings (shallow). */
+export async function patchRadarJobSettings(
+  jobType: RadarJobType,
+  patch: Record<string, unknown>
+): Promise<RadarJobConfig> {
+  await cloudSqlPool.query(
+    `UPDATE radar_job_configs
+     SET settings = COALESCE(settings, '{}'::jsonb) || $2::jsonb
+     WHERE job_type = $1`,
+    [jobType, JSON.stringify(patch)]
+  );
+  const config = await getRadarJobConfig(jobType);
+  if (!config) throw new Error("Job config not found");
+  return config;
+}
+
 export async function getActiveRadarJobRun(
   jobType: RadarJobType
 ): Promise<RadarJobRun | null> {
@@ -195,6 +211,78 @@ export async function listRadarJobRuns(limit = 50): Promise<RadarJobRun[]> {
     [limit]
   );
   return rows.map(mapRun);
+}
+
+/**
+ * Tech scan coverage: companies/domains that have a hostname, plus how many
+ * still wait in the job queue (pending/failed/never scanned).
+ */
+export async function countRadarTechScanBacklog(): Promise<{
+  withDomainCompanies: number;
+  withDomainDomains: number;
+  waitingCompanies: number;
+  waitingDomains: number;
+}> {
+  const { rows } = await cloudSqlPool.query<{
+    with_domain_companies: number;
+    with_domain_domains: number;
+    waiting_companies: number;
+    waiting_domains: number;
+  }>(
+    `SELECT
+       count(DISTINCT company_id)::int AS with_domain_companies,
+       count(*)::int AS with_domain_domains,
+       count(DISTINCT company_id) FILTER (
+         WHERE scan_status IN ('pending', 'failed')
+            OR last_scanned_at IS NULL
+       )::int AS waiting_companies,
+       count(*) FILTER (
+         WHERE scan_status IN ('pending', 'failed')
+            OR last_scanned_at IS NULL
+       )::int AS waiting_domains
+     FROM radar_domains`
+  );
+  return {
+    withDomainCompanies: Number(rows[0]?.with_domain_companies ?? 0),
+    withDomainDomains: Number(rows[0]?.with_domain_domains ?? 0),
+    waitingCompanies: Number(rows[0]?.waiting_companies ?? 0),
+    waitingDomains: Number(rows[0]?.waiting_domains ?? 0),
+  };
+}
+
+/** Companies without a domain (and how many the enrichment job will pick now). */
+export async function countRadarDomainEnrichmentBacklog(): Promise<{
+  withoutDomain: number;
+  eligibleNow: number;
+}> {
+  const { rows } = await cloudSqlPool.query<{
+    without_domain: number;
+    eligible_now: number;
+  }>(
+    `SELECT
+       count(*) FILTER (
+         WHERE NOT EXISTS (
+           SELECT 1 FROM radar_domains d WHERE d.company_id = c.id
+         )
+       )::int AS without_domain,
+       count(*) FILTER (
+         WHERE NOT EXISTS (
+           SELECT 1 FROM radar_domains d WHERE d.company_id = c.id
+         )
+         AND (
+           c.domain_lookup_status IS NULL
+           OR (
+             c.domain_lookup_status = 'not_found'
+             AND c.domain_lookup_at < now() - interval '30 days'
+           )
+         )
+       )::int AS eligible_now
+     FROM radar_companies c`
+  );
+  return {
+    withoutDomain: Number(rows[0]?.without_domain ?? 0),
+    eligibleNow: Number(rows[0]?.eligible_now ?? 0),
+  };
 }
 
 export async function claimNextQueuedRun(

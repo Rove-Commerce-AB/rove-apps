@@ -1,7 +1,12 @@
 export const RADAR_AUDIENCE_STATUSES = ["active", "paused"] as const;
 export type RadarAudienceStatus = (typeof RADAR_AUDIENCE_STATUSES)[number];
 
-export const RADAR_FINANCIALS_ORIGINS = ["unknown", "demo", "licensed"] as const;
+export const RADAR_FINANCIALS_ORIGINS = [
+  "unknown",
+  "demo",
+  "licensed",
+  "scb",
+] as const;
 export type RadarFinancialsOrigin = (typeof RADAR_FINANCIALS_ORIGINS)[number];
 
 export const RADAR_BUSINESS_MODELS = ["d2c", "b2b", "wholesale", "other"] as const;
@@ -14,6 +19,7 @@ export const RADAR_JOB_TYPES = [
   "company_import",
   "domain_enrichment",
   "tech_scan",
+  "scb_directory_sync",
 ] as const;
 export type RadarJobType = (typeof RADAR_JOB_TYPES)[number];
 
@@ -33,12 +39,15 @@ export const RADAR_PRIORITY_TECHNOLOGIES = [
   { key: "optimizely", name: "Optimizely", category: "ecommerce" },
   { key: "shopify", name: "Shopify", category: "ecommerce" },
   { key: "centra", name: "Centra", category: "ecommerce" },
+  { key: "wordpress", name: "WordPress", category: "cms" },
+  { key: "woocommerce", name: "WooCommerce", category: "ecommerce" },
 ] as const;
 
 export const RADAR_JOB_LABELS: Record<RadarJobType, string> = {
-  company_import: "Company import",
+  company_import: "Import matching companies",
   domain_enrichment: "Domain enrichment",
   tech_scan: "Technology scan",
+  scb_directory_sync: "SCB directory sync",
 };
 
 export type RadarAudience = {
@@ -50,6 +59,8 @@ export type RadarAudience = {
   counties: string[];
   employee_min: number | null;
   employee_max: number | null;
+  /** Selected SCB omsättningsklass codes (0–12). Empty = no revenue filter. */
+  oms_kl_codes: number[];
   revenue_min_sek: number | null;
   revenue_max_sek: number | null;
   estimated_company_count: number | null;
@@ -68,6 +79,10 @@ export type RadarCompanyListItem = {
   sni_description: string | null;
   employee_count: number | null;
   revenue_sek: number | null;
+  oms_kl: number | null;
+  oms_kl_label: string | null;
+  anst_kl: number | null;
+  anst_kl_label: string | null;
   financials_origin: RadarFinancialsOrigin;
   business_model: RadarBusinessModel | null;
   source: string;
@@ -78,6 +93,10 @@ export type RadarCompanyListItem = {
   technologies: string[];
   prospect_status: RadarProspectStatus | null;
   audience_names: string[];
+  /** Staff owner for the prospect row; null when unset or no prospect. */
+  owner: { id: string; name: string; initials: string } | null;
+  hubspot_company_id: string | null;
+  hubspot_exported_at: string | null;
 };
 
 export type RadarDomain = {
@@ -115,6 +134,14 @@ export type RadarCompanyDetail = RadarCompanyListItem & {
   domains: RadarDomain[];
   technologies_detail: RadarTechnology[];
   offer_signals: string[];
+};
+
+/** Company with no audience, prospect, list, domain, or customer match. */
+export type RadarOrphanCompany = {
+  id: string;
+  organization_number: string;
+  name: string;
+  county: string | null;
 };
 
 export type RadarProspectList = {
@@ -160,4 +187,20 @@ export type RadarVerticalRow = {
   with_priority_tech: number;
   avg_employees: number | null;
   tech_breakdown: { key: string; name: string; count: number }[];
+};
+
+/** Hit from Radar Search (SCB directory / live / already in Radar). */
+export type RadarSearchHit = {
+  organization_number: string;
+  organization_number_formatted: string;
+  name: string;
+  legal_form: string | null;
+  sni_code: string | null;
+  sni_description: string | null;
+  county: string | null;
+  municipality: string | null;
+  company_id: string | null;
+  prospect_status: string | null;
+  in_radar: boolean;
+  source: "directory" | "scb_live" | "radar";
 };

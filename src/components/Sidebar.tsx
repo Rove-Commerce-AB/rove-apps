@@ -1005,6 +1005,14 @@ export function Sidebar({
                 onNavigate={markPending}
               />
               <NavLink
+                href={ROUTES.radarSearch}
+                label="Search"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                onNavigate={markPending}
+              />
+              <NavLink
                 href={ROUTES.radarAudiences}
                 label="Target groups"
                 pathname={activePath}

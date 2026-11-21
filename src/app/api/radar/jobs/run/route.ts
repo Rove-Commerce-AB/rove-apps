@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runRadarWorkerTick } from "@/lib/radar/workerTick";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 900;
 
 function requestHasRadarWorkerKey(request: Request): boolean {
   const expected = process.env.RADAR_WORKER_API_KEY?.trim();

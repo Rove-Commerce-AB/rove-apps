@@ -29,7 +29,9 @@ export function WorkTrailProvider({ children }: { children: ReactNode }) {
       pathname.startsWith(`${ROUTES.work}/`) &&
       pathname !== ROUTES.workOverview &&
       !pathname.startsWith(`${ROUTES.workMine}`);
-    if (!onWorkDeep) {
+    const onRadarCompanyDetail =
+      pathname.startsWith(`${ROUTES.radarCompanies}/`);
+    if (!onWorkDeep && !onRadarCompanyDetail) {
       setTrail(null);
     }
   }, [pathname]);
@@ -65,6 +67,17 @@ export function SetWorkTrail({
     });
     return () => setTrail(null);
   }, [boardTitle, customerName, issueKey, setTrail]);
+
+  return null;
+}
+
+export function SetRadarCompanyTrail({ companyName }: { companyName: string }) {
+  const { setTrail } = useContext(WorkTrailContext);
+
+  useEffect(() => {
+    setTrail({ radarCompanyName: companyName });
+    return () => setTrail(null);
+  }, [companyName, setTrail]);
 
   return null;
 }

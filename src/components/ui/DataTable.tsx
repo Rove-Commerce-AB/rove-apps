@@ -7,15 +7,16 @@ import { EmptyState } from "./EmptyState";
 
 const tableBorder = "border-border-subtle";
 
-/** Compact density: tight rows for operational grids. */
+/** Compact density: tight rows for operational grids (Notion-like lists). */
 const compact = {
-  header: "px-3 py-2 text-xs font-medium text-text-secondary",
-  cell: `px-3 py-1 text-sm text-text-primary border-b ${tableBorder}`,
-  cellPrimary: `px-3 py-1 text-sm font-medium text-text-primary border-b ${tableBorder}`,
-  cellSecondary: `px-3 py-1 text-sm text-text-secondary border-b ${tableBorder}`,
-  row: "last:[&>td]:border-b-0",
-  headerRow: `border-b ${tableBorder} bg-table-header`,
-  emptyCell: "px-3 py-2 text-center text-sm text-text-primary opacity-60",
+  header: "px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-text-tertiary",
+  // max-w-0 + overflow-hidden: truncate fills the col width under table-fixed.
+  cell: `max-w-0 overflow-hidden px-2 py-1 text-[13px] text-text-primary border-b ${tableBorder}`,
+  cellPrimary: `max-w-0 overflow-hidden px-2 py-1 text-[13px] font-medium text-text-primary border-b ${tableBorder}`,
+  cellSecondary: `max-w-0 overflow-hidden px-2 py-1 text-[13px] text-text-secondary border-b ${tableBorder}`,
+  row: "last:[&>td]:border-b-0 hover:bg-bg-muted/40",
+  headerRow: `border-b ${tableBorder}`,
+  emptyCell: "px-2 py-2 text-center text-[13px] text-text-primary opacity-60",
 } as const;
 
 /** Comfortable density: default for overview lists (Figma). */

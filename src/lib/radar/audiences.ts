@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { revenueRangeForOmsattningsklasser } from "@/lib/radar/scb/omsattningsklasser";
 import type {
   RadarAudience,
   RadarAudienceStatus,
@@ -15,6 +16,7 @@ const AUDIENCE_SELECT = `
   a.counties,
   a.employee_min,
   a.employee_max,
+  COALESCE(a.oms_kl_codes, '{}') AS oms_kl_codes,
   a.revenue_min_sek,
   a.revenue_max_sek,
   a.estimated_company_count,
@@ -27,6 +29,17 @@ const AUDIENCE_SELECT = `
   ) AS company_count
 `;
 
+function normalizeOmsKlCodes(codes: unknown): number[] {
+  if (!Array.isArray(codes)) return [];
+  return [
+    ...new Set(
+      codes
+        .map((c) => Number(c))
+        .filter((n) => Number.isInteger(n) && n >= 0 && n <= 12)
+    ),
+  ].sort((a, b) => a - b);
+}
+
 function mapAudience(row: Record<string, unknown>): RadarAudience {
   return {
     id: String(row.id),
@@ -37,6 +50,7 @@ function mapAudience(row: Record<string, unknown>): RadarAudience {
     counties: (row.counties as string[]) ?? [],
     employee_min: row.employee_min == null ? null : Number(row.employee_min),
     employee_max: row.employee_max == null ? null : Number(row.employee_max),
+    oms_kl_codes: normalizeOmsKlCodes(row.oms_kl_codes),
     revenue_min_sek:
       row.revenue_min_sek == null ? null : Number(row.revenue_min_sek),
     revenue_max_sek:
@@ -79,6 +93,7 @@ export type CreateRadarAudienceInput = {
   priority?: number;
   sni_prefixes?: string[];
   counties?: string[];
+  oms_kl_codes?: number[];
   employee_min?: number | null;
   employee_max?: number | null;
   revenue_min_sek?: number | null;
@@ -86,17 +101,45 @@ export type CreateRadarAudienceInput = {
   notes?: string | null;
 };
 
+function resolveRevenueBounds(input: {
+  oms_kl_codes?: number[];
+  revenue_min_sek?: number | null;
+  revenue_max_sek?: number | null;
+}): {
+  oms_kl_codes: number[];
+  revenue_min_sek: number | null;
+  revenue_max_sek: number | null;
+} {
+  const oms_kl_codes = normalizeOmsKlCodes(input.oms_kl_codes ?? []);
+  if (oms_kl_codes.length > 0) {
+    const range = revenueRangeForOmsattningsklasser(oms_kl_codes);
+    return {
+      oms_kl_codes,
+      revenue_min_sek: range.minSek,
+      revenue_max_sek: range.maxSek,
+    };
+  }
+  return {
+    oms_kl_codes: [],
+    revenue_min_sek: input.revenue_min_sek ?? null,
+    revenue_max_sek: input.revenue_max_sek ?? null,
+  };
+}
+
 export async function createRadarAudience(
   input: CreateRadarAudienceInput
 ): Promise<RadarAudience> {
   const name = input.name.trim();
   if (!name) throw new Error("Name is required");
 
+  const revenue = resolveRevenueBounds(input);
+
   const { rows } = await cloudSqlPool.query(
     `INSERT INTO radar_audiences (
        name, status, priority, sni_prefixes, counties,
-       employee_min, employee_max, revenue_min_sek, revenue_max_sek, notes
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       employee_min, employee_max, oms_kl_codes,
+       revenue_min_sek, revenue_max_sek, notes
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING id`,
     [
       name,
@@ -106,8 +149,9 @@ export async function createRadarAudience(
       input.counties ?? [],
       input.employee_min ?? null,
       input.employee_max ?? null,
-      input.revenue_min_sek ?? null,
-      input.revenue_max_sek ?? null,
+      revenue.oms_kl_codes,
+      revenue.revenue_min_sek,
+      revenue.revenue_max_sek,
       input.notes?.trim() || null,
     ]
   );
@@ -130,6 +174,21 @@ export async function updateRadarAudience(
   const name = input.name !== undefined ? input.name.trim() : current.name;
   if (!name) throw new Error("Name is required");
 
+  const revenue = resolveRevenueBounds({
+    oms_kl_codes:
+      input.oms_kl_codes !== undefined
+        ? input.oms_kl_codes
+        : current.oms_kl_codes,
+    revenue_min_sek:
+      input.revenue_min_sek !== undefined
+        ? input.revenue_min_sek
+        : current.revenue_min_sek,
+    revenue_max_sek:
+      input.revenue_max_sek !== undefined
+        ? input.revenue_max_sek
+        : current.revenue_max_sek,
+  });
+
   await cloudSqlPool.query(
     `UPDATE radar_audiences SET
        name = $2,
@@ -139,10 +198,11 @@ export async function updateRadarAudience(
        counties = COALESCE($6, counties),
        employee_min = $7,
        employee_max = $8,
-       revenue_min_sek = $9,
-       revenue_max_sek = $10,
-       notes = $11,
-       estimated_company_count = COALESCE($12, estimated_company_count)
+       oms_kl_codes = $9,
+       revenue_min_sek = $10,
+       revenue_max_sek = $11,
+       notes = $12,
+       estimated_company_count = COALESCE($13, estimated_company_count)
      WHERE id = $1`,
     [
       id,
@@ -157,12 +217,9 @@ export async function updateRadarAudience(
       input.employee_max !== undefined
         ? input.employee_max
         : current.employee_max,
-      input.revenue_min_sek !== undefined
-        ? input.revenue_min_sek
-        : current.revenue_min_sek,
-      input.revenue_max_sek !== undefined
-        ? input.revenue_max_sek
-        : current.revenue_max_sek,
+      revenue.oms_kl_codes,
+      revenue.revenue_min_sek,
+      revenue.revenue_max_sek,
       input.notes !== undefined
         ? input.notes?.trim() || null
         : current.notes,

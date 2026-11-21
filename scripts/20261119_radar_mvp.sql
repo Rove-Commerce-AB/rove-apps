@@ -215,6 +215,7 @@ CREATE TABLE IF NOT EXISTS radar_prospects (
     CHECK (status IN ('interesting', 'irrelevant')),
   notes TEXT,
   marked_by UUID REFERENCES app_users (id) ON DELETE SET NULL,
+  owner_app_user_id UUID REFERENCES app_users (id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

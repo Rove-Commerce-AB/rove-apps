@@ -1,15 +1,36 @@
 import { RadarProspectsClient } from "@/components/radar/RadarProspectsClient";
 import { listRadarCompanies } from "@/lib/radar/companies";
-import { listRadarProspectLists } from "@/lib/radar/prospects";
+import { isHubSpotConfigured } from "@/lib/radar/hubspot";
+import {
+  listRadarOwnerPeople,
+  listRadarProspectLists,
+} from "@/lib/radar/prospects";
 import { requireRadarActor } from "@/lib/radarActor";
 
 export const dynamic = "force-dynamic";
 
 export default async function RadarProspectsPage() {
   await requireRadarActor();
-  const [companies, lists] = await Promise.all([
+  const [interesting, lists, people] = await Promise.all([
     listRadarCompanies({ prospectStatus: "interesting" }),
     listRadarProspectLists(),
+    listRadarOwnerPeople(),
   ]);
-  return <RadarProspectsClient interesting={companies} lists={lists} />;
+
+  const listMembersEntries = await Promise.all(
+    lists.map(async (list) => {
+      const members = await listRadarCompanies({ prospectListId: list.id });
+      return [list.id, members] as const;
+    })
+  );
+
+  return (
+    <RadarProspectsClient
+      interesting={interesting}
+      lists={lists}
+      listMembers={Object.fromEntries(listMembersEntries)}
+      people={people}
+      hubspotConfigured={isHubSpotConfigured()}
+    />
+  );
 }

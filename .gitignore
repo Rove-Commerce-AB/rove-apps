@@ -25,6 +25,12 @@
 .DS_Store
 *.pem
 
+# webanalyze local binary + downloaded fingerprint DB (see tools/webanalyze/README.md)
+/tools/webanalyze/webanalyze.exe
+/tools/webanalyze/technologies.json
+/tools/webanalyze/*.zip
+/tools/webanalyze/*.tgz
+
 # debug
 npm-debug.log*
 yarn-debug.log*

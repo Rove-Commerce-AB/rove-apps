@@ -2,8 +2,10 @@
 
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { featureRequestAppLabel } from "@/lib/featureRequestApps";
 import { joinWorkInlineImages } from "@/lib/workInlineImages";
 import { isVideoPosterFileName } from "@/lib/workMedia";
+import { findOrCreateBoardComponent } from "@/lib/workIssuesQueries";
 import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
 
 const FEATURE_REQUEST_BOARD_TITLE = "Rove Apps";
@@ -20,10 +22,12 @@ function titleFromContent(content: string): string {
 function descriptionFromRequest(args: {
   content: string;
   requestedBy: string | null;
+  appLabel: string;
   declineComment?: string | null;
 }): string {
   const lines = [
     `Requested by: ${args.requestedBy?.trim() || "unknown"}`,
+    `App: ${args.appLabel}`,
     "",
     args.content.trim(),
   ];
@@ -117,6 +121,8 @@ export async function createFeatureRequest(
 ): Promise<void> {
   const trimmed = String(formData.get("content") ?? "").trim();
   if (!trimmed) throw new Error("Content is required");
+  const appLabel = featureRequestAppLabel(formData.get("app"));
+  if (!appLabel) throw new Error("Select an app");
   const type = formData.get("issueType") === "bug" ? "bug" : "issue";
   const screenshots = collectMediaFiles(formData);
 
@@ -124,10 +130,12 @@ export async function createFeatureRequest(
   if (!user?.id) throw new Error("Unauthorized");
 
   const { boardId, requestStatusId } = await resolveFeatureRequestBoard();
+  const component = await findOrCreateBoardComponent(boardId, appLabel);
   const title = titleFromContent(trimmed);
   const baseDescription = descriptionFromRequest({
     content: trimmed,
     requestedBy: user.email ?? null,
+    appLabel,
   });
 
   const screenshotBytes = await Promise.all(
@@ -158,8 +166,9 @@ export async function createFeatureRequest(
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO work_issues (
          project_id, number, title, status, sort_order,
-         owner_app_user_id, created_by_app_user_id, description, issue_type
-       ) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8)
+         owner_app_user_id, created_by_app_user_id, description, issue_type,
+         component_id
+       ) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8, $9)
        RETURNING id`,
       [
         boardId,
@@ -170,6 +179,7 @@ export async function createFeatureRequest(
         user.id,
         baseDescription,
         type,
+        component.id,
       ]
     );
     const issueId = rows[0]?.id;

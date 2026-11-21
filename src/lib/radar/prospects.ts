@@ -5,6 +5,8 @@ import type {
   RadarProspectList,
   RadarProspectStatus,
 } from "@/lib/radar/types";
+import { workPersonFromUser } from "@/lib/workIssueKey";
+import type { WorkPerson } from "@/lib/workTypes";
 
 export async function setRadarProspectStatus(input: {
   companyId: string;
@@ -32,6 +34,59 @@ export async function clearRadarProspect(companyId: string): Promise<void> {
   await cloudSqlPool.query(
     `DELETE FROM radar_prospects WHERE company_id = $1`,
     [companyId]
+  );
+}
+
+/** Staff users with Radar app access that can own a prospect. */
+export async function listRadarOwnerPeople(): Promise<WorkPerson[]> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    name: string | null;
+    email: string;
+  }>(
+    `SELECT u.id, u.name, u.email
+     FROM app_users u
+     WHERE u.role IN ('admin', 'member')
+       AND EXISTS (
+         SELECT 1
+         FROM app_user_apps aua
+         JOIN apps a ON a.id = aua.app_id
+         WHERE aua.app_user_id = u.id AND a.key = 'radar'
+       )
+     ORDER BY lower(COALESCE(NULLIF(trim(u.name), ''), u.email))`
+  );
+  return rows.map(workPersonFromUser);
+}
+
+export async function setRadarProspectOwner(input: {
+  companyId: string;
+  ownerAppUserId: string | null;
+  markedBy: string;
+}): Promise<void> {
+  if (input.ownerAppUserId) {
+    const { rows } = await cloudSqlPool.query<{ id: string }>(
+      `SELECT u.id
+       FROM app_users u
+       WHERE u.id = $1
+         AND u.role IN ('admin', 'member')
+         AND EXISTS (
+           SELECT 1
+           FROM app_user_apps aua
+           JOIN apps a ON a.id = aua.app_id
+           WHERE aua.app_user_id = u.id AND a.key = 'radar'
+         )
+       LIMIT 1`,
+      [input.ownerAppUserId]
+    );
+    if (!rows[0]) throw new Error("Owner must have Radar access.");
+  }
+
+  await cloudSqlPool.query(
+    `INSERT INTO radar_prospects (company_id, status, owner_app_user_id, marked_by)
+     VALUES ($1, 'interesting', $2, $3)
+     ON CONFLICT (company_id) DO UPDATE SET
+       owner_app_user_id = EXCLUDED.owner_app_user_id`,
+    [input.companyId, input.ownerAppUserId, input.markedBy]
   );
 }
 

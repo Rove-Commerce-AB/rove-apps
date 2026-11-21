@@ -2979,6 +2979,8 @@ export function WorkCardPeople({
   onRemoveAssignee,
   /** Portals to document.body (cards). Set false inside dialogs/drawers. */
   portal = true,
+  /** Owner picker only — hides Assign column (e.g. Radar prospects). */
+  ownerOnly = false,
 }: {
   owner: WorkPerson | null;
   assignees: WorkPerson[];
@@ -2988,8 +2990,12 @@ export function WorkCardPeople({
   onAddAssignee?: (person: WorkPerson) => void;
   onRemoveAssignee?: (person: WorkPerson) => void;
   portal?: boolean;
+  ownerOnly?: boolean;
 }) {
-  const interactive = onSetOwner != null && onAddAssignee != null;
+  const interactive = ownerOnly
+    ? onSetOwner != null
+    : onSetOwner != null && onAddAssignee != null;
+  const menuWidth = ownerOnly ? 240 : PEOPLE_MENU_WIDTH;
   const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -3079,8 +3085,8 @@ export function WorkCardPeople({
     const left = Math.max(
       8,
       Math.min(
-        portal ? rect.left : rect.right - PEOPLE_MENU_WIDTH,
-        window.innerWidth - PEOPLE_MENU_WIDTH - 8
+        portal ? rect.left : rect.right - menuWidth,
+        window.innerWidth - menuWidth - 8
       )
     );
     const top = Math.min(rect.bottom + 4, window.innerHeight - 320);
@@ -3091,12 +3097,12 @@ export function WorkCardPeople({
     <div
       ref={menuRef}
       role="dialog"
-      aria-label="Owner and assignees"
+      aria-label={ownerOnly ? "Owner" : "Owner and assignees"}
       className="fixed z-[80] overflow-hidden rounded-lg border border-border-subtle bg-bg-default shadow-lg"
       style={{
         top: menu.top,
         left: menu.left,
-        width: PEOPLE_MENU_WIDTH,
+        width: menuWidth,
       }}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -3114,7 +3120,9 @@ export function WorkCardPeople({
       </div>
       <div className="flex items-center justify-end gap-0.5 border-b border-border-subtle px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-text-tertiary">
         <span className="w-11 text-center">Owner</span>
-        <span className="w-11 text-center">Assign</span>
+        {!ownerOnly ? (
+          <span className="w-11 text-center">Assign</span>
+        ) : null}
       </div>
       <ul className="max-h-56 overflow-y-auto py-1">
         {filteredPeople.length === 0 ? (
@@ -3166,34 +3174,36 @@ export function WorkCardPeople({
                     <Circle className="h-3.5 w-3.5" aria-hidden />
                   )}
                 </button>
-                <button
-                  type="button"
-                  disabled={disabled || onRemoveAssignee == null}
-                  title={isAssignee ? "Remove assignee" : "Add assignee"}
-                  aria-label={
-                    isAssignee
-                      ? `Remove assignee ${person.name}`
-                      : `Add assignee ${person.name}`
-                  }
-                  aria-pressed={isAssignee}
-                  className={[
-                    "flex h-7 w-11 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-50",
-                    isAssignee
-                      ? "text-accent-primary-text hover:bg-accent-primary-subtle"
-                      : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary",
-                  ].join(" ")}
-                  onClick={() => {
-                    if (isAssignee) onRemoveAssignee?.(person);
-                    else onAddAssignee?.(person);
-                  }}
-                >
-                  <Check
-                    className={
-                      isAssignee ? "h-3.5 w-3.5" : "h-3.5 w-3.5 opacity-30"
+                {!ownerOnly ? (
+                  <button
+                    type="button"
+                    disabled={disabled || onRemoveAssignee == null}
+                    title={isAssignee ? "Remove assignee" : "Add assignee"}
+                    aria-label={
+                      isAssignee
+                        ? `Remove assignee ${person.name}`
+                        : `Add assignee ${person.name}`
                     }
-                    aria-hidden
-                  />
-                </button>
+                    aria-pressed={isAssignee}
+                    className={[
+                      "flex h-7 w-11 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-50",
+                      isAssignee
+                        ? "text-accent-primary-text hover:bg-accent-primary-subtle"
+                        : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary",
+                    ].join(" ")}
+                    onClick={() => {
+                      if (isAssignee) onRemoveAssignee?.(person);
+                      else onAddAssignee?.(person);
+                    }}
+                  >
+                    <Check
+                      className={
+                        isAssignee ? "h-3.5 w-3.5" : "h-3.5 w-3.5 opacity-30"
+                      }
+                      aria-hidden
+                    />
+                  </button>
+                ) : null}
               </li>
             );
           })
@@ -3202,10 +3212,10 @@ export function WorkCardPeople({
     </div>
   ) : null;
 
-  const hasAvatars = Boolean(owner) || extras.length > 0;
+  const hasAvatars = Boolean(owner) || (!ownerOnly && extras.length > 0);
   const peopleTitle = [
     owner ? `Owner: ${owner.name}` : null,
-    extras.length > 0
+    !ownerOnly && extras.length > 0
       ? `Assignees: ${extras.map((person) => person.name).join(", ")}`
       : null,
   ]
@@ -3224,11 +3234,13 @@ export function WorkCardPeople({
           ref={triggerRef}
           type="button"
           disabled={disabled}
-          title={peopleTitle || "Owner & assignees"}
+          title={peopleTitle || (ownerOnly ? "Set owner" : "Owner & assignees")}
           aria-label={
             peopleTitle
               ? `Change people · ${peopleTitle}`
-              : "Set owner or assignees"
+              : ownerOnly
+                ? "Set owner"
+                : "Set owner or assignees"
           }
           aria-expanded={menuOpen}
           aria-haspopup="dialog"
@@ -3244,15 +3256,17 @@ export function WorkCardPeople({
                 className={CARD_OWNER_FRAME}
               />
             ) : null}
-            {extras.map((person) => (
-              <InitialsAvatar
-                key={person.id}
-                name={person.name}
-                initials={person.initials}
-                size="xxs"
-                className={CARD_AVATAR_GAP}
-              />
-            ))}
+            {!ownerOnly
+              ? extras.map((person) => (
+                  <InitialsAvatar
+                    key={person.id}
+                    name={person.name}
+                    initials={person.initials}
+                    size="xxs"
+                    className={CARD_AVATAR_GAP}
+                  />
+                ))
+              : null}
             {!hasAvatars ? (
               <span
                 aria-hidden
@@ -3271,15 +3285,17 @@ export function WorkCardPeople({
               className={CARD_OWNER_FRAME}
             />
           ) : null}
-          {extras.map((person) => (
-            <InitialsAvatar
-              key={person.id}
-              name={person.name}
-              initials={person.initials}
-              size="xxs"
-              className={CARD_AVATAR_GAP}
-            />
-          ))}
+          {!ownerOnly
+            ? extras.map((person) => (
+                <InitialsAvatar
+                  key={person.id}
+                  name={person.name}
+                  initials={person.initials}
+                  size="xxs"
+                  className={CARD_AVATAR_GAP}
+                />
+              ))
+            : null}
         </span>
       ) : null}
       {menuNode

@@ -43,7 +43,8 @@
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
-    "sharp": "^0.34.4"
+    "sharp": "^0.34.4",
+    "unzipper": "^0.12.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -51,6 +52,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/unzipper": "^0.10.11",
     "cross-env": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",

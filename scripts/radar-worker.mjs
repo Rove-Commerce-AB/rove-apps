@@ -1,5 +1,10 @@
 /**
- * Cloud Run Job entrypoint for Rove Radar.
+ * Cloud Run Job / Scheduler entrypoint for short Radar jobs
+ * (company import, domain enrichment, tech scan).
+ *
+ * SCB directory sync is NOT handled here (too long for HTTP 15m timeout).
+ * See scripts/radar-scb-directory-sync.mjs + Cloud Run Job
+ * `radar-scb-directory-sync` (scheduled Sat 02:00 Europe/Stockholm).
  *
  * Same container image as the web app. Override the Cloud Run Job command to:
  *   node scripts/radar-worker.mjs

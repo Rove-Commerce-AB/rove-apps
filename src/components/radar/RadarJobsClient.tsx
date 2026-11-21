@@ -1,30 +1,42 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  deleteRadarOrphansAction,
   queueRadarJobAction,
-  runRadarWorkerTickAction,
   setRadarJobScheduleAction,
   stopRadarJobAction,
 } from "@/app/(app)/radar/actions";
 import {
   Badge,
   Button,
+  ConfirmModal,
   PageHeader,
   Panel,
   Switch,
 } from "@/components/ui";
+import { formatOrganizationNumber } from "@/lib/radar/orgNumber";
 import {
   RADAR_JOB_LABELS,
   type RadarJobConfig,
   type RadarJobRun,
   type RadarJobType,
+  type RadarOrphanCompany,
 } from "@/lib/radar/types";
 
 type Props = {
   configs: RadarJobConfig[];
   runs: RadarJobRun[];
+  orphanCount: number;
+  orphanSample: RadarOrphanCompany[];
+  techScanBacklog: {
+    withDomainCompanies: number;
+    withDomainDomains: number;
+    waitingCompanies: number;
+    waitingDomains: number;
+  };
+  domainEnrichmentBacklog: { withoutDomain: number; eligibleNow: number };
 };
 
 type FeedbackTone = "info" | "success" | "error" | "warning";
@@ -80,6 +92,29 @@ function formatRunCreatedAt(iso: string): string {
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
+/** Human duration from started_at → finished_at (or now if still running). */
+function formatRunDuration(run: RadarJobRun): string {
+  if (!run.started_at) return "—";
+  const start = new Date(run.started_at).getTime();
+  if (Number.isNaN(start)) return "—";
+  const end = run.finished_at
+    ? new Date(run.finished_at).getTime()
+    : run.status === "running"
+      ? Date.now()
+      : NaN;
+  if (Number.isNaN(end) || end < start) return "—";
+  const totalSec = Math.round((end - start) / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  if (minutes < 60) {
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMin = minutes % 60;
+  return remMin > 0 ? `${hours}h ${remMin}m` : `${hours}h`;
+}
+
 function parseStepLabel(message: string | null): {
   step: string | null;
   detail: string;
@@ -90,23 +125,21 @@ function parseStepLabel(message: string | null): {
   return { step: null, detail: message };
 }
 
-function JobProgress({
-  run,
-  maxItems,
-}: {
-  run: RadarJobRun;
-  maxItems: number;
-}) {
+function JobProgress({ run }: { run: RadarJobRun }) {
   const { step, detail } = parseStepLabel(run.message);
   const isRunning = run.status === "running";
   const isQueued = run.status === "queued";
 
   let barPercent: number | null = null;
+  let batchTotal: number | null = null;
   const saveMatch = detail.match(/\((\d+)\/(\d+)\)/);
   if (saveMatch) {
     const current = Number(saveMatch[1]);
-    const total = Number(saveMatch[2]) || maxItems;
-    if (total > 0) barPercent = Math.min(100, Math.round((current / total) * 100));
+    const total = Number(saveMatch[2]);
+    if (total > 0) {
+      batchTotal = total;
+      barPercent = Math.min(100, Math.round((current / total) * 100));
+    }
   } else if (isQueued) {
     barPercent = 0;
   }
@@ -122,8 +155,8 @@ function JobProgress({
       </div>
       {run.processed_count > 0 || run.error_count > 0 ? (
         <p className="mt-1 text-xs text-text-tertiary">
-          Saved {run.processed_count}
-          {maxItems ? ` / ${maxItems}` : ""}
+          Processed {run.processed_count}
+          {batchTotal != null ? ` / ${batchTotal}` : ""}
           {run.error_count > 0 ? ` · ${run.error_count} errors` : ""}
         </p>
       ) : null}
@@ -151,14 +184,33 @@ function JobProgress({
   );
 }
 
-export function RadarJobsClient({ configs, runs }: Props) {
+export function RadarJobsClient({
+  configs: initialConfigs,
+  runs: initialRuns,
+  orphanCount,
+  orphanSample,
+  techScanBacklog,
+  domainEnrichmentBacklog,
+}: Props) {
   const router = useRouter();
+  const [configs, setConfigs] = useState(initialConfigs);
+  const [runs, setRuns] = useState(initialRuns);
   const [message, setMessage] = useState<string | null>(null);
   const [tone, setTone] = useState<FeedbackTone>("info");
   const [startingJob, setStartingJob] = useState<RadarJobType | null>(null);
   const [stoppingJob, setStoppingJob] = useState<RadarJobType | null>(null);
   const [processingQueue, setProcessingQueue] = useState(false);
+  const [confirmOrphans, setConfirmOrphans] = useState(false);
+  const [deletingOrphans, setDeletingOrphans] = useState(false);
+  const [workerBusy, setWorkerBusy] = useState(false);
   const workerInFlight = useRef(false);
+  const pollInFlight = useRef(false);
+
+  // Keep local state in sync when server props change (e.g. after orphan delete refresh).
+  useEffect(() => {
+    setConfigs(initialConfigs);
+    setRuns(initialRuns);
+  }, [initialConfigs, initialRuns]);
 
   const activeByType = useMemo(() => {
     const map = new Map<RadarJobType, RadarJobRun>();
@@ -170,35 +222,73 @@ export function RadarJobsClient({ configs, runs }: Props) {
   }, [configs, runs]);
 
   const activeRuns = useMemo(
-    () => configs.map((c) => activeByType.get(c.job_type)).filter(Boolean) as RadarJobRun[],
+    () =>
+      configs
+        .map((c) => activeByType.get(c.job_type))
+        .filter(Boolean) as RadarJobRun[],
     [configs, activeByType]
   );
 
   const shouldPoll =
-    activeRuns.length > 0 || startingJob !== null || processingQueue;
-
-  function refreshQuietly() {
-    // Avoid useTransition `pending` — it was disabling every Start button on each poll.
-    router.refresh();
-  }
+    activeRuns.length > 0 ||
+    startingJob !== null ||
+    processingQueue ||
+    workerBusy;
 
   function setFeedback(text: string, nextTone: FeedbackTone = "info") {
     setMessage(text);
     setTone(nextTone);
   }
 
+  const pollStatus = useCallback(async () => {
+    if (pollInFlight.current) return;
+    pollInFlight.current = true;
+    try {
+      const res = await fetch("/api/radar/jobs/status", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        configs: RadarJobConfig[];
+        runs: RadarJobRun[];
+      };
+      setConfigs(data.configs);
+      setRuns(data.runs);
+      // Progress lives in each job card — don't echo it in the page header.
+    } catch {
+      // ignore transient poll errors
+    } finally {
+      pollInFlight.current = false;
+    }
+  }, []);
+
   async function kickWorker() {
     if (workerInFlight.current) return;
     workerInFlight.current = true;
+    setWorkerBusy(true);
     try {
-      const result = await runRadarWorkerTickAction();
-      if (result.details.length > 0) {
-        const failed = result.details.some((d) => d.includes("failed"));
+      const res = await fetch("/api/radar/jobs/tick", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const result = (await res.json().catch(() => null)) as {
+        runs?: number;
+        details?: string[];
+        error?: string;
+      } | null;
+      if (!res.ok) {
         setFeedback(
-          result.details.join(" · "),
-          failed ? "error" : "success"
+          result?.error ?? `Worker failed (${res.status})`,
+          "error"
         );
-      } else if (result.runs === 0) {
+        return;
+      }
+      const details = result?.details ?? [];
+      if (details.length > 0) {
+        const failed = details.some((d) => d.includes("failed"));
+        setFeedback(details.join(" · "), failed ? "error" : "success");
+      } else if ((result?.runs ?? 0) === 0) {
         setFeedback("No queued runs to process.", "info");
       }
     } catch (error) {
@@ -208,23 +298,25 @@ export function RadarJobsClient({ configs, runs }: Props) {
       );
     } finally {
       workerInFlight.current = false;
-      refreshQuietly();
+      setWorkerBusy(false);
+      await pollStatus();
+      router.refresh();
     }
   }
 
   useEffect(() => {
     if (!shouldPoll) return;
+    void pollStatus();
     const id = window.setInterval(() => {
-      refreshQuietly();
-    }, 2000);
+      void pollStatus();
+    }, 1500);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldPoll]);
+  }, [shouldPoll, pollStatus]);
 
   async function startJob(jobType: RadarJobType) {
     if (activeByType.has(jobType) || startingJob === jobType) return;
     setStartingJob(jobType);
-    setFeedback(`${RADAR_JOB_LABELS[jobType]}: queuing…`, "info");
+    setMessage(null);
     try {
       const { run, created } = await queueRadarJobAction(jobType);
       if (!created) {
@@ -232,11 +324,11 @@ export function RadarJobsClient({ configs, runs }: Props) {
           `${RADAR_JOB_LABELS[jobType]} is already ${run.status}.`,
           "warning"
         );
-        refreshQuietly();
+        await pollStatus();
         return;
       }
-      setFeedback(`${RADAR_JOB_LABELS[jobType]} started.`, "info");
-      refreshQuietly();
+      // Optimistic: show the queued run immediately so JobProgress mounts.
+      setRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)]);
       void kickWorker();
     } catch (error) {
       setFeedback(
@@ -253,7 +345,8 @@ export function RadarJobsClient({ configs, runs }: Props) {
     try {
       await stopRadarJobAction(jobType);
       setFeedback(`${RADAR_JOB_LABELS[jobType]} stopped.`, "warning");
-      refreshQuietly();
+      await pollStatus();
+      router.refresh();
     } catch (error) {
       setFeedback(
         error instanceof Error ? error.message : "Could not stop job",
@@ -277,12 +370,12 @@ export function RadarJobsClient({ configs, runs }: Props) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Jobs"
-        description="Start runs a job once now. Schedule is separate. Active jobs show live step progress below."
+        description="Start runs one batch now. Schedule on: the nightly worker (03:00 Europe/Stockholm) loops import matching companies, domain enrichment, and technology scan until the backlog is clear or the time budget is used. SCB directory sync stays on its weekend job."
       >
         <Button
           size="sm"
           variant="secondary"
-          disabled={processingQueue}
+          disabled={processingQueue || workerBusy}
           onClick={async () => {
             setProcessingQueue(true);
             setFeedback("Processing queue…", "info");
@@ -293,15 +386,70 @@ export function RadarJobsClient({ configs, runs }: Props) {
             }
           }}
         >
-          {processingQueue ? "Processing…" : "Process queue now"}
+          {processingQueue || workerBusy ? "Processing…" : "Process queue now"}
         </Button>
       </PageHeader>
 
-      {message ? (
-        <p className={`text-sm ${toneClass}`} role="status" aria-live="polite">
-          {message}
-        </p>
-      ) : null}
+      <div
+        className="min-h-5 text-sm"
+        role="status"
+        aria-live="polite"
+      >
+        {message ? <p className={toneClass}>{message}</p> : null}
+      </div>
+
+      <Panel>
+        <div className="flex flex-col gap-3 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-heading-m text-text-primary">
+                Orphan cleanup
+              </h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                Companies with no target group, prospect, list membership,
+                domain, or Rove customer match. Preview first — nothing is
+                deleted automatically.
+              </p>
+              <p className="mt-2 text-sm text-text-primary">
+                {orphanCount === 0
+                  ? "No orphans found."
+                  : `${orphanCount} orphan${orphanCount === 1 ? "" : "s"} found.`}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="dangerSecondary"
+              disabled={orphanCount === 0 || deletingOrphans}
+              onClick={() => setConfirmOrphans(true)}
+            >
+              Delete orphans
+            </Button>
+          </div>
+          {orphanSample.length > 0 ? (
+            <ul className="max-h-40 overflow-y-auto rounded-md border border-border-subtle text-sm">
+              {orphanSample.map((company) => (
+                <li
+                  key={company.id}
+                  className="flex flex-wrap gap-x-3 gap-y-0.5 border-t border-border-subtle px-3 py-1.5 first:border-t-0"
+                >
+                  <span className="text-text-primary">{company.name}</span>
+                  <span className="text-text-tertiary">
+                    {formatOrganizationNumber(company.organization_number)}
+                  </span>
+                  {company.county ? (
+                    <span className="text-text-tertiary">{company.county}</span>
+                  ) : null}
+                </li>
+              ))}
+              {orphanCount > orphanSample.length ? (
+                <li className="border-t border-border-subtle px-3 py-1.5 text-text-tertiary">
+                  …and {orphanCount - orphanSample.length} more
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
+        </div>
+      </Panel>
 
       <div className="grid gap-4">
         {configs.map((config) => {
@@ -312,18 +460,32 @@ export function RadarJobsClient({ configs, runs }: Props) {
 
           return (
             <Panel key={config.job_type}>
-              <div className="flex flex-col gap-3 p-4">
+              <div className="flex flex-col p-4">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-heading-m text-text-primary">
                         {RADAR_JOB_LABELS[config.job_type]}
                       </h2>
-                      {!active ? (
-                        <Badge variant={config.paused ? "warning" : "success"}>
-                          {config.paused ? "Paused" : "Ready"}
-                        </Badge>
-                      ) : null}
+                      <Badge
+                        variant={
+                          active
+                            ? statusBadgeVariant(active.status)
+                            : config.paused
+                              ? "warning"
+                              : "success"
+                        }
+                      >
+                        {active
+                          ? active.status === "running"
+                            ? "Running"
+                            : active.status === "queued"
+                              ? "Queued"
+                              : active.status
+                          : config.paused
+                            ? "Paused"
+                            : "Ready"}
+                      </Badge>
                       <Badge
                         variant={config.schedule_enabled ? "active" : "muted"}
                       >
@@ -331,17 +493,51 @@ export function RadarJobsClient({ configs, runs }: Props) {
                       </Badge>
                     </div>
                     <p className="text-sm text-text-secondary">
-                      Max {config.max_items_per_run} items / run · delay{" "}
-                      {config.request_delay_ms} ms · parallelism{" "}
-                      {config.max_parallelism}
-                      {config.job_type === "tech_scan" && config.skip_unchanged
-                        ? " · skip unchanged"
-                        : ""}
+                      {config.job_type === "scb_directory_sync"
+                        ? "Refreshes the full company directory every Saturday at 02:00 when Schedule is on. This takes many hours, so it runs as its own weekend job—not in the nightly batch."
+                        : config.job_type === "tech_scan"
+                          ? `Scans up to ${config.max_items_per_run} domains per batch. With Schedule on, the nightly worker loops batches until the backlog is clear or time runs out${
+                              config.skip_unchanged
+                                ? " (skips sites that have not changed)"
+                                : ""
+                            }.`
+                          : config.job_type === "company_import"
+                            ? `Imports companies that match active target groups (up to ${config.max_items_per_run} per batch). With Schedule on, the nightly worker loops while a batch fills completely.`
+                            : `Processes up to ${config.max_items_per_run} items per batch. With Schedule on, the nightly worker loops until the backlog is clear or time runs out.`}
                     </p>
-                    {!active ? (
-                      <p className="text-xs text-text-tertiary">
-                        Cron hint: {config.schedule_cron} (enforced by Cloud
-                        Scheduler)
+                    {config.job_type === "domain_enrichment" ? (
+                      <p className="text-sm text-text-primary">
+                        {domainEnrichmentBacklog.withoutDomain === 0
+                          ? "All companies have a domain."
+                          : domainEnrichmentBacklog.eligibleNow ===
+                              domainEnrichmentBacklog.withoutDomain
+                            ? `${domainEnrichmentBacklog.withoutDomain.toLocaleString("en-US")} ${
+                                domainEnrichmentBacklog.withoutDomain === 1
+                                  ? "company has"
+                                  : "companies have"
+                              } no domain.`
+                            : `${domainEnrichmentBacklog.withoutDomain.toLocaleString("en-US")} ${
+                                domainEnrichmentBacklog.withoutDomain === 1
+                                  ? "company has"
+                                  : "companies have"
+                              } no domain · ${domainEnrichmentBacklog.eligibleNow.toLocaleString("en-US")} ready to enrich now.`}
+                      </p>
+                    ) : null}
+                    {config.job_type === "tech_scan" ? (
+                      <p className="text-sm text-text-primary">
+                        {techScanBacklog.withDomainCompanies === 0
+                          ? "No companies have a domain yet."
+                          : techScanBacklog.waitingDomains === 0
+                            ? `${techScanBacklog.withDomainCompanies.toLocaleString("en-US")} ${
+                                techScanBacklog.withDomainCompanies === 1
+                                  ? "company has"
+                                  : "companies have"
+                              } a domain · all scanned.`
+                            : `${techScanBacklog.withDomainCompanies.toLocaleString("en-US")} ${
+                                techScanBacklog.withDomainCompanies === 1
+                                  ? "company has"
+                                  : "companies have"
+                              } a domain · ${techScanBacklog.waitingDomains.toLocaleString("en-US")} still waiting to scan.`}
                       </p>
                     ) : null}
                   </div>
@@ -355,13 +551,15 @@ export function RadarJobsClient({ configs, runs }: Props) {
                             config.job_type,
                             checked
                           );
-                          refreshQuietly();
+                          await pollStatus();
+                          router.refresh();
                         }}
                       />
                       Schedule
                     </label>
                     <Button
                       size="sm"
+                      className="min-w-[6.5rem]"
                       disabled={thisBusy}
                       onClick={() => startJob(config.job_type)}
                     >
@@ -376,6 +574,7 @@ export function RadarJobsClient({ configs, runs }: Props) {
                     <Button
                       size="sm"
                       variant="secondary"
+                      className="min-w-[5.5rem]"
                       disabled={isStopping}
                       onClick={() => stopJob(config.job_type)}
                     >
@@ -384,12 +583,19 @@ export function RadarJobsClient({ configs, runs }: Props) {
                   </div>
                 </div>
 
-                {active ? (
-                  <JobProgress
-                    run={active}
-                    maxItems={config.max_items_per_run}
-                  />
-                ) : null}
+                <div
+                  className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                    active ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                  }`}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    {active ? (
+                      <div className="pt-3">
+                        <JobProgress run={active} />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </Panel>
           );
@@ -408,6 +614,7 @@ export function RadarJobsClient({ configs, runs }: Props) {
                 <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium">Trigger</th>
                 <th className="px-4 py-2 font-medium">Processed</th>
+                <th className="px-4 py-2 font-medium">Duration</th>
                 <th className="px-4 py-2 font-medium">Message</th>
                 <th className="px-4 py-2 font-medium">Created</th>
               </tr>
@@ -437,6 +644,9 @@ export function RadarJobsClient({ configs, runs }: Props) {
                     {run.processed_count}
                     {run.error_count > 0 ? ` / ${run.error_count} err` : ""}
                   </td>
+                  <td className="px-4 py-3 tabular-nums text-text-secondary">
+                    {formatRunDuration(run)}
+                  </td>
                   <td className="px-4 py-3 text-text-secondary">
                     {run.message ?? "—"}
                     {run.error_detail ? (
@@ -451,7 +661,7 @@ export function RadarJobsClient({ configs, runs }: Props) {
               {runs.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-6 text-text-secondary"
                   >
                     No runs yet.
@@ -462,6 +672,41 @@ export function RadarJobsClient({ configs, runs }: Props) {
           </table>
         </div>
       </Panel>
+
+      <ConfirmModal
+        isOpen={confirmOrphans}
+        title="Delete orphan companies?"
+        message={`Permanently delete ${orphanCount} ${
+          orphanCount === 1 ? "company" : "companies"
+        } with no target group, prospect, list, domain, or customer match? This cannot be undone.`}
+        confirmLabel={deletingOrphans ? "Deleting…" : "Delete orphans"}
+        onClose={() => {
+          if (deletingOrphans) return;
+          setConfirmOrphans(false);
+        }}
+        onConfirm={async () => {
+          setDeletingOrphans(true);
+          try {
+            const { deleted } = await deleteRadarOrphansAction();
+            setFeedback(
+              deleted === 0
+                ? "No orphans left to delete."
+                : `Deleted ${deleted} orphan${deleted === 1 ? "" : "s"}.`,
+              "success"
+            );
+            router.refresh();
+          } catch (error) {
+            setFeedback(
+              error instanceof Error
+                ? error.message
+                : "Could not delete orphans",
+              "error"
+            );
+          } finally {
+            setDeletingOrphans(false);
+          }
+        }}
+      />
     </div>
   );
 }

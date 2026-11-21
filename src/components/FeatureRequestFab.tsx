@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { Check, MessageCirclePlus, X } from "lucide-react";
 import { createFeatureRequest } from "@/lib/featureRequests";
+import { FEATURE_REQUEST_APP_OPTIONS } from "@/lib/featureRequestApps";
 import {
   collectClipboardMediaFiles,
   extractVideoPosterJpeg,
@@ -21,6 +22,7 @@ import {
 import { WORK_FILE_MAX_BYTES, type WorkIssueType } from "@/lib/workTypes";
 import { WorkIssueTypePicker } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueTypeIcon";
 import { WorkInlineImageThumbs } from "@/app/(app)/work/[customerId]/[projectId]/WorkCommentComposer";
+import { Select } from "@/components/ui";
 
 type PendingShot = {
   localId: string;
@@ -41,6 +43,7 @@ type ComposerPhase = "closed" | "open" | "sent";
 export function FeatureRequestFab() {
   const [phase, setPhase] = useState<ComposerPhase>("closed");
   const [message, setMessage] = useState("");
+  const [app, setApp] = useState("");
   const [issueType, setIssueType] = useState<WorkIssueType>("issue");
   const [shots, setShots] = useState<PendingShot[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -139,6 +142,7 @@ export function FeatureRequestFab() {
 
   function resetForm() {
     setMessage("");
+    setApp("");
     setIssueType("issue");
     clearShots();
     setError(null);
@@ -210,11 +214,16 @@ export function FeatureRequestFab() {
     e.preventDefault();
     const trimmed = message.trim();
     if (!trimmed) return;
+    if (!app) {
+      setError("Select an app");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
       const formData = new FormData();
       formData.set("content", trimmed);
+      formData.set("app", app);
       formData.set("issueType", issueType === "bug" ? "bug" : "issue");
       for (const shot of shots) {
         formData.append("screenshots", shot.file);
@@ -330,6 +339,18 @@ export function FeatureRequestFab() {
               />
             </div>
             <div>
+              <Select
+                label="App"
+                size="sm"
+                variant="modal"
+                value={app}
+                onValueChange={setApp}
+                disabled={submitting}
+                placeholder="Select app…"
+                options={[...FEATURE_REQUEST_APP_OPTIONS]}
+              />
+            </div>
+            <div>
               <textarea
                 ref={textareaRef}
                 value={message}
@@ -354,7 +375,7 @@ export function FeatureRequestFab() {
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={submitting || !message.trim()}
+                disabled={submitting || !message.trim() || !app}
                 className="rounded-lg bg-brand-signal px-3 py-1.5 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-primary-hover active:bg-accent-primary-active disabled:opacity-50"
               >
                 {submitting ? "Sending…" : "Send"}
