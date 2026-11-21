@@ -186,8 +186,7 @@ export async function listRadarCompanies(
      LEFT JOIN radar_prospects p ON p.company_id = c.id
      LEFT JOIN app_users ou ON ou.id = p.owner_app_user_id
      WHERE ${where.join(" AND ")}
-     ORDER BY c.name ASC
-     LIMIT 500`,
+     ORDER BY c.name ASC`,
     params
   );
 
