@@ -38,6 +38,7 @@ import {
   editInputClass,
 } from "@/components/ui";
 import { ProjectRatesTab } from "./ProjectRatesTab";
+import { ProjectActivitiesSection } from "./ProjectActivitiesSection";
 import { AddProjectRateModal } from "./AddProjectRateModal";
 import { SizePricesSection } from "./SizePricesSection";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
@@ -48,7 +49,7 @@ import {
 
 const PROBABILITY_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 
-type ProjectSettingsTab = "overview" | "rates" | "danger";
+type ProjectSettingsTab = "overview" | "rates" | "activities" | "danger";
 
 type EditField =
   | "name"
@@ -606,6 +607,9 @@ export function ProjectSettingsPanel({
             <TabsTrigger value="rates" className="px-1 !px-1">
               Rates/Tasks
             </TabsTrigger>
+            <TabsTrigger value="activities" className="px-1 !px-1">
+              Activities
+            </TabsTrigger>
             {isAdmin ? (
               <TabsTrigger value="danger" className="px-1 !px-1">
                 Danger
@@ -799,6 +803,13 @@ export function ProjectSettingsPanel({
                 refreshTrigger={ratesRefreshKey}
               />
             </div>
+          </TabsContent>
+
+          <TabsContent
+            value="activities"
+            className="min-h-0 flex-1 overflow-y-auto"
+          >
+            <ProjectActivitiesSection projectId={initial.id} />
           </TabsContent>
 
           {isAdmin ? (

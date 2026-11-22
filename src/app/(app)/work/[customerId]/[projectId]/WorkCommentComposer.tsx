@@ -150,6 +150,9 @@ export function WorkCommentComposer({
     });
   }
 
+  // Overlay hint only while empty — otherwise it collides with multi-line text.
+  const hintVisible = showShortcutHint && value.length === 0;
+
   return (
     <div className="relative flex h-full w-full min-w-0 flex-col">
       {mention ? (
@@ -162,7 +165,7 @@ export function WorkCommentComposer({
       ) : null}
       <textarea
         ref={textareaRef}
-        className={`block w-full ${className}${showShortcutHint ? " pb-6" : ""}`}
+        className={`block w-full ${className}${hintVisible ? " pb-6" : ""}`}
         rows={rows}
         placeholder="Write a comment… Use @ to mention"
         value={value}
@@ -194,7 +197,7 @@ export function WorkCommentComposer({
           }
         }}
       />
-      {showShortcutHint ? (
+      {hintVisible ? (
         <p className="pointer-events-none absolute bottom-1.5 left-3 text-caption text-text-tertiary">
           Ctrl+Enter to send
         </p>

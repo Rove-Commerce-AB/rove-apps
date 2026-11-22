@@ -8,6 +8,11 @@ import { getRoles, deleteRole, updateRole } from "@/lib/rolesClient";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teamsClient";
 import { getCalendarsWithHolidayCount } from "@/lib/calendarsClient";
 import {
+  deleteTimeActivity,
+  updateTimeActivity,
+  type TimeActivity,
+} from "@/lib/timeActivitiesClient";
+import {
   IconButton,
   ConfirmModal,
   InlineEditStatus,
@@ -16,6 +21,7 @@ import {
   PageHeader,
   Panel,
   PanelSectionTitle,
+  Switch,
   SAVED_DURATION_MS,
   INLINE_EDIT_STATUS_ROW_MIN_H,
   editInputListClass,
@@ -34,11 +40,15 @@ const AddTeamModal = dynamic(() =>
 const AddCalendarModal = dynamic(() =>
   import("./AddCalendarModal").then((mod) => mod.AddCalendarModal)
 );
+const AddTimeActivityModal = dynamic(() =>
+  import("./AddTimeActivityModal").then((mod) => mod.AddTimeActivityModal)
+);
 
 type Props = {
   roles: Awaited<ReturnType<typeof getRoles>>;
   teams: Awaited<ReturnType<typeof getTeams>>;
   calendars: Awaited<ReturnType<typeof getCalendarsWithHolidayCount>>;
+  activities: TimeActivity[];
   error: string | null;
 };
 
@@ -46,6 +56,7 @@ export function SettingsPageClient({
   roles: initialRoles,
   teams: initialTeams,
   calendars: initialCalendars,
+  activities: initialActivities,
   error,
 }: Props) {
   const router = useRouter();
@@ -75,6 +86,22 @@ export function SettingsPageClient({
     id: string;
     name: string;
   } | null>(null);
+  const [addActivityOpen, setAddActivityOpen] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(
+    null
+  );
+  const [editingActivityValue, setEditingActivityValue] = useState("");
+  const [savingActivity, setSavingActivity] = useState(false);
+  const [showSavedActivity, setShowSavedActivity] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const savedActivityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const lastSavedActivityIdRef = useRef<string | null>(null);
+  const [activityToDelete, setActivityToDelete] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -84,6 +111,9 @@ export function SettingsPageClient({
     return () => {
       if (savedRoleTimeoutRef.current) clearTimeout(savedRoleTimeoutRef.current);
       if (savedTeamTimeoutRef.current) clearTimeout(savedTeamTimeoutRef.current);
+      if (savedActivityTimeoutRef.current) {
+        clearTimeout(savedActivityTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -109,8 +139,70 @@ export function SettingsPageClient({
     }
   };
 
+  const handleActivityDelete = async () => {
+    if (!activityToDelete) return;
+    try {
+      await deleteTimeActivity(activityToDelete.id);
+      setActivityToDelete(null);
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to delete activity");
+    }
+  };
+
   const handleSuccess = () => {
     router.refresh();
+  };
+
+  const saveActivityInline = async (originalName: string) => {
+    if (!editingActivityId) return;
+    if (!editingActivityValue.trim()) {
+      setEditingActivityId(null);
+      setEditingActivityValue("");
+      return;
+    }
+    if (!isInlineEditValueChanged(originalName, editingActivityValue)) {
+      setEditingActivityId(null);
+      setEditingActivityValue("");
+      return;
+    }
+    setSavingActivity(true);
+    setActivityError(null);
+    try {
+      await updateTimeActivity(editingActivityId, {
+        name: editingActivityValue.trim(),
+      });
+      lastSavedActivityIdRef.current = editingActivityId;
+      setEditingActivityId(null);
+      setEditingActivityValue("");
+      setShowSavedActivity(true);
+      if (savedActivityTimeoutRef.current) {
+        clearTimeout(savedActivityTimeoutRef.current);
+      }
+      savedActivityTimeoutRef.current = setTimeout(() => {
+        setShowSavedActivity(false);
+      }, SAVED_DURATION_MS);
+      router.refresh();
+    } catch (e) {
+      setActivityError(
+        e instanceof Error ? e.message : "Failed to update activity"
+      );
+    } finally {
+      setSavingActivity(false);
+    }
+  };
+
+  const cancelActivityEdit = (originalName: string) => {
+    setEditingActivityValue(originalName);
+    setEditingActivityId(null);
+    setActivityError(null);
+  };
+
+  /** Focus without scrolling the page/panel (autoFocus causes jump). */
+  const focusInlineInput = (el: HTMLInputElement | null) => {
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    el.select();
   };
 
   const saveRoleInline = async (originalName: string) => {
@@ -205,7 +297,7 @@ export function SettingsPageClient({
     <>
       <PageHeader
         title="General"
-        description="Manage calendars, roles and system configuration"
+        description="Manage calendars, roles, activities and system configuration"
         className="mb-6"
       />
 
@@ -229,49 +321,50 @@ export function SettingsPageClient({
           </PanelSectionTitle>
           <div className="overflow-x-auto p-3 pt-0">
             <ul className="space-y-0.5">
-              {initialRoles.map((role) => (
+              {initialRoles.map((role) => {
+                const isEditing = editingRoleId === role.id;
+                return (
                 <li
                   key={role.id}
-                  className={`flex items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50 ${editingRoleId === role.id ? "py-1" : "h-[2.25rem]"}`}
+                  className="relative flex h-[2.25rem] items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50"
                 >
-                  <div className="min-w-0 flex-1 flex flex-col">
-                    <div className="min-h-[2rem] flex items-center gap-2">
-                      {editingRoleId === role.id ? (
-                        <input
-                          type="text"
-                          value={editingRoleValue}
-                          onChange={(e) => setEditingRoleValue(e.target.value)}
-                          onFocus={(e) => e.target.select()}
-                          onBlur={() => saveRoleInline(role.name)}
-                          className={editInputListClass}
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveRoleInline(role.name);
-                            if (e.key === "Escape") {
-                              e.preventDefault();
-                              cancelRoleEdit(role.name);
-                            }
+                  <div className="flex min-h-[2rem] min-w-0 flex-1 items-center gap-2">
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editingRoleValue}
+                        onChange={(e) => setEditingRoleValue(e.target.value)}
+                        onBlur={() => saveRoleInline(role.name)}
+                        className={editInputListClass}
+                        ref={focusInlineInput}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveRoleInline(role.name);
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelRoleEdit(role.name);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRoleError(null);
+                            setEditingRoleId(role.id);
+                            setEditingRoleValue(role.name);
                           }}
-                        />
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRoleError(null);
-                              setEditingRoleId(role.id);
-                              setEditingRoleValue(role.name);
-                            }}
-                            className={inlineEditTriggerListClassRowHover}
-                          >
-                            {role.name}
-                          </button>
-                          {showSavedRole && lastSavedRoleIdRef.current === role.id && <SavedCheckmark />}
-                        </>
-                      )}
-                    </div>
-                    {editingRoleId === role.id && (
-                      <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
+                          className={inlineEditTriggerListClassRowHover}
+                        >
+                          {role.name}
+                        </button>
+                        {showSavedRole && lastSavedRoleIdRef.current === role.id && <SavedCheckmark />}
+                      </>
+                    )}
+                  </div>
+                  {isEditing ? (
+                    <div className="pointer-events-none absolute left-2 top-full z-10 pt-0.5">
+                      <div className={INLINE_EDIT_STATUS_ROW_MIN_H}>
                         <InlineEditStatus
                           status={
                             savingRole ? "saving" : showSavedRole ? "saved" : roleError ? "error" : "idle"
@@ -279,19 +372,21 @@ export function SettingsPageClient({
                           message={roleError}
                         />
                       </div>
-                    )}
-                  </div>
-                  {editingRoleId !== role.id && (
+                    </div>
+                  ) : null}
+                  <div className={`shrink-0 ${isEditing ? "invisible" : ""}`}>
                     <IconButton
                       variant="ghostDanger"
                       onClick={() => setRoleToDelete(role)}
                       aria-label={`Delete ${role.name}`}
+                      tabIndex={isEditing ? -1 : undefined}
                     >
                       <Trash2 className="h-4 w-4" />
                     </IconButton>
-                  )}
+                  </div>
                 </li>
-              ))}
+              );
+              })}
             </ul>
           </div>
         </Panel>
@@ -309,49 +404,50 @@ export function SettingsPageClient({
           </PanelSectionTitle>
           <div className="overflow-x-auto p-3 pt-0">
             <ul className="space-y-0.5">
-              {initialTeams.map((team) => (
+              {initialTeams.map((team) => {
+                const isEditing = editingTeamId === team.id;
+                return (
                 <li
                   key={team.id}
-                  className={`flex items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50 ${editingTeamId === team.id ? "py-1" : "h-[2.25rem]"}`}
+                  className="relative flex h-[2.25rem] items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50"
                 >
-                  <div className="min-w-0 flex-1 flex flex-col">
-                    <div className="min-h-[2rem] flex items-center gap-2">
-                      {editingTeamId === team.id ? (
-                        <input
-                          type="text"
-                          value={editingTeamValue}
-                          onChange={(e) => setEditingTeamValue(e.target.value)}
-                          onFocus={(e) => e.target.select()}
-                          onBlur={() => saveTeamInline(team.name)}
-                          className={editInputListClass}
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveTeamInline(team.name);
-                            if (e.key === "Escape") {
-                              e.preventDefault();
-                              cancelTeamEdit(team.name);
-                            }
+                  <div className="flex min-h-[2rem] min-w-0 flex-1 items-center gap-2">
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editingTeamValue}
+                        onChange={(e) => setEditingTeamValue(e.target.value)}
+                        onBlur={() => saveTeamInline(team.name)}
+                        className={editInputListClass}
+                        ref={focusInlineInput}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveTeamInline(team.name);
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelTeamEdit(team.name);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTeamError(null);
+                            setEditingTeamId(team.id);
+                            setEditingTeamValue(team.name);
                           }}
-                        />
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTeamError(null);
-                              setEditingTeamId(team.id);
-                              setEditingTeamValue(team.name);
-                            }}
-                            className={inlineEditTriggerListClassRowHover}
-                          >
-                            {team.name}
-                          </button>
-                          {showSavedTeam && lastSavedTeamIdRef.current === team.id && <SavedCheckmark />}
-                        </>
-                      )}
-                    </div>
-                    {editingTeamId === team.id && (
-                      <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
+                          className={inlineEditTriggerListClassRowHover}
+                        >
+                          {team.name}
+                        </button>
+                        {showSavedTeam && lastSavedTeamIdRef.current === team.id && <SavedCheckmark />}
+                      </>
+                    )}
+                  </div>
+                  {isEditing ? (
+                    <div className="pointer-events-none absolute left-2 top-full z-10 pt-0.5">
+                      <div className={INLINE_EDIT_STATUS_ROW_MIN_H}>
                         <InlineEditStatus
                           status={
                             savingTeam ? "saving" : showSavedTeam ? "saved" : teamError ? "error" : "idle"
@@ -359,19 +455,149 @@ export function SettingsPageClient({
                           message={teamError}
                         />
                       </div>
-                    )}
-                  </div>
-                  {editingTeamId !== team.id && (
+                    </div>
+                  ) : null}
+                  <div className={`shrink-0 ${isEditing ? "invisible" : ""}`}>
                     <IconButton
                       variant="ghostDanger"
                       onClick={() => setTeamToDelete(team)}
                       aria-label={`Delete ${team.name}`}
+                      tabIndex={isEditing ? -1 : undefined}
                     >
                       <Trash2 className="h-4 w-4" />
                     </IconButton>
-                  )}
+                  </div>
                 </li>
-              ))}
+              );
+              })}
+            </ul>
+          </div>
+        </Panel>
+
+        <Panel>
+          <PanelSectionTitle
+            action={
+              <ListAddAction
+                label="Add activity"
+                onClick={() => setAddActivityOpen(true)}
+              />
+            }
+          >
+            OTHER ACTIVITIES
+          </PanelSectionTitle>
+          <p className="px-3 pb-2 text-caption text-text-secondary">
+            Non-board time buckets (e.g. project management). Enable per project
+            in master data; they appear in the time report issue picker.
+          </p>
+          <div className="overflow-x-auto p-3 pt-0">
+            <ul className="space-y-0.5">
+              {initialActivities.map((activity) => {
+                const isEditing = editingActivityId === activity.id;
+                return (
+                <li
+                  key={activity.id}
+                  className="relative flex h-[2.25rem] items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50"
+                >
+                  <div className="flex min-h-[2rem] min-w-0 flex-1 items-center gap-2">
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editingActivityValue}
+                        onChange={(e) =>
+                          setEditingActivityValue(e.target.value)
+                        }
+                        onBlur={() => void saveActivityInline(activity.name)}
+                        className={editInputListClass}
+                        ref={focusInlineInput}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            void saveActivityInline(activity.name);
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelActivityEdit(activity.name);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActivityError(null);
+                            setEditingActivityId(activity.id);
+                            setEditingActivityValue(activity.name);
+                          }}
+                          className={inlineEditTriggerListClassRowHover}
+                        >
+                          {activity.name}
+                        </button>
+                        {showSavedActivity &&
+                          lastSavedActivityIdRef.current === activity.id && (
+                            <SavedCheckmark />
+                          )}
+                      </>
+                    )}
+                  </div>
+                  {isEditing ? (
+                    <div className="pointer-events-none absolute left-2 top-full z-10 pt-0.5">
+                      <div className={INLINE_EDIT_STATUS_ROW_MIN_H}>
+                        <InlineEditStatus
+                          status={
+                            savingActivity
+                              ? "saving"
+                              : showSavedActivity
+                                ? "saved"
+                                : activityError
+                                  ? "error"
+                                  : "idle"
+                          }
+                          message={activityError}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  <div
+                    className={`flex shrink-0 items-center gap-4 ${isEditing ? "invisible" : ""}`}
+                  >
+                    <Switch
+                      id={`activity-default-${activity.id}`}
+                      checked={activity.defaultOnNewProjects}
+                      onCheckedChange={(checked) => {
+                        void updateTimeActivity(activity.id, {
+                          defaultOnNewProjects: checked,
+                        })
+                          .then(() => router.refresh())
+                          .catch((e) =>
+                            alert(
+                              e instanceof Error
+                                ? e.message
+                                : "Failed to update activity"
+                            )
+                          );
+                      }}
+                      label="Auto-enable on new projects"
+                      labelClassName="text-caption text-text-secondary whitespace-nowrap"
+                      className="shrink-0"
+                      tabIndex={isEditing ? -1 : undefined}
+                    />
+                    <IconButton
+                      variant="ghostDanger"
+                      onClick={() => setActivityToDelete(activity)}
+                      aria-label={`Delete ${activity.name}`}
+                      tabIndex={isEditing ? -1 : undefined}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </IconButton>
+                  </div>
+                </li>
+              );
+              })}
+              {initialActivities.length === 0 ? (
+                <li className="px-2 py-2 text-sm text-text-secondary">
+                  No activities yet.
+                </li>
+              ) : null}
             </ul>
           </div>
         </Panel>
@@ -425,6 +651,22 @@ export function SettingsPageClient({
         isOpen={addCalendarOpen}
         onClose={() => setAddCalendarOpen(false)}
         onSuccess={handleSuccess}
+      />
+
+      <AddTimeActivityModal
+        isOpen={addActivityOpen}
+        onClose={() => setAddActivityOpen(false)}
+        onSuccess={handleSuccess}
+      />
+
+      <ConfirmModal
+        isOpen={activityToDelete !== null}
+        title="Delete activity"
+        message="Delete this activity from the catalog? Projects that already use it must disable it first."
+        confirmLabel="Delete"
+        variant="danger"
+        onClose={() => setActivityToDelete(null)}
+        onConfirm={handleActivityDelete}
       />
     </>
   );

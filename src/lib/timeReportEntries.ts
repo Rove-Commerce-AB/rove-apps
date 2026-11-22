@@ -175,6 +175,28 @@ export async function getJiraDevOpsOptionsForProject(
   if (!project) return [];
 
   const options: JiraDevOpsOption[] = [];
+
+  try {
+    const { fetchEnabledProjectTimeActivities } = await import(
+      "@/lib/timeActivitiesQueries"
+    );
+    const { activityLinkKey } = await import("@/lib/activityTimeLink");
+    const activities = await fetchEnabledProjectTimeActivities(projectId);
+    options.push(
+      ...activities.map((activity) => ({
+        value: activityLinkKey(activity.id),
+        label: activity.name,
+        description: "Other activity",
+      }))
+    );
+  } catch (error) {
+    const code =
+      typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    if (code !== "42P01") throw error;
+  }
+
   if (project.jira_project_key) {
     const jira = await getJiraIssuesByProjectKey(project.jira_project_key);
     options.push(
@@ -207,6 +229,7 @@ export async function getJiraDevOpsOptionsForProject(
       }))
     );
   }
+
   return options;
 }
 

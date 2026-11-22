@@ -2,6 +2,7 @@ import "server-only";
 
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { revalidateProjectManagerNavCache } from "@/lib/layoutShell";
+import { enableDefaultActivitiesForProjectQuery } from "@/lib/timeActivitiesQueries";
 import * as q from "./projectsQueries";
 
 export type {
@@ -13,7 +14,18 @@ export type {
 } from "./projectsQueries";
 
 export async function createProject(input: q.CreateProjectInput) {
-  return q.createProjectQuery(input);
+  const project = await q.createProjectQuery(input);
+  try {
+    await enableDefaultActivitiesForProjectQuery(project.id);
+  } catch (error) {
+    // Table may not exist yet before migration; project create should still succeed.
+    const code =
+      typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    if (code !== "42P01") throw error;
+  }
+  return project;
 }
 
 export async function updateProject(id: string, input: q.UpdateProjectInput) {

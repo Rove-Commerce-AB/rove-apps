@@ -188,7 +188,7 @@ function jiraDevOpsKeyTooltipTitle(
   description?: string | null
 ): string {
   const d = description?.trim();
-  if (!d) return `${displayKey} — Change Jira/DevOps/ClickUp/Work`;
+  if (!d) return `${displayKey} — Change activity / Jira / Work`;
   const normalizedDisplay = displayKey.toLowerCase();
   const normalizedDescription = d.toLowerCase();
   // Jira labels already include summary (e.g. "ABC-123: Summary"), so avoid duplicates.
@@ -202,7 +202,7 @@ function jiraDevOpsDisplayLabel(
 ): string {
   const label = option?.label?.trim();
   if (label) return label;
-  return rawValue.replace(/^(jira|devops|clickup|work):/, "");
+  return rawValue.replace(/^(jira|devops|clickup|work|activity):/, "");
 }
 
 /** Compact display for footer / row hour totals (matches week vs month grid footers). */
