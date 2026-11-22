@@ -370,7 +370,7 @@ export function RadarJobsClient({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Jobs"
-        description="Start runs one batch now. Schedule on: the nightly worker (03:00 Europe/Stockholm) loops import matching companies, domain enrichment, and technology scan until the backlog is clear or the time budget is used. SCB directory sync stays on its weekend job."
+        description="Start runs one batch now. Schedule on: the nightly worker (03:00 Europe/Stockholm) runs import → domain enrichment → technology scan in that order, chunking each stage until the backlog is clear or the time budget is used. SCB directory sync stays on its weekend job."
       >
         <Button
           size="sm"

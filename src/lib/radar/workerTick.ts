@@ -11,7 +11,7 @@ import {
   finishRadarJobRun,
   getRadarJobConfig,
   isJobPaused,
-  queueRadarJobRun,
+  enqueueRadarJobRun,
   updateRadarJobRunProgress,
 } from "@/lib/radar/jobs";
 import { scanRadarDomain } from "@/lib/radar/techScan";
@@ -21,6 +21,13 @@ import type { RadarJobType } from "@/lib/radar/types";
 const SCHEDULE_LOOP_BUDGET_MS = Number(
   process.env.RADAR_WORKER_BUDGET_MS ?? 12 * 60 * 1000
 );
+
+/** Nightly pipeline order: import companies, then enrich domains, then tech scan. */
+const NIGHTLY_PIPELINE: RadarJobType[] = [
+  "company_import",
+  "domain_enrichment",
+  "tech_scan",
+];
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -211,11 +218,87 @@ async function executeJobType(
   }
 }
 
+async function hasActiveOrQueuedRun(jobType: RadarJobType): Promise<boolean> {
+  const { rows } = await cloudSqlPool.query(
+    `SELECT 1 FROM radar_job_runs
+     WHERE job_type = $1 AND status IN ('queued', 'running')
+     LIMIT 1`,
+    [jobType]
+  );
+  return Boolean(rows[0]);
+}
+
+async function ensureScheduledRunQueued(
+  jobType: RadarJobType,
+  details: string[]
+): Promise<void> {
+  if (await hasActiveOrQueuedRun(jobType)) return;
+  const { created } = await enqueueRadarJobRun({
+    jobType,
+    trigger: "schedule",
+  });
+  if (created) details.push(`Enqueued schedule for ${jobType}`);
+}
+
+type ClaimedRun = NonNullable<Awaited<ReturnType<typeof claimNextQueuedRun>>>;
+
+async function executeClaimedRun(
+  run: ClaimedRun,
+  details: string[]
+): Promise<{
+  shouldContinue: boolean;
+  paused: boolean;
+}> {
+  if (await isJobPaused(run.job_type)) {
+    await finishRadarJobRun(run.id, {
+      status: "paused",
+      message: "Paused before start",
+    });
+    details.push(`${run.job_type}: paused`);
+    return { shouldContinue: false, paused: true };
+  }
+
+  const config = await getRadarJobConfig(run.job_type);
+  try {
+    const result = await executeJobType(run.job_type, run.id, run.trigger);
+    const pausedMidway = await isJobPaused(run.job_type);
+    await finishRadarJobRun(run.id, {
+      status: pausedMidway ? "paused" : "completed",
+      processedCount: result.processed,
+      errorCount: result.errors,
+      message: result.message,
+    });
+    details.push(`${run.job_type}: ${result.message}`);
+    if (pausedMidway || !config) {
+      return { shouldContinue: false, paused: pausedMidway };
+    }
+    const shouldContinue = await shouldContinueScheduledJob(
+      run.job_type,
+      result,
+      config.max_items_per_run
+    );
+    return { shouldContinue, paused: false };
+  } catch (error) {
+    await finishRadarJobRun(run.id, {
+      status: "failed",
+      message: "Job failed",
+      errorDetail: error instanceof Error ? error.message : String(error),
+    });
+    details.push(
+      `${run.job_type}: failed – ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return { shouldContinue: false, paused: false };
+  }
+}
+
 /**
- * One worker tick: claim queued runs, and optionally enqueue schedule-enabled jobs.
- * When enqueueScheduled is true (nightly worker), re-queues domain/tech/import
- * while backlog remains, until the time budget is hit. SCB directory sync is
- * never looped here (weekend Cloud Run Job).
+ * One worker tick.
+ * - Nightly (`enqueueScheduled`): runs import → domain → tech in order, chunking
+ *   each stage until backlog is clear or the time budget is hit. SCB directory
+ *   sync is never looped here (weekend Cloud Run Job).
+ * - Manual queue drain: claims any queued run FIFO without starting new schedule.
  */
 export async function runRadarWorkerTick(options?: {
   enqueueScheduled?: boolean;
@@ -224,100 +307,94 @@ export async function runRadarWorkerTick(options?: {
   const enqueueScheduled = options?.enqueueScheduled !== false;
   const startedAt = Date.now();
   const budgetLeft = () => Date.now() - startedAt < SCHEDULE_LOOP_BUDGET_MS;
+  const budgetMinutes = () => Math.round(SCHEDULE_LOOP_BUDGET_MS / 60000);
+  let runs = 0;
 
   if (enqueueScheduled) {
-    const configs = await cloudSqlPool.query<{
-      job_type: RadarJobType;
-      schedule_enabled: boolean;
-      paused: boolean;
-    }>(`SELECT job_type, schedule_enabled, paused FROM radar_job_configs`);
+    details.push(
+      "Nightly pipeline: company_import → domain_enrichment → tech_scan"
+    );
 
-    for (const config of configs.rows) {
-      if (!config.schedule_enabled || config.paused) continue;
-      // Full SCB directory sync takes many hours; Cloud Run HTTP times out at
-      // 15m. Weekend Cloud Run Job (scripts/radar-scb-directory-sync.mjs) owns it.
-      if (config.job_type === "scb_directory_sync") continue;
-      if (!(await scheduledJobHasBacklog(config.job_type))) continue;
-      const { rows: active } = await cloudSqlPool.query(
-        `SELECT 1 FROM radar_job_runs
-         WHERE job_type = $1 AND status IN ('queued', 'running')
-         LIMIT 1`,
-        [config.job_type]
-      );
-      if (active[0]) continue;
-      await queueRadarJobRun({
-        jobType: config.job_type,
-        trigger: "schedule",
-      });
-      details.push(`Enqueued schedule for ${config.job_type}`);
-    }
-  }
+    for (const jobType of NIGHTLY_PIPELINE) {
+      if (!budgetLeft()) {
+        details.push(
+          `Stopped pipeline: time budget reached (${budgetMinutes()} min)`
+        );
+        break;
+      }
 
-  let runs = 0;
-  for (;;) {
-    if (enqueueScheduled && !budgetLeft()) {
-      details.push(
-        `Stopped looping: time budget reached (${Math.round(SCHEDULE_LOOP_BUDGET_MS / 60000)} min)`
-      );
-      break;
-    }
-
-    const run = await claimNextQueuedRun();
-    if (!run) break;
-    runs += 1;
-    try {
-      if (await isJobPaused(run.job_type)) {
-        await finishRadarJobRun(run.id, {
-          status: "paused",
-          message: "Paused before start",
-        });
-        details.push(`${run.job_type}: paused`);
+      const config = await getRadarJobConfig(jobType);
+      if (!config?.schedule_enabled || config.paused) {
+        details.push(`${jobType}: skipped (schedule off or paused)`);
         continue;
       }
-      const config = await getRadarJobConfig(run.job_type);
-      const result = await executeJobType(run.job_type, run.id, run.trigger);
-      const pausedMidway = await isJobPaused(run.job_type);
-      await finishRadarJobRun(run.id, {
-        status: pausedMidway ? "paused" : "completed",
-        processedCount: result.processed,
-        errorCount: result.errors,
-        message: result.message,
-      });
-      details.push(`${run.job_type}: ${result.message}`);
 
-      // Nightly: keep chunking while backlog remains (except SCB sync).
-      if (
-        enqueueScheduled &&
-        run.trigger === "schedule" &&
-        !pausedMidway &&
-        budgetLeft() &&
-        config &&
-        (await shouldContinueScheduledJob(
-          run.job_type,
-          result,
-          config.max_items_per_run
-        ))
-      ) {
-        const { created } = await queueRadarJobRun({
-          jobType: run.job_type,
+      details.push(`${jobType}: stage start`);
+
+      while (budgetLeft()) {
+        // Domain/tech only start when there is work. Import always takes at
+        // least one pass; further passes follow shouldContinue (full batch).
+        if (
+          jobType !== "company_import" &&
+          !(await scheduledJobHasBacklog(jobType))
+        ) {
+          details.push(`${jobType}: stage done (no backlog)`);
+          break;
+        }
+
+        await ensureScheduledRunQueued(jobType, details);
+        const run = await claimNextQueuedRun(jobType);
+        if (!run) {
+          details.push(`${jobType}: stage done (nothing to claim)`);
+          break;
+        }
+
+        runs += 1;
+        const { shouldContinue, paused } = await executeClaimedRun(
+          run,
+          details
+        );
+        if (paused) {
+          details.push(`${jobType}: stage stopped (paused)`);
+          break;
+        }
+        if (!shouldContinue) {
+          details.push(`${jobType}: stage done`);
+          break;
+        }
+        if (!budgetLeft()) {
+          details.push(
+            `Stopped pipeline: time budget reached (${budgetMinutes()} min)`
+          );
+          break;
+        }
+        const { created } = await enqueueRadarJobRun({
+          jobType,
           trigger: "schedule",
         });
         if (created) {
-          details.push(`Re-queued ${run.job_type} (backlog remains)`);
+          details.push(`Re-queued ${jobType} (backlog remains)`);
         }
       }
-    } catch (error) {
-      await finishRadarJobRun(run.id, {
-        status: "failed",
-        message: "Job failed",
-        errorDetail: error instanceof Error ? error.message : String(error),
-      });
-      details.push(
-        `${run.job_type}: failed – ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
     }
+
+    // Drain leftover queued runs (e.g. manual) without starting new stages.
+    while (budgetLeft()) {
+      const run = await claimNextQueuedRun();
+      if (!run) break;
+      runs += 1;
+      await executeClaimedRun(run, details);
+    }
+
+    return { runs, details };
+  }
+
+  // Manual / tick: process whatever is already queued.
+  for (;;) {
+    const run = await claimNextQueuedRun();
+    if (!run) break;
+    runs += 1;
+    await executeClaimedRun(run, details);
   }
 
   return { runs, details };

@@ -1,6 +1,6 @@
 /**
- * Cloud Run Job / Scheduler entrypoint for short Radar jobs
- * (company import, domain enrichment, tech scan).
+ * Cloud Run Job / Scheduler entrypoint for short Radar jobs.
+ * Nightly pipeline order: company import → domain enrichment → tech scan.
  *
  * SCB directory sync is NOT handled here (too long for HTTP 15m timeout).
  * See scripts/radar-scb-directory-sync.mjs + Cloud Run Job
