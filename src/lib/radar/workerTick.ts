@@ -11,7 +11,7 @@ import {
   finishRadarJobRun,
   getRadarJobConfig,
   isJobPaused,
-  enqueueRadarJobRun,
+  queueRadarJobRun,
   updateRadarJobRunProgress,
 } from "@/lib/radar/jobs";
 import { scanRadarDomain } from "@/lib/radar/techScan";
@@ -233,7 +233,7 @@ async function ensureScheduledRunQueued(
   details: string[]
 ): Promise<void> {
   if (await hasActiveOrQueuedRun(jobType)) return;
-  const { created } = await enqueueRadarJobRun({
+  const { created } = await queueRadarJobRun({
     jobType,
     trigger: "schedule",
   });
@@ -368,7 +368,7 @@ export async function runRadarWorkerTick(options?: {
           );
           break;
         }
-        const { created } = await enqueueRadarJobRun({
+        const { created } = await queueRadarJobRun({
           jobType,
           trigger: "schedule",
         });
