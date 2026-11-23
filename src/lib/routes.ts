@@ -14,6 +14,7 @@ export const ROUTES = {
   plannerPlanConsultant: "/planner/plan/consultant",
   plannerPlanCustomer: "/planner/plan/customer",
   plannerPlanProject: "/planner/plan/project",
+  plannerPlanAvailability: "/planner/plan/availability",
   plannerPlanHistory: "/planner/plan/history",
   /** @deprecated Use plannerPlanConsultant */
   plannerConsultant: "/planner/plan/consultant",

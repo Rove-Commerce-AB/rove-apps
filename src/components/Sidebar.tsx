@@ -846,6 +846,15 @@ export function Sidebar({
                 onNavigate={markPending}
               />
               <NavLink
+                href={ROUTES.plannerPlanAvailability}
+                label="Availability"
+                pathname={activePath}
+                indent
+                activeMatch="prefix"
+                prefetch
+                onNavigate={markPending}
+              />
+              <NavLink
                 href={ROUTES.plannerPlanHistory}
                 label="Allocation history"
                 pathname={activePath}

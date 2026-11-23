@@ -421,18 +421,32 @@ table thead th.time-grid-header-column-active {
   box-shadow: inset 0 -4px 0 0 var(--color-interactive-primary) !important;
 }
 
-/* Allocation tables: full row + column crosshair on hover (consultant + customer + project views). */
+/* Allocation tables: full row + column crosshair on hover (consultant + customer + project views).
+   !important so it wins over current-week-cell { box-shadow: none }, Tailwind ring, etc.
+   Also paint inner buttons (Availability) — opaque button faces otherwise hide td inset shadows. */
 .allocation-tables tbody tr.time-grid-row-hover > td {
   box-shadow: inset 0 0 0 9999px
-    color-mix(in srgb, var(--color-interactive-primary) 18%, transparent);
+    color-mix(in srgb, var(--color-interactive-primary) 18%, transparent) !important;
 }
 .allocation-tables tbody td.time-grid-column-hover {
   box-shadow: inset 0 0 0 9999px
-    color-mix(in srgb, var(--color-interactive-primary) 16%, transparent);
+    color-mix(in srgb, var(--color-interactive-primary) 16%, transparent) !important;
 }
 .allocation-tables tbody tr.time-grid-row-hover > td.time-grid-column-hover {
   box-shadow: inset 0 0 0 9999px
-    color-mix(in srgb, var(--color-interactive-primary) 32%, transparent);
+    color-mix(in srgb, var(--color-interactive-primary) 32%, transparent) !important;
+}
+.allocation-tables tbody tr.time-grid-row-hover > td > button {
+  box-shadow: inset 0 0 0 9999px
+    color-mix(in srgb, var(--color-interactive-primary) 18%, transparent) !important;
+}
+.allocation-tables tbody td.time-grid-column-hover > button {
+  box-shadow: inset 0 0 0 9999px
+    color-mix(in srgb, var(--color-interactive-primary) 16%, transparent) !important;
+}
+.allocation-tables tbody tr.time-grid-row-hover > td.time-grid-column-hover > button {
+  box-shadow: inset 0 0 0 9999px
+    color-mix(in srgb, var(--color-interactive-primary) 32%, transparent) !important;
 }
 
 /* Time report week/month grids: CSS-only row + column crosshair (no React hover state).

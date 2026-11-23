@@ -43,6 +43,9 @@ export function breadcrumbsForPathname(
     ) {
       return [root, planner, { label: "Project" }];
     }
+    if (pathname.startsWith(ROUTES.plannerPlanAvailability)) {
+      return [root, planner, { label: "Availability" }];
+    }
     if (pathname.startsWith(ROUTES.plannerPlanHistory)) {
       return [root, planner, { label: "Allocation history" }];
     }
