@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { Sidebar, SIDEBAR_COLLAPSED_COOKIE } from "@/components/Sidebar";
 import { AppTopBar } from "@/components/AppTopBar";
 import { FeatureRequestFab } from "@/components/FeatureRequestFab";
@@ -9,6 +10,7 @@ import { WorkTrailProvider } from "@/components/WorkTrailContext";
 import { ShortcutsProvider } from "@/components/ShortcutsProvider";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
+import { formatUnreadDocumentTitle } from "@/lib/documentTitle";
 import {
   getCachedProjectManagerNavVisible,
   getCachedUnreadNotificationCount,
@@ -18,6 +20,17 @@ import { listWorkNavCustomers } from "@/lib/workBoards";
 import { cookies } from "next/headers";
 
 /** Auth and app_users gatekeeping run in src/proxy.ts. */
+
+async function unreadCountForMetadata(): Promise<number> {
+  const user = await getCurrentAppUser();
+  if (user?.email == null) return 0;
+  return getCachedUnreadNotificationCount(user.email);
+}
+
+/** So soft navigations re-apply the count via Next metadata, not only client. */
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: formatUnreadDocumentTitle(await unreadCountForMetadata()) };
+}
 
 export default async function AppLayout({
   children,

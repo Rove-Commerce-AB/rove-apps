@@ -216,45 +216,56 @@ function pasteZoneFromTarget(target: EventTarget | null): PasteZone | null {
   return null;
 }
 
-function thumbsFromFileIds(fileIds: string[]): InlinePasteThumb[] {
-  return fileIds.map((fileId) => ({
-    localId: fileId,
-    previewUrl: workFileImageHref(fileId),
-    fileId,
-    uploading: false,
-    revokeOnClear: false,
-  }));
-}
-
-/** Rebuild description video previews from persisted video + poster files. */
-function videoThumbsFromFiles(files: WorkFile[]): InlinePasteThumb[] {
-  const posters = new Map<string, WorkFile>();
-  for (const file of files) {
-    if (isImageMime(file.mimeType) && isVideoPosterFileName(file.fileName)) {
-      posters.set(file.fileName.toLowerCase(), file);
-    }
-  }
-  const out: InlinePasteThumb[] = [];
+/**
+ * Inline thumbs from markdown file ids. Poster images that belong to a video
+ * on this issue get a video open-href; everything else is a plain image.
+ * Only ids referenced in the body are shown — never all issue videos.
+ */
+function thumbsFromInlineFileIds(
+  fileIds: string[],
+  files: WorkFile[]
+): InlinePasteThumb[] {
+  const byId = new Map(files.map((file) => [file.id, file]));
+  const videoByPosterName = new Map<string, WorkFile>();
   for (const file of files) {
     const isVideo =
       isVideoMime(file.mimeType) ||
       /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.fileName);
     if (!isVideo) continue;
-    const poster = posters.get(
-      videoPosterFileName(file.fileName).toLowerCase()
+    videoByPosterName.set(
+      videoPosterFileName(file.fileName).toLowerCase(),
+      file
     );
-    if (!poster) continue;
-    out.push({
-      localId: `video-preview:${file.id}`,
-      previewUrl: workFileImageHref(poster.id),
-      href: workFileHref(file.id),
-      fileId: null,
+  }
+  return fileIds.map((fileId) => {
+    const file = byId.get(fileId);
+    if (
+      file &&
+      isImageMime(file.mimeType) &&
+      isVideoPosterFileName(file.fileName)
+    ) {
+      const video = videoByPosterName.get(file.fileName.toLowerCase());
+      if (video) {
+        return {
+          localId: `video-preview:${video.id}`,
+          previewUrl: workFileImageHref(fileId),
+          href: workFileHref(video.id),
+          fileId,
+          uploading: false,
+          revokeOnClear: false,
+          media: "video" as const,
+        };
+      }
+    }
+    return {
+      localId: fileId,
+      previewUrl: workFileImageHref(fileId),
+      fileId,
       uploading: false,
       revokeOnClear: false,
-      media: "video",
-    });
-  }
-  return out;
+      media: "image" as const,
+    };
+  });
 }
 
 function localTodayYmd(): string {
@@ -537,10 +548,11 @@ export function WorkIssueDrawer({
     () => mentionPlainText(splitWorkInlineImages(issue.description).text)
   );
   const [descriptionThumbs, setDescriptionThumbs] = useState<InlinePasteThumb[]>(
-    () => [
-      ...thumbsFromFileIds(splitWorkInlineImages(issue.description).fileIds),
-      ...videoThumbsFromFiles(issue.files),
-    ]
+    () =>
+      thumbsFromInlineFileIds(
+        splitWorkInlineImages(issue.description).fileIds,
+        issue.files
+      )
   );
   const [currentState, setCurrentState] = useState(issue.currentState);
   const [nextStep, setNextStep] = useState(issue.nextStep);
@@ -667,18 +679,14 @@ export function WorkIssueDrawer({
     setTitle(issue.title);
     setDescription(mentionPlainText(split.text));
     setDescriptionThumbs((prev) => {
-      const fromServer = thumbsFromFileIds(split.fileIds);
-      // Keep video previews (and in-flight uploads); files-effect rebuilds them.
-      const pending = prev.filter(
-        (thumb) =>
-          thumb.uploading ||
-          (thumb.href != null && thumb.fileId == null) ||
-          (thumb.fileId != null && !split.fileIds.includes(thumb.fileId))
-      );
+      const fromServer = thumbsFromInlineFileIds(split.fileIds, issue.files);
+      // Keep in-flight uploads; drop anything already represented in markdown.
+      const pending = prev.filter((thumb) => thumb.uploading);
       for (const thumb of prev) {
         if (
           thumb.revokeOnClear &&
-          !pending.some((row) => row.localId === thumb.localId)
+          !pending.some((row) => row.localId === thumb.localId) &&
+          !fromServer.some((row) => row.localId === thumb.localId)
         ) {
           URL.revokeObjectURL(thumb.previewUrl);
         }
@@ -710,6 +718,7 @@ export function WorkIssueDrawer({
     issue.id,
     issue.title,
     issue.description,
+    issue.files,
     issue.currentState,
     issue.nextStep,
     issue.outOfScope,
@@ -718,41 +727,6 @@ export function WorkIssueDrawer({
     issue.dueDate,
     estimateFocused,
   ]);
-
-  // Rebuild description video thumbs when files arrive (open card / after upload).
-  useEffect(() => {
-    const fromVideos = videoThumbsFromFiles(issue.files);
-    setDescriptionThumbs((prev) => {
-      const kept = prev.filter((thumb) => {
-        if (thumb.localId.startsWith("video-preview:")) return false;
-        // Local video-paste preview + server video thumb would double up while
-        // the upload is still finishing (poster/video already in issue.files).
-        if (thumb.media === "video" && fromVideos.length > 0) {
-          return false;
-        }
-        if (thumb.href != null && thumb.fileId == null && !thumb.uploading) {
-          return !fromVideos.some((row) => row.href === thumb.href);
-        }
-        return true;
-      });
-      for (const thumb of prev) {
-        if (
-          thumb.revokeOnClear &&
-          !kept.some((row) => row.localId === thumb.localId)
-        ) {
-          URL.revokeObjectURL(thumb.previewUrl);
-        }
-      }
-      if (
-        fromVideos.length === 0 &&
-        kept.length === prev.length &&
-        kept.every((thumb, index) => thumb === prev[index])
-      ) {
-        return prev;
-      }
-      return [...kept, ...fromVideos];
-    });
-  }, [issue.id, issue.files]);
 
   useEffect(() => {
     uploadingCountRef.current = 0;
@@ -1296,8 +1270,7 @@ export function WorkIssueDrawer({
             ? setDescriptionThumbs
             : setCommentThumbs;
         if (isVideoFile(upload)) {
-          // Replace local blob preview with the stable video-preview thumb so we
-          // never show two tiles (local + files-effect) for the same paste.
+          // Embed the poster id in description/comment body; video stays in Files.
           setThumbs((prev) => {
             const row = prev.find((thumb) => thumb.localId === options.localId);
             if (row?.revokeOnClear) URL.revokeObjectURL(row.previewUrl);
@@ -1305,21 +1278,22 @@ export function WorkIssueDrawer({
               (thumb) => thumb.localId !== options.localId
             );
             if (!posterRecord) return without;
-            return [
+            const next = [
               ...without,
               {
                 localId: `video-preview:${result.id}`,
                 previewUrl: workFileImageHref(posterRecord.id),
                 href: workFileHref(result.id),
-                // Description keeps videos via issue.files; comments embed the
-                // poster id so Send can put media into the comment body.
-                fileId:
-                  options.zone === "comment" ? posterRecord.id : null,
+                fileId: posterRecord.id,
                 uploading: false,
                 revokeOnClear: false,
                 media: "video" as const,
               },
             ];
+            if (options.zone === "description") {
+              queueMicrotask(() => persistDescription(next));
+            }
+            return next;
           });
         } else {
           setThumbs((prev) => {

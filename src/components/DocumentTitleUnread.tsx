@@ -1,23 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-
-const BASE_TITLE = "Rove Apps";
-
-function formatTitle(unreadCount: number): string {
-  const count = Number.isFinite(unreadCount) ? Math.max(0, unreadCount) : 0;
-  if (count <= 0) return BASE_TITLE;
-  return `(${count > 99 ? "99+" : count}) ${BASE_TITLE}`;
-}
+import { formatUnreadDocumentTitle } from "@/lib/documentTitle";
 
 /**
  * Mirrors unread notification count into the browser tab title,
  * e.g. "(3) Rove Apps" — same pattern as Pinterest/Gmail.
  *
- * Next.js re-applies static metadata.title on soft navigations and can
- * overwrite a one-shot document.title write, so we re-assert on every
- * pathname change and whenever head mutates the <title> node.
+ * Next.js re-applies root metadata.title ("Rove Apps") on soft navigations
+ * and after some client interactions (RSC refresh). Observing the <title>
+ * node itself fails when Next replaces that node — always watch <head>,
+ * re-assert on a few delayed ticks, and on focus/visibility.
  */
 export function DocumentTitleUnread({
   unreadCount,
@@ -25,32 +19,46 @@ export function DocumentTitleUnread({
   unreadCount: number;
 }) {
   const pathname = usePathname();
-  const title = formatTitle(unreadCount);
+  const title = formatUnreadDocumentTitle(unreadCount);
+  const titleRef = useRef(title);
+  titleRef.current = title;
 
   useEffect(() => {
     const apply = () => {
-      if (document.title !== title) {
-        document.title = title;
+      const next = titleRef.current;
+      if (document.title !== next) {
+        document.title = next;
       }
     };
 
     apply();
-    // Next often reapplies metadata after paint / soft nav.
-    const t0 = window.setTimeout(apply, 0);
-    const t1 = window.setTimeout(apply, 50);
+    // Next often reapplies metadata after paint / soft nav / refresh.
+    const timeouts = [0, 50, 200, 500, 1500].map((ms) =>
+      window.setTimeout(apply, ms)
+    );
 
-    const titleEl = document.querySelector("head > title");
+    // Watch <head>, not the title node — Next replaces <title> wholesale
+    // and an observer on the old node goes silent.
     const observer = new MutationObserver(apply);
-    observer.observe(titleEl ?? document.head, {
+    observer.observe(document.head, {
       childList: true,
       characterData: true,
       subtree: true,
     });
 
+    const onFocus = () => apply();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+
+    // Safety net for missed mutations during long interactions.
+    const interval = window.setInterval(apply, 2000);
+
     return () => {
-      window.clearTimeout(t0);
-      window.clearTimeout(t1);
+      for (const id of timeouts) window.clearTimeout(id);
+      window.clearInterval(interval);
       observer.disconnect();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
     };
   }, [title, pathname]);
 
