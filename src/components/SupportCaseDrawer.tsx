@@ -39,7 +39,11 @@ import {
   isVideoMime,
   pasteMediaFileName,
 } from "@/lib/workMedia";
-import { WORK_FILE_MAX_BYTES, type WorkPerson } from "@/lib/workTypes";
+import {
+  WORK_FILE_MAX_BYTES,
+  WORK_FILE_MAX_LABEL,
+  type WorkPerson,
+} from "@/lib/workTypes";
 
 type Props = {
   customerId: string;
@@ -267,7 +271,7 @@ export function SupportCaseDrawer({
       const mime = (file.type || "").toLowerCase();
       if (!isImageMime(mime) && !isVideoMime(mime)) continue;
       if (file.size > WORK_FILE_MAX_BYTES) {
-        setError("Each attachment must be 8 MB or smaller");
+        setError(`Each attachment must be ${WORK_FILE_MAX_LABEL} or smaller`);
         continue;
       }
       const named = new File([file], pasteMediaFileName(file, i), {
@@ -688,7 +692,7 @@ export function SupportCaseDrawer({
               {composeMode === "email" ? (
                 <div className="space-y-2">
                   <label className="block text-xs text-text-secondary">
-                    Attach image or video (max 8 MB each)
+                    Attach image or video (max {WORK_FILE_MAX_LABEL} each)
                     <input
                       type="file"
                       accept="image/*,video/*"

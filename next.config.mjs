@@ -1,10 +1,12 @@
 const nextConfig = {
-  // Feature/bug screenshots on create (up to 8 × 8 MB).
-  // bodySizeLimit remains under experimental in Next 16.
+  // Work file uploads (up to 50 MB) + multipart overhead.
+  // proxyClientMaxBodySize: Next buffers the body when proxy.ts runs (default 10mb);
+  // truncating multipart → "Unexpected end of form".
   experimental: {
     serverActions: {
-      bodySizeLimit: "40mb",
+      bodySizeLimit: "52mb",
     },
+    proxyClientMaxBodySize: "52mb",
   },
   // unzipper optionally requires @aws-sdk/client-s3; keep it external so
   // Turbopack does not try to resolve that unused path.

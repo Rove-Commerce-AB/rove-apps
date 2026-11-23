@@ -4,6 +4,7 @@ import { AppTopBar } from "@/components/AppTopBar";
 import { FeatureRequestFab } from "@/components/FeatureRequestFab";
 import { AppThemeAttr } from "@/components/AppThemeAttr";
 import { PresentingModeProvider } from "@/components/PresentingModeContext";
+import { DocumentTitleUnread } from "@/components/DocumentTitleUnread";
 import { WorkTrailProvider } from "@/components/WorkTrailContext";
 import { ShortcutsProvider } from "@/components/ShortcutsProvider";
 import { getCurrentAppUser } from "@/lib/appUsers";
@@ -53,6 +54,7 @@ export default async function AppLayout({
 
   return (
     <PresentingModeProvider isStaff={isStaff}>
+      <DocumentTitleUnread unreadCount={unreadNotificationCount} />
       <div className="flex h-full overflow-hidden">
         <AppThemeAttr />
         <ShortcutsProvider initialShortcuts={shortcuts}>

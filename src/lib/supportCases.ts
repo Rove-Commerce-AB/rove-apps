@@ -39,6 +39,7 @@ import {
 import { createWorkIssue } from "@/lib/workIssues";
 import { WorkInputError } from "@/lib/workErrors";
 import { isImageMime, isVideoMime } from "@/lib/workMedia";
+import { workFileEachTooLargeMessage } from "@/lib/workFilesPersist";
 import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
 import {
   fetchWorkBoardById,
@@ -852,7 +853,7 @@ export async function addSupportCaseComment(
 /**
  * Staff reply via support@ into the linked Gmail thread.
  * Also stores a public case comment + support_mail_messages row.
- * Optional image/video attachments (max 8 MB each, same as Work files).
+ * Optional image/video attachments (max size same as Work files).
  */
 export async function replySupportCaseEmail(
   customerId: string,
@@ -886,7 +887,7 @@ export async function replySupportCaseEmail(
     }
     if (file.size <= 0) continue;
     if (file.size > WORK_FILE_MAX_BYTES) {
-      throw new WorkInputError("Each attachment must be 8 MB or smaller.");
+      throw new WorkInputError(workFileEachTooLargeMessage());
     }
     outgoing.push({
       fileName: file.name.trim() || (isVideoMime(mime) ? "video.mp4" : "image.png"),

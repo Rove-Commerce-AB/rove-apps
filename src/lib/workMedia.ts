@@ -120,12 +120,25 @@ export function guessMimeFromNameAndBytes(
 export function collectClipboardFiles(data: DataTransfer | null): File[] {
   if (!data) return [];
   const out: File[] = [];
-  const seen = new Set<string>();
+  // Snipping Tool often exposes the same blob via both `items` and `files`
+  // with different name/type — dedupe on size + lastModified (+ prefer typed).
+  const byIdentity = new Map<string, File>();
   const add = (file: File) => {
-    const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(file);
+    const key = `${file.size}:${file.lastModified}`;
+    const existing = byIdentity.get(key);
+    if (!existing) {
+      byIdentity.set(key, file);
+      return;
+    }
+    // Prefer the entry that already has a usable MIME over application/octet-stream / empty.
+    const existingType = (existing.type || "").toLowerCase();
+    const nextType = (file.type || "").toLowerCase();
+    const existingWeak =
+      !existingType || existingType === "application/octet-stream";
+    const nextStrong = Boolean(nextType) && nextType !== "application/octet-stream";
+    if (existingWeak && nextStrong) {
+      byIdentity.set(key, file);
+    }
   };
   if (data.items?.length) {
     for (const item of Array.from(data.items)) {
@@ -137,6 +150,7 @@ export function collectClipboardFiles(data: DataTransfer | null): File[] {
   if (data.files?.length) {
     for (const file of Array.from(data.files)) add(file);
   }
+  for (const file of byIdentity.values()) out.push(file);
   return out;
 }
 

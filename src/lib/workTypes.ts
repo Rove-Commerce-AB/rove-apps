@@ -13,7 +13,10 @@ export type { WorkIssueRelations, WorkProcess, WorkProcessStep };
 
 export type { WorkBoardStatus, WorkIssueStatus };
 
-export const WORK_FILE_MAX_BYTES = 8 * 1024 * 1024;
+/** Max attachment size (Work files, feature-request media, etc.). */
+export const WORK_FILE_MAX_BYTES = 50 * 1024 * 1024;
+
+export const WORK_FILE_MAX_LABEL = "50 MB";
 
 export type WorkSelectorBoard = {
   id: string;

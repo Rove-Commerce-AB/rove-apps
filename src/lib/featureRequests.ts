@@ -9,6 +9,10 @@ import {
 import { joinWorkInlineImages } from "@/lib/workInlineImages";
 import { isVideoPosterFileName } from "@/lib/workMedia";
 import { findOrCreateBoardComponent } from "@/lib/workIssuesQueries";
+import {
+  persistWorkIssueFileBytes,
+  workFileEachTooLargeMessage,
+} from "@/lib/workFilesPersist";
 import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
 
 const FEATURE_REQUEST_BOARD_TITLE = "Rove Apps";
@@ -93,7 +97,7 @@ function collectMediaFiles(formData: FormData): File[] {
       throw new Error("Attachments must be images or videos");
     }
     if (file.size > WORK_FILE_MAX_BYTES) {
-      throw new Error("Each attachment must be 8 MB or smaller");
+      throw new Error(workFileEachTooLargeMessage());
     }
   }
   const posters = formData
@@ -104,7 +108,7 @@ function collectMediaFiles(formData: FormData): File[] {
       throw new Error("Video posters must be images");
     }
     if (file.size > WORK_FILE_MAX_BYTES) {
-      throw new Error("Each attachment must be 8 MB or smaller");
+      throw new Error(workFileEachTooLargeMessage());
     }
     if (!isVideoPosterFileName(file.name)) {
       throw new Error("Invalid video poster name");
@@ -193,22 +197,14 @@ export async function createFeatureRequest(
 
     const fileIds: string[] = [];
     for (const file of screenshotBytes) {
-      const { rows: fileRows } = await client.query<{ id: string }>(
-        `INSERT INTO work_issue_files (
-           issue_id, file_name, mime_type, byte_size, content, uploaded_by_app_user_id
-         ) VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id`,
-        [
-          issueId,
-          file.name,
-          file.mimeType,
-          file.byteSize,
-          file.content,
-          user.id,
-        ]
-      );
-      const fileId = fileRows[0]?.id;
-      if (!fileId) throw new Error("Failed to attach screenshot");
+      const fileId = await persistWorkIssueFileBytes({
+        issueId,
+        fileName: file.name,
+        mimeType: file.mimeType,
+        bytes: file.content,
+        uploadedByAppUserId: user.id,
+        client,
+      });
       fileIds.push(fileId);
       await client.query(
         `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)

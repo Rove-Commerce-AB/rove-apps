@@ -16,6 +16,7 @@ import {
 import {
   addWorkIssueAssignee,
   deleteWorkIssueFile,
+  fetchWorkIssueFileForDownload,
   fetchWorkIssueNotifyMeta,
   fetchWorkIssueAssigneeAppUserIds,
   fetchWorkIssueDescription,
@@ -33,7 +34,6 @@ import {
   fetchWorkIssueRelations,
   insertWorkIssueComment,
   insertWorkIssueEvent,
-  insertWorkIssueFile,
   insertWorkIssueRelation,
   insertWorkIssueRequirement,
   insertWorkIssuePreDeployAction,
@@ -84,7 +84,14 @@ import { USER_NOTIFICATION_KIND } from "@/lib/userNotificationKinds";
 import { insertUserNotification } from "@/lib/userNotifications";
 import { guessMimeFromNameAndBytes } from "@/lib/workMedia";
 import {
+  beginSignedWorkFileUpload,
+  deleteWorkFileStorage,
+  persistWorkIssueFileBytes,
+  workFileTooLargeMessage,
+} from "@/lib/workFilesPersist";
+import {
   WORK_FILE_MAX_BYTES,
+  WORK_FILE_MAX_LABEL,
   type WorkComponent,
   type WorkIssuePriority,
   type WorkIssueType,
@@ -104,7 +111,7 @@ import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
 import { setWorkIssueSprint } from "@/lib/workSprints";
 import { fetchWorkSprintById } from "@/lib/workSprintsQueries";
 
-export { WORK_FILE_MAX_BYTES };
+export { WORK_FILE_MAX_BYTES, WORK_FILE_MAX_LABEL };
 
 async function requireBoardAccess(boardId: string, authenticatedActor?: WorkActor) {
   const visible = await requireVisibleWorkBoard(boardId, authenticatedActor);
@@ -1187,23 +1194,61 @@ export async function uploadIssueFile(
   const fileName = file.name.trim() || "file";
   if (file.size <= 0) throw new Error("File is empty");
   if (file.size > WORK_FILE_MAX_BYTES) {
-    throw new Error("File must be 8 MB or smaller");
+    throw new Error(workFileTooLargeMessage());
   }
   const mimeType = guessMimeFromNameAndBytes(
     fileName,
     file.bytes,
     file.type
   );
-  const fileId = await insertWorkIssueFile({
+  const fileId = await persistWorkIssueFileBytes({
     issueId,
     fileName,
     mimeType,
-    byteSize: file.size,
-    content: Buffer.from(file.bytes),
+    bytes: Buffer.from(file.bytes),
     uploadedByAppUserId: actor.id,
   });
   await logEvent(issueId, actor.id, "file", `uploaded ${fileName}`);
   return fileId;
+}
+
+/** Start a direct-to-GCS upload when configured; otherwise client uses FormData. */
+export async function beginIssueFileUpload(
+  boardId: string,
+  issueId: string,
+  file: { name: string; type: string; size: number }
+): Promise<
+  | { mode: "legacy" }
+  | {
+      mode: "signed";
+      fileId: string;
+      uploadUrl: string;
+      contentType: string;
+    }
+> {
+  const { actor } = await requireBoardAccess(boardId);
+  const fileName = file.name.trim() || "file";
+  return beginSignedWorkFileUpload({
+    issueId,
+    fileName,
+    mimeType: file.type || "application/octet-stream",
+    byteSize: file.size,
+    uploadedByAppUserId: actor.id,
+  });
+}
+
+/** After a successful signed PUT — write the activity event. */
+export async function confirmIssueFileUpload(
+  boardId: string,
+  issueId: string,
+  fileId: string
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const file = await fetchWorkIssueFileForDownload(fileId);
+  if (!file || file.issue_id !== issueId) {
+    throw new Error("File not found");
+  }
+  await logEvent(issueId, actor.id, "file", `uploaded ${file.file_name}`);
 }
 
 export async function removeIssueFile(
@@ -1212,9 +1257,10 @@ export async function removeIssueFile(
   fileId: string
 ): Promise<void> {
   const { actor } = await requireBoardAccess(boardId);
-  const fileName = await deleteWorkIssueFile(issueId, fileId);
-  if (!fileName) throw new Error("File not found");
-  await logEvent(issueId, actor.id, "file", `removed ${fileName}`);
+  const deleted = await deleteWorkIssueFile(issueId, fileId);
+  if (!deleted) throw new Error("File not found");
+  await deleteWorkFileStorage(deleted.storageKey);
+  await logEvent(issueId, actor.id, "file", `removed ${deleted.fileName}`);
 }
 
 async function workIssueNotifyActorLabel(

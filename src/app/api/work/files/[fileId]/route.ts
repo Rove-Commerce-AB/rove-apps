@@ -1,6 +1,8 @@
+import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { buildContentDisposition } from "@/lib/workFileHttp";
+import { resolveWorkFileReadStream } from "@/lib/workFilesPersist";
 import { fetchWorkIssueFileForDownload } from "@/lib/workIssuesQueries";
 
 export const dynamic = "force-dynamic";
@@ -38,18 +40,31 @@ export async function GET(
           : "video/mp4"
       : file.mime_type;
 
-  return new NextResponse(new Uint8Array(file.content), {
-    headers: {
-      "Content-Type": contentType,
-      "Content-Disposition": buildContentDisposition(
-        inline ? "inline" : "attachment",
-        file.file_name
-      ),
-      // Images (incl. video posters) may remount after refresh; allow a short
-      // private cache so thumbs don't flash blank while re-fetching.
-      "Cache-Control": mime.startsWith("image/")
-        ? "private, max-age=300"
-        : "private, no-store",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": contentType,
+    "Content-Disposition": buildContentDisposition(
+      inline ? "inline" : "attachment",
+      file.file_name
+    ),
+    // Images (incl. video posters) may remount after refresh; allow a short
+    // private cache so thumbs don't flash blank while re-fetching.
+    "Cache-Control": mime.startsWith("image/")
+      ? "private, max-age=300"
+      : "private, no-store",
+  };
+  if (file.byte_size > 0) {
+    headers["Content-Length"] = String(file.byte_size);
+  }
+
+  try {
+    const body = resolveWorkFileReadStream(file);
+    if (body.kind === "buffer") {
+      return new NextResponse(new Uint8Array(body.buffer), { headers });
+    }
+    return new NextResponse(Readable.toWeb(body.stream) as ReadableStream, {
+      headers,
+    });
+  } catch {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 }

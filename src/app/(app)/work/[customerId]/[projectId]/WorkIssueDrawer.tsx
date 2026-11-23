@@ -54,6 +54,7 @@ import {
 } from "@/lib/workMedia";
 import {
   WORK_FILE_MAX_BYTES,
+  WORK_FILE_MAX_LABEL,
   type WorkBoardView,
   type WorkFile,
   type WorkIssue,
@@ -101,6 +102,8 @@ import {
   updateWorkIssueScheduleAction,
   updateWorkIssueTitleAction,
   updateWorkIssueTypeAction,
+  beginWorkFileUploadAction,
+  confirmWorkFileUploadAction,
   uploadWorkIssueFileAction,
 } from "../../actions";
 import { WorkDescriptionEditor } from "@/components/WorkDescriptionEditor";
@@ -202,6 +205,8 @@ type InlinePasteThumb = {
   fileId: string | null;
   uploading: boolean;
   revokeOnClear: boolean;
+  /** Distinguishes video-paste previews from image embeds (dedupe vs server thumbs). */
+  media?: "image" | "video";
 };
 
 function pasteZoneFromTarget(target: EventTarget | null): PasteZone | null {
@@ -246,6 +251,7 @@ function videoThumbsFromFiles(files: WorkFile[]): InlinePasteThumb[] {
       fileId: null,
       uploading: false,
       revokeOnClear: false,
+      media: "video",
     });
   }
   return out;
@@ -604,8 +610,10 @@ export function WorkIssueDrawer({
   );
   const [commentFocused, setCommentFocused] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [uploadingVideoCount, setUploadingVideoCount] = useState(0);
   const [uploadBarVisible, setUploadBarVisible] = useState(false);
   const uploadingCountRef = useRef(0);
+  const uploadingVideoCountRef = useRef(0);
   const uploadStartedAtRef = useRef(0);
   const uploadHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -631,8 +639,11 @@ export function WorkIssueDrawer({
     );
     if (next === issueDescriptionRef.current) return;
     onIssuePatch({ description: next });
-    run(() =>
-      updateWorkIssueFieldAction(board.id, issue.id, "description", next)
+    // Avoid startTransition/pending — that disabled the editor right as the
+    // upload bar finished, which felt like a second lock after progress.
+    run(
+      () => updateWorkIssueFieldAction(board.id, issue.id, "description", next),
+      { refresh: false }
     );
   }
 
@@ -714,6 +725,11 @@ export function WorkIssueDrawer({
     setDescriptionThumbs((prev) => {
       const kept = prev.filter((thumb) => {
         if (thumb.localId.startsWith("video-preview:")) return false;
+        // Local video-paste preview + server video thumb would double up while
+        // the upload is still finishing (poster/video already in issue.files).
+        if (thumb.media === "video" && fromVideos.length > 0) {
+          return false;
+        }
         if (thumb.href != null && thumb.fileId == null && !thumb.uploading) {
           return !fromVideos.some((row) => row.href === thumb.href);
         }
@@ -740,7 +756,9 @@ export function WorkIssueDrawer({
 
   useEffect(() => {
     uploadingCountRef.current = 0;
+    uploadingVideoCountRef.current = 0;
     setUploadingCount(0);
+    setUploadingVideoCount(0);
     setUploadBarVisible(false);
     uploadStartedAtRef.current = 0;
     if (uploadHideTimeoutRef.current) {
@@ -882,6 +900,7 @@ export function WorkIssueDrawer({
         fileId: null,
         uploading: true,
         revokeOnClear: true,
+        media: "image",
       };
       setDescriptionThumbs((prev) => [...prev, thumb]);
       uploadFile(named, { zone: "description", localId, previewUrl });
@@ -1071,7 +1090,7 @@ export function WorkIssueDrawer({
     );
   }
 
-  function beginUploadTracking() {
+  function beginUploadTracking(kind: "image" | "video") {
     if (uploadingCountRef.current === 0) {
       uploadStartedAtRef.current = Date.now();
       if (uploadHideTimeoutRef.current) {
@@ -1082,12 +1101,25 @@ export function WorkIssueDrawer({
     }
     uploadingCountRef.current += 1;
     setUploadingCount(uploadingCountRef.current);
+    if (kind === "video") {
+      uploadingVideoCountRef.current += 1;
+      setUploadingVideoCount(uploadingVideoCountRef.current);
+    }
   }
 
-  function endUploadTracking() {
+  function endUploadTracking(kind: "image" | "video") {
     uploadingCountRef.current = Math.max(0, uploadingCountRef.current - 1);
     setUploadingCount(uploadingCountRef.current);
+    if (kind === "video") {
+      uploadingVideoCountRef.current = Math.max(
+        0,
+        uploadingVideoCountRef.current - 1
+      );
+      setUploadingVideoCount(uploadingVideoCountRef.current);
+    }
     if (uploadingCountRef.current === 0) {
+      uploadingVideoCountRef.current = 0;
+      setUploadingVideoCount(0);
       const elapsed = Date.now() - uploadStartedAtRef.current;
       const remaining = Math.max(0, 500 - elapsed);
       uploadHideTimeoutRef.current = setTimeout(() => {
@@ -1100,14 +1132,51 @@ export function WorkIssueDrawer({
   async function uploadOneFile(file: File): Promise<
     { ok: true; id: string } | { ok: false; error: string }
   > {
-    const formData = new FormData();
-    formData.set("file", file);
-    beginUploadTracking();
-    try {
-      return await uploadWorkIssueFileAction(board.id, issue.id, formData);
-    } finally {
-      endUploadTracking();
+    const began = await beginWorkFileUploadAction(board.id, issue.id, {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    });
+    if (!began.ok) return began;
+    if (began.mode === "legacy") {
+      const formData = new FormData();
+      formData.set("file", file);
+      try {
+        return await uploadWorkIssueFileAction(board.id, issue.id, formData);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Upload failed";
+        if (/unexpected end of form/i.test(message)) {
+          return {
+            ok: false,
+            error: `Upload too large for server fallback (${WORK_FILE_MAX_LABEL} max). Try again after restarting the dev server, or use a shorter clip.`,
+          };
+        }
+        return { ok: false, error: message };
+      }
     }
+
+    const put = await fetch(began.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": began.contentType },
+      body: file,
+    });
+    if (!put.ok) {
+      await deleteWorkIssueFileAction(board.id, issue.id, began.fileId);
+      return {
+        ok: false,
+        error: `Upload failed (${put.status})`,
+      };
+    }
+    const confirmed = await confirmWorkFileUploadAction(
+      board.id,
+      issue.id,
+      began.fileId
+    );
+    if (!confirmed.ok) {
+      return { ok: false, error: confirmed.error };
+    }
+    return { ok: true, id: began.fileId };
   }
 
   function removeLocalFiles(fileIds: string[]) {
@@ -1129,10 +1198,13 @@ export function WorkIssueDrawer({
     }
   ) {
     if (file.size > WORK_FILE_MAX_BYTES) {
-      onError("File must be 8 MB or smaller");
+      onError(`File must be ${WORK_FILE_MAX_LABEL} or smaller`);
       return;
     }
+    const trackKind: "image" | "video" = isVideoFile(file) ? "video" : "image";
+    beginUploadTracking(trackKind);
     void (async () => {
+      try {
       const upload = isVideoFile(file)
         ? await withSniffedMediaType(file)
         : withGuessedMediaType(file);
@@ -1203,18 +1275,28 @@ export function WorkIssueDrawer({
             ? setDescriptionThumbs
             : setCommentThumbs;
         if (isVideoFile(upload)) {
-          // Keep the same blob preview (avoids a reload blink) and link to the video.
-          setThumbs((prev) =>
-            prev.map((thumb) => {
-              if (thumb.localId !== options.localId) return thumb;
-              return {
-                ...thumb,
+          // Replace local blob preview with the stable video-preview thumb so we
+          // never show two tiles (local + files-effect) for the same paste.
+          setThumbs((prev) => {
+            const row = prev.find((thumb) => thumb.localId === options.localId);
+            if (row?.revokeOnClear) URL.revokeObjectURL(row.previewUrl);
+            const without = prev.filter(
+              (thumb) => thumb.localId !== options.localId
+            );
+            if (!posterRecord) return without;
+            return [
+              ...without,
+              {
+                localId: `video-preview:${result.id}`,
+                previewUrl: workFileImageHref(posterRecord.id),
                 href: workFileHref(result.id),
                 fileId: null,
                 uploading: false,
-              };
-            })
-          );
+                revokeOnClear: false,
+                media: "video" as const,
+              },
+            ];
+          });
         } else {
           setThumbs((prev) => {
             const next = prev.map((thumb) => {
@@ -1226,6 +1308,7 @@ export function WorkIssueDrawer({
                 fileId: result.id,
                 uploading: false,
                 revokeOnClear: false,
+                media: "image" as const,
               };
             });
             if (options.zone === "description") {
@@ -1237,6 +1320,9 @@ export function WorkIssueDrawer({
       }
       // Delay refresh so optimistic Files UI is not remounted mid-paint.
       window.setTimeout(() => onChanged(), 750);
+      } finally {
+        endUploadTracking(trackKind);
+      }
     })();
   }
 
@@ -1285,8 +1371,18 @@ export function WorkIssueDrawer({
           (await imageBlobToJpegPoster(clipboardStill)) ?? clipboardStill;
       }
 
+      // One recording paste can yield duplicate video blobs (items + files).
+      const uniqueVideos = videos.filter((video, index, all) => {
+        const first = all.findIndex(
+          (other) =>
+            other.size === video.size &&
+            other.lastModified === video.lastModified
+        );
+        return first === index;
+      });
+
       if (zone === "description" || zone === "comment") {
-        for (const video of videos) {
+        for (const video of uniqueVideos) {
           const localId = crypto.randomUUID();
           const previewSource =
             stillBlob ?? (await extractVideoPosterJpegOrFallback(video));
@@ -1297,6 +1393,7 @@ export function WorkIssueDrawer({
             fileId: null,
             uploading: true,
             revokeOnClear: true,
+            media: "video",
           };
           if (zone === "description") {
             setDescriptionThumbs((prev) => [...prev, thumb]);
@@ -1313,7 +1410,7 @@ export function WorkIssueDrawer({
         return;
       }
 
-      for (const video of videos) {
+      for (const video of uniqueVideos) {
         uploadFile(video, { posterBlob: stillBlob });
       }
       // Outside description/comment, also accept pasted images.
@@ -1780,7 +1877,7 @@ export function WorkIssueDrawer({
                   contentKey={issue.id}
                   value={description}
                   people={board.members}
-                  disabled={pending || scopeLocked}
+                  disabled={pending || scopeLocked || uploadBarVisible}
                   placeholder="Add description… Use @ to mention"
                   onChange={setDescription}
                   onBlur={saveDescription}
@@ -2630,7 +2727,7 @@ export function WorkIssueDrawer({
                 />
               </label>
               <p className="text-xs text-text-tertiary">
-                Max 8 MB. Paste images or video clips from the clipboard
+                Max {WORK_FILE_MAX_LABEL}. Paste images or video clips from the clipboard
                 anywhere in this issue.
               </p>
             </div>
@@ -2981,12 +3078,16 @@ export function WorkIssueDrawer({
         >
           <div className="flex items-center gap-2">
             <span className="shrink-0 text-label-s text-text-secondary">
-              {uploadingCount > 1
-                ? `Uploading ${uploadingCount} images…`
-                : "Uploading image…"}
+              {uploadingVideoCount > 0
+                ? uploadingCount > 1
+                  ? `Uploading ${uploadingCount} files…`
+                  : "Uploading video…"
+                : uploadingCount > 1
+                  ? `Uploading ${uploadingCount} images…`
+                  : "Uploading image…"}
             </span>
-            <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-bg-muted">
-              <div className="h-full w-full animate-pulse rounded-full bg-accent-primary" />
+            <div className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-bg-muted">
+              <div className="absolute inset-y-0 w-1/3 rounded-full bg-accent-primary motion-safe:animate-[uploadIndeterminate_1.2s_ease-in-out_infinite]" />
             </div>
           </div>
         </div>

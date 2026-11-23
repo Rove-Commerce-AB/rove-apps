@@ -19,7 +19,11 @@ import {
   videoPosterFileName,
   withGuessedMediaType,
 } from "@/lib/workMedia";
-import { WORK_FILE_MAX_BYTES, type WorkIssueType } from "@/lib/workTypes";
+import {
+  WORK_FILE_MAX_BYTES,
+  WORK_FILE_MAX_LABEL,
+  type WorkIssueType,
+} from "@/lib/workTypes";
 import { WorkIssueTypePicker } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueTypeIcon";
 import { WorkInlineImageThumbs } from "@/app/(app)/work/[customerId]/[projectId]/WorkCommentComposer";
 import { usePresentingMode } from "@/components/PresentingModeContext";
@@ -173,7 +177,7 @@ export function FeatureRequestFab({
         shotsRef.current.length + nextRows.length
       );
       if (file.size > WORK_FILE_MAX_BYTES) {
-        setError("Each attachment must be 8 MB or smaller");
+        setError(`Each attachment must be ${WORK_FILE_MAX_LABEL} or smaller`);
         continue;
       }
       let previewUrl = URL.createObjectURL(named);
@@ -378,7 +382,8 @@ export function FeatureRequestFab({
                 onRemove={submitting ? undefined : removeShot}
               />
               <p className="mt-1.5 text-[11px] text-text-secondary">
-                Paste screenshots or video clips (max {MAX_SCREENSHOTS}, 8 MB
+                Paste screenshots or video clips (max {MAX_SCREENSHOTS},{" "}
+                {WORK_FILE_MAX_LABEL}
                 each).
               </p>
             </div>

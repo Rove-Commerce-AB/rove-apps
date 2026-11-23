@@ -17,7 +17,8 @@ import {
   parseWorkEstimateValue,
 } from "@/lib/workEstimate";
 import { parseBillingCurrency } from "@/lib/currency";
-import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
+import { resolveWorkFileBytes } from "@/lib/workFilesPersist";
+import { WORK_FILE_MAX_BYTES, WORK_FILE_MAX_LABEL } from "@/lib/workTypes";
 
 async function requireProject(actor: WorkActor, projectId: string) {
   const visible = await requireVisibleWorkBoard(projectId, actor);
@@ -35,9 +36,14 @@ export async function readWorkIssueFile(actor: WorkActor, projectId: string, iss
     throw new WorkInputError("File not found on this issue in this project.");
   }
 
-  if (file.content.length > WORK_FILE_MAX_BYTES) throw new WorkInputError("File exceeds the 8 MiB attachment limit.");
+  if (file.byte_size > WORK_FILE_MAX_BYTES) {
+    throw new WorkInputError(
+      `File exceeds the ${WORK_FILE_MAX_LABEL} attachment limit.`
+    );
+  }
 
-  return file;
+  const content = await resolveWorkFileBytes(file);
+  return { ...file, content };
 }
 
 export async function listWorkProjectMembers(actor: WorkActor, projectId: string) {

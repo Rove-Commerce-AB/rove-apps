@@ -20,12 +20,12 @@ import {
   credentialForJiraLink,
 } from "@/lib/jiraAttachments";
 import { joinWorkInlineImages } from "@/lib/workInlineImages";
+import { persistWorkIssueFileBytes } from "@/lib/workFilesPersist";
 import {
   findOrCreateBoardComponent,
   insertWorkIssue,
   insertWorkIssueCommentsBatch,
   insertWorkIssueEvent,
-  insertWorkIssueFile,
   insertWorkIssuePreDeployAction,
   insertWorkIssueReference,
   insertWorkIssueRelation,
@@ -346,12 +346,11 @@ export async function importJiraIssueBatch(
           });
           continue;
         }
-        const fileId = await insertWorkIssueFile({
+        const fileId = await persistWorkIssueFileBytes({
           issueId,
           fileName: downloaded.prepared.fileName,
           mimeType: downloaded.prepared.mimeType,
-          byteSize: downloaded.prepared.content.byteLength,
-          content: downloaded.prepared.content,
+          bytes: downloaded.prepared.content,
           uploadedByAppUserId: actorId,
         });
         fileIdByAttachmentId.set(attachmentId, fileId);

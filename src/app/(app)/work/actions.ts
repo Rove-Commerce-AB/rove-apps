@@ -80,6 +80,8 @@ import {
   setWorkIssueTextField,
   setWorkIssueTitle,
   unhideHiddenIssuesFromBoard,
+  beginIssueFileUpload,
+  confirmIssueFileUpload,
   uploadIssueFile,
 } from "@/lib/workIssues";
 import {
@@ -1004,6 +1006,47 @@ export async function uploadWorkIssueFileAction(
     });
     revalidateBoard(boardId, issueId);
     return { ok: true, id };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function beginWorkFileUploadAction(
+  boardId: string,
+  issueId: string,
+  meta: { name: string; type: string; size: number }
+): Promise<
+  | (Ok & { mode: "legacy" })
+  | (Ok & {
+      mode: "signed";
+      fileId: string;
+      uploadUrl: string;
+      contentType: string;
+    })
+  | Err
+> {
+  try {
+    const started = await beginIssueFileUpload(boardId, issueId, meta);
+    if (started.mode === "legacy") {
+      return { ok: true, mode: "legacy" };
+    }
+    // Don't revalidate yet — pending GCS rows would make the Files/thumbs
+    // UI flicker (and double video previews) before the client PUT finishes.
+    return { ok: true, ...started };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function confirmWorkFileUploadAction(
+  boardId: string,
+  issueId: string,
+  fileId: string
+): Promise<Ok | Err> {
+  try {
+    await confirmIssueFileUpload(boardId, issueId, fileId);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
   } catch (error) {
     return fail(error);
   }

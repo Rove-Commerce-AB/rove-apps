@@ -1257,6 +1257,16 @@ body.time-report-portals-font-12 .time-report-icons-tight {
   }
 }
 
+/* Indeterminate upload bar (avoid a full-width pulse that looks “done”). */
+@keyframes uploadIndeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
 .work-done-card-motion {
   display: grid;
   grid-template-rows: 1fr;

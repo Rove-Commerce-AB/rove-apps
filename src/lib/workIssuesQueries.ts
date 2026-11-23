@@ -1545,26 +1545,51 @@ export async function reorderWorkIssuesInStatus(input: {
 }
 
 export async function insertWorkIssueFile(input: {
+  id?: string;
   issueId: string;
   fileName: string;
   mimeType: string;
   byteSize: number;
-  content: Buffer;
+  /** Legacy BYTEA path; omit/null when using GCS. */
+  content?: Buffer | null;
+  storageKey?: string | null;
   uploadedByAppUserId: string;
-}): Promise<string> {
-  const { rows } = await cloudSqlPool.query<{ id: string }>(
-    `INSERT INTO work_issue_files (
-       issue_id, file_name, mime_type, byte_size, content, uploaded_by_app_user_id
-     ) VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id`,
-    [
-      input.issueId,
-      input.fileName,
-      input.mimeType,
-      input.byteSize,
-      input.content,
-      input.uploadedByAppUserId,
-    ]
+}, client?: PoolClient): Promise<string> {
+  const storageKey = input.storageKey?.trim() || null;
+  const content = input.content ?? null;
+  if (!storageKey && content == null) {
+    throw new Error("File requires storage_key or content");
+  }
+  const { rows } = await (client ?? cloudSqlPool).query<{ id: string }>(
+    input.id
+      ? `INSERT INTO work_issue_files (
+           id, issue_id, file_name, mime_type, byte_size, content, storage_key, uploaded_by_app_user_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`
+      : `INSERT INTO work_issue_files (
+           issue_id, file_name, mime_type, byte_size, content, storage_key, uploaded_by_app_user_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+    input.id
+      ? [
+          input.id,
+          input.issueId,
+          input.fileName,
+          input.mimeType,
+          input.byteSize,
+          content,
+          storageKey,
+          input.uploadedByAppUserId,
+        ]
+      : [
+          input.issueId,
+          input.fileName,
+          input.mimeType,
+          input.byteSize,
+          content,
+          storageKey,
+          input.uploadedByAppUserId,
+        ]
   );
   const id = rows[0]?.id;
   if (!id) throw new Error("Failed to upload file");
@@ -1577,7 +1602,9 @@ export async function fetchWorkIssueFileForDownload(fileId: string): Promise<{
   project_id: string;
   file_name: string;
   mime_type: string;
-  content: Buffer;
+  byte_size: number;
+  content: Buffer | null;
+  storage_key: string | null;
 } | null> {
   const { rows } = await cloudSqlPool.query<{
     id: string;
@@ -1585,9 +1612,12 @@ export async function fetchWorkIssueFileForDownload(fileId: string): Promise<{
     project_id: string;
     file_name: string;
     mime_type: string;
-    content: Buffer;
+    byte_size: number;
+    content: Buffer | null;
+    storage_key: string | null;
   }>(
-    `SELECT f.id, f.issue_id, i.project_id, f.file_name, f.mime_type, f.content
+    `SELECT f.id, f.issue_id, i.project_id, f.file_name, f.mime_type, f.byte_size,
+            f.content, f.storage_key
      FROM work_issue_files f
      JOIN work_issues i ON i.id = f.issue_id
      WHERE f.id = $1`,
@@ -1599,14 +1629,63 @@ export async function fetchWorkIssueFileForDownload(fileId: string): Promise<{
 export async function deleteWorkIssueFile(
   issueId: string,
   fileId: string
-): Promise<string | null> {
-  const { rows } = await cloudSqlPool.query<{ file_name: string }>(
+): Promise<{ fileName: string; storageKey: string | null } | null> {
+  const { rows } = await cloudSqlPool.query<{
+    file_name: string;
+    storage_key: string | null;
+  }>(
     `DELETE FROM work_issue_files
      WHERE id = $2 AND issue_id = $1
-     RETURNING file_name`,
+     RETURNING file_name, storage_key`,
     [issueId, fileId]
   );
-  return rows[0]?.file_name ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return { fileName: row.file_name, storageKey: row.storage_key };
+}
+
+export async function listWorkIssueFilesPendingGcsMigration(limit: number): Promise<
+  {
+    id: string;
+    issue_id: string;
+    file_name: string;
+    mime_type: string;
+    byte_size: number;
+    content: Buffer;
+  }[]
+> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    issue_id: string;
+    file_name: string;
+    mime_type: string;
+    byte_size: number;
+    content: Buffer;
+  }>(
+    `SELECT id, issue_id, file_name, mime_type, byte_size, content
+     FROM work_issue_files
+     WHERE content IS NOT NULL
+       AND (storage_key IS NULL OR length(btrim(storage_key)) = 0)
+     ORDER BY created_at ASC
+     LIMIT $1`,
+    [limit]
+  );
+  return rows;
+}
+
+export async function markWorkIssueFileMigratedToGcs(input: {
+  fileId: string;
+  storageKey: string;
+}): Promise<boolean> {
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE work_issue_files
+     SET storage_key = $2, content = NULL
+     WHERE id = $1
+       AND content IS NOT NULL
+       AND (storage_key IS NULL OR length(btrim(storage_key)) = 0)`,
+    [input.fileId, input.storageKey]
+  );
+  return (rowCount ?? 0) > 0;
 }
 
 export async function fetchWorkIssueRelations(boardId: string, client?: PoolClient) {

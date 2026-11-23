@@ -8,8 +8,10 @@ import {
   Suspense,
   type ReactNode,
 } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import roveIcon from "@/app/icon.png";
 import {
   CalendarCheck,
   ChevronLeft,
@@ -213,7 +215,7 @@ function NavLink({
           </span>
           {showBadge ? (
             <span
-              className="mr-1.5 shrink-0 tabular-nums text-[12px] text-text-tertiary"
+              className="mr-1.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand-signal px-1.5 text-[11px] font-semibold leading-none text-text-inverse tabular-nums"
               aria-label={`${badgeCount} unread notifications`}
             >
               {badgeLabel}
@@ -222,7 +224,7 @@ function NavLink({
         </>
       ) : showBadge ? (
         <span
-          className="absolute right-0 top-0 box-border inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default px-0.5 text-center text-[9px] font-semibold leading-none text-text-primary tabular-nums"
+          className="absolute -right-0.5 -top-0.5 box-border inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-signal px-1 text-center text-[10px] font-semibold leading-none text-text-inverse tabular-nums shadow-sm"
           aria-label={`${badgeCount} unread notifications`}
         >
           {badgeLabel}
@@ -736,9 +738,14 @@ export function Sidebar({
             className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md transition-colors hover:bg-nav-active"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-              <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-text-primary text-[12px] font-semibold leading-none text-bg-default">
-                R
-              </span>
+              <Image
+                src={roveIcon}
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 rounded-sm"
+                priority
+              />
             </span>
             <span className="min-w-0 flex-1 truncate text-left text-heading-m text-text-primary">
               Rove Apps
