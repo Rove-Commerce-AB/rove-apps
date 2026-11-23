@@ -907,6 +907,27 @@ export function WorkIssueDrawer({
     });
   }
 
+  function pasteCommentImages(files: File[]) {
+    if (pending || files.length === 0) return;
+    setCommentFocused(true);
+    files.forEach((image, index) => {
+      const named = withGuessedMediaType(image, index);
+      if (!isImageMime(named.type)) return;
+      const localId = crypto.randomUUID();
+      const previewUrl = URL.createObjectURL(named);
+      const thumb: InlinePasteThumb = {
+        localId,
+        previewUrl,
+        fileId: null,
+        uploading: true,
+        revokeOnClear: true,
+        media: "image",
+      };
+      setCommentThumbs((prev) => [...prev, thumb]);
+      uploadFile(named, { zone: "comment", localId, previewUrl });
+    });
+  }
+
   function saveEstimate(
     raw: string = estimateDraftRef.current,
     options?: { revertOnInvalid?: boolean }
@@ -1290,7 +1311,10 @@ export function WorkIssueDrawer({
                 localId: `video-preview:${result.id}`,
                 previewUrl: workFileImageHref(posterRecord.id),
                 href: workFileHref(result.id),
-                fileId: null,
+                // Description keeps videos via issue.files; comments embed the
+                // poster id so Send can put media into the comment body.
+                fileId:
+                  options.zone === "comment" ? posterRecord.id : null,
                 uploading: false,
                 revokeOnClear: false,
                 media: "video" as const,
@@ -3150,6 +3174,7 @@ export function WorkIssueDrawer({
                         : commentCollapsedClass
                     }
                     onChange={setCommentDraft}
+                    onPasteImages={pasteCommentImages}
                     onFocus={() => setCommentFocused(true)}
                     onBlur={() => {
                       if (!commentDraft.trim() && commentThumbs.length === 0) {

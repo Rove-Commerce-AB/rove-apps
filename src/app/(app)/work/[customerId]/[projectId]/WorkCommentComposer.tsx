@@ -19,6 +19,17 @@ import {
 } from "@/lib/workInlineImages";
 import type { WorkPerson } from "@/lib/workTypes";
 
+function collectImageFiles(data: DataTransfer | null): File[] {
+  if (!data?.items?.length) return [];
+  const images: File[] = [];
+  for (const item of data.items) {
+    if (!item.type.startsWith("image/")) continue;
+    const blob = item.getAsFile();
+    if (blob) images.push(blob);
+  }
+  return images;
+}
+
 export function WorkInlineImageThumbs({
   items,
   onRemove,
@@ -111,6 +122,7 @@ export function WorkCommentComposer({
   onChange,
   onFocus,
   onBlur,
+  onPasteImages,
 }: {
   people: WorkPerson[];
   value: string;
@@ -121,6 +133,8 @@ export function WorkCommentComposer({
   onChange: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** Pure image pastes (drawer owns video / mixed clipboard pastes). */
+  onPasteImages?: (files: File[]) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mention, setMention] = useState<MentionQuery | null>(null);
@@ -178,6 +192,26 @@ export function WorkCommentComposer({
         }}
         onClick={(event) => syncMention(event.currentTarget)}
         onKeyUp={(event) => syncMention(event.currentTarget)}
+        onPaste={(event) => {
+          if (!onPasteImages || disabled) return;
+          const data = event.clipboardData;
+          if (!data) return;
+          // Snipping Tool often pairs a still + video — let the drawer own those.
+          const items = Array.from(data.items || []);
+          const hasNonImageFile = items.some((item) => {
+            if (item.kind !== "file") return false;
+            const type = (item.type || "").toLowerCase();
+            if (!type) return true;
+            if (type.startsWith("video/")) return true;
+            return !type.startsWith("image/");
+          });
+          if (hasNonImageFile) return;
+          const images = collectImageFiles(data);
+          if (images.length === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onPasteImages(images);
+        }}
         onKeyDown={(event) => {
           if (
             mentionListKeyDown(event, {
