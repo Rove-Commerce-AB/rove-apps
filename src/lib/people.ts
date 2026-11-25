@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import { assertAdmin } from "@/lib/accessGuards";
+import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 import {
   consultantHasDeleteBlockers,
   getConsultantsList,
@@ -175,7 +175,7 @@ export async function setPersonApps(
     if (!userRows[0]) throw new Error("User not found");
     if (userRows[0].role === "customer") {
       if (uniqueKeys.some((key) => !isCustomerAssignableAppKey(key))) {
-        throw new Error("Customer users can only be granted Work");
+        throw new Error("Customer users can only be granted Work or Support");
       }
     } else if (uniqueKeys.length === 0) {
       throw new Error("A user must have access to at least one app");
@@ -246,7 +246,12 @@ export async function createUserPerson(input: {
   customerIds?: string[];
   workBoardIds?: string[];
 }): Promise<{ key: string; temporaryPassword?: string }> {
-  await assertAdmin();
+  // Staff (admin/member) may create customer-role users; Rove logins stay admin-only.
+  if (input.role === "customer") {
+    await assertNotSubcontractorForWrite();
+  } else {
+    await assertAdmin();
+  }
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
   const appKeys = [...new Set(input.appKeys)];
@@ -257,7 +262,7 @@ export async function createUserPerson(input: {
   }
   if (input.role === "customer") {
     if (appKeys.some((key) => !isCustomerAssignableAppKey(key))) {
-      throw new Error("Customer users can only be granted Work");
+      throw new Error("Customer users can only be granted Work or Support");
     }
     if (input.consultantId) {
       throw new Error("A customer user cannot have a consultant profile");

@@ -9,11 +9,13 @@ import {
   ModalTextInput,
   modalFieldLabelClass,
 } from "@/components/ui";
+import { AppAccessList } from "@/components/AppAccessList";
 import { initialsFromName } from "@/lib/workIssueKey";
 import { TemporaryPasswordReveal } from "@/components/TemporaryPasswordReveal";
 import { addCustomerUserToCustomer } from "@/lib/customerAppUsersClient";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import { createUserPerson } from "@/lib/people";
+import { CUSTOMER_APP_KEYS, type AppKey } from "@/lib/peopleTypes";
 
 type Props = {
   isOpen: boolean;
@@ -35,6 +37,7 @@ export function AddCustomerUserModal({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [appKeys, setAppKeys] = useState<AppKey[]>(["work"]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [revealed, setRevealed] = useState<{
@@ -48,6 +51,7 @@ export function AddCustomerUserModal({
       setSelectedIds([]);
       setName("");
       setEmail("");
+      setAppKeys(["work"]);
       setRevealed(null);
     }
   }, [isOpen]);
@@ -87,7 +91,7 @@ export function AddCustomerUserModal({
           name: trimmedName,
           email: trimmedEmail,
           role: "customer",
-          appKeys: [],
+          appKeys,
           customerIds: [customerId],
         });
         if (result.temporaryPassword) {
@@ -181,6 +185,16 @@ export function AddCustomerUserModal({
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
               />
+              <div>
+                <p className={`mb-2 ${modalFieldLabelClass}`}>Apps</p>
+                <AppAccessList
+                  idPrefix="add-customer-user-apps"
+                  value={appKeys}
+                  onChange={setAppKeys}
+                  allowedKeys={CUSTOMER_APP_KEYS}
+                  disabled={submitting}
+                />
+              </div>
             </div>
           </div>
 

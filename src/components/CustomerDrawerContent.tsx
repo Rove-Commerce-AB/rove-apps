@@ -687,15 +687,17 @@ export function CustomerDrawerContent({
                           </span>
                         </span>
                       </div>
-                      <IconButton
-                        variant="ghostDanger"
-                        className="relative z-10 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                        aria-label={`Remove ${user.name}`}
-                        onClick={() => setRemoveUserTarget(user)}
-                        disabled={removing}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden />
-                      </IconButton>
+                      {isAdmin ? (
+                        <IconButton
+                          variant="ghostDanger"
+                          className="relative z-10 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                          aria-label={`Remove ${user.name}`}
+                          onClick={() => setRemoveUserTarget(user)}
+                          disabled={removing}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        </IconButton>
+                      ) : null}
                     </li>
                   ))}
             </DrawerListGroup>
