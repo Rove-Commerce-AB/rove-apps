@@ -138,13 +138,6 @@ import type {
 const textFieldClass =
   "w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-1 text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50";
 
-const commentClass =
-  "w-full rounded-md border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50";
-
-/** Matches Button size="sm" (h-9): 36px total, ~7px pad + 20px line inside the border box. */
-const commentCollapsedClass =
-  "box-border !h-9 !min-h-9 !max-h-9 rounded-md border border-transparent bg-transparent px-3 py-[7px] text-sm leading-5 text-text-primary placeholder-text-muted transition-colors hover:bg-text-primary/[0.06] focus:border-form focus:bg-bg-default focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50 resize-none";
-
 const metaSelectTriggerClass =
   "h-7 !w-auto max-w-full border-0 bg-transparent px-0 py-0 text-[13px] font-medium text-text-primary hover:bg-transparent focus:border-transparent focus:ring-0";
 
@@ -621,6 +614,99 @@ export function WorkIssueDrawer({
     Boolean(issue.nextStep.trim())
   );
   const [commentFocused, setCommentFocused] = useState(false);
+  const [commentSheetOpen, setCommentSheetOpen] = useState(false);
+  const [commentSheetSettled, setCommentSheetSettled] = useState(true);
+  const [commentEditorFocus, setCommentEditorFocus] = useState(false);
+  /** After Send / ⌘↵, ignore leftover TipTap onChange so the sheet can collapse. */
+  const [commentDismissed, setCommentDismissed] = useState(false);
+  const drawerRootRef = useRef<HTMLDivElement>(null);
+  const commentWantOpen =
+    !commentDismissed &&
+    (commentFocused ||
+      Boolean(commentDraft.trim()) ||
+      commentThumbs.length > 0);
+
+  function freezeDrawerScroll(ms: number) {
+    const root = drawerRootRef.current;
+    if (!root || ms <= 0) return () => {};
+    const scrollers: HTMLElement[] = [];
+    const stack: Element[] = [root];
+    while (stack.length > 0) {
+      const el = stack.pop()!;
+      for (const child of el.children) stack.push(child);
+      if (!(el instanceof HTMLElement) || el === root) continue;
+      const style = window.getComputedStyle(el);
+      if (
+        el.scrollHeight > el.clientHeight + 1 &&
+        /(auto|scroll|overlay)/.test(style.overflowY)
+      ) {
+        scrollers.push(el);
+      }
+    }
+    const snapshot = scrollers.map((el) => ({
+      el,
+      top: el.scrollTop,
+      left: el.scrollLeft,
+    }));
+    const restore = () => {
+      for (const row of snapshot) {
+        if (row.el.scrollTop !== row.top) row.el.scrollTop = row.top;
+        if (row.el.scrollLeft !== row.left) row.el.scrollLeft = row.left;
+      }
+    };
+    let raf = 0;
+    const started = performance.now();
+    const tick = () => {
+      restore();
+      if (performance.now() - started < ms) {
+        raf = window.requestAnimationFrame(tick);
+      }
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }
+
+  useEffect(() => {
+    if (commentWantOpen) {
+      setCommentSheetSettled(false);
+      setCommentEditorFocus(false);
+      // Paint closed once, then open so the transform transition runs.
+      setCommentSheetOpen(false);
+      const unfreeze = freezeDrawerScroll(520);
+      let focusTimer = 0;
+      let innerFrame = 0;
+      const outerFrame = window.requestAnimationFrame(() => {
+        innerFrame = window.requestAnimationFrame(() => {
+          setCommentSheetOpen(true);
+          // Focus after the sheet has started rising so nothing scroll-jumps.
+          focusTimer = window.setTimeout(() => {
+            setCommentEditorFocus(true);
+          }, 180);
+        });
+      });
+      return () => {
+        unfreeze();
+        window.cancelAnimationFrame(outerFrame);
+        window.cancelAnimationFrame(innerFrame);
+        window.clearTimeout(focusTimer);
+      };
+    }
+    setCommentSheetOpen(false);
+    setCommentEditorFocus(false);
+    setCommentSheetSettled(false);
+    const unfreeze = freezeDrawerScroll(450);
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(
+      () => setCommentSheetSettled(true),
+      reduceMotion ? 0 : 420
+    );
+    return () => {
+      unfreeze();
+      window.clearTimeout(timer);
+    };
+  }, [commentWantOpen]);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadingVideoCount, setUploadingVideoCount] = useState(0);
   const [uploadBarVisible, setUploadBarVisible] = useState(false);
@@ -1467,11 +1553,12 @@ export function WorkIssueDrawer({
   return (
     <>
     <div
-      className="flex min-h-0 flex-1 flex-col"
+      ref={drawerRootRef}
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
       onPaste={handlePaste}
     >
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
-        <div className="relative z-10 flex items-center gap-2 overflow-visible">
+      <div className="flex min-h-0 flex-1 flex-col px-6 pt-5">
+        <div className="relative z-10 flex shrink-0 items-center gap-2 overflow-visible pb-5">
           <span className="shrink-0 self-center">
             <WorkCardTypeBadge
               issueType={issue.issueType}
@@ -1504,8 +1591,12 @@ export function WorkIssueDrawer({
           />
         </div>
 
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="!gap-0">
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <TabsList className="!gap-0 shrink-0">
             <TabsTrigger value="details" className="px-3 !px-3">
               Details
             </TabsTrigger>
@@ -1529,7 +1620,11 @@ export function WorkIssueDrawer({
               </TabsTrigger>
             ) : null}
           </TabsList>
-          <TabsContent value="details" className="mt-5 space-y-8">
+          <TabsContent
+            value="details"
+            className="mt-5 flex min-h-0 flex-1 flex-col"
+          >
+            <div className="min-h-0 max-h-[55%] shrink-0 space-y-8 overflow-y-auto pb-2">
             <div className="space-y-1 rounded-xl bg-bg-muted/40 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1">
                 <WorkPropertySelect
@@ -2065,9 +2160,10 @@ export function WorkIssueDrawer({
                 />
               </div>
             </div>
+            </div>
 
-            <div className="border-t border-border-subtle pt-6">
-              <div className="flex gap-4 border-b border-border-subtle">
+            <div className="flex min-h-0 flex-1 flex-col border-t border-border-subtle pt-4">
+              <div className="flex shrink-0 gap-4 border-b border-border-subtle">
                 <button
                   type="button"
                   className={`inline-flex items-center border-b-2 px-1 pb-2 text-sm font-medium ${
@@ -2096,8 +2192,9 @@ export function WorkIssueDrawer({
                   Activity
                 </button>
               </div>
+              <div className="min-h-0 flex-1 overflow-y-auto py-4">
               {feed === "comments" ? (
-                <ul className="mt-4 space-y-4">
+                <ul className="space-y-4">
                   {issue.comments.length === 0 ? (
                     <li className="text-sm text-text-tertiary">No comments yet.</li>
                   ) : (
@@ -2142,7 +2239,7 @@ export function WorkIssueDrawer({
                   )}
                 </ul>
               ) : (
-                <ul className="mt-4 space-y-3">
+                <ul className="space-y-3">
                   {visibleEvents.length === 0 ? (
                     <li className="text-sm text-text-tertiary">No activity yet.</li>
                   ) : (
@@ -2166,10 +2263,14 @@ export function WorkIssueDrawer({
                   )}
                 </ul>
               )}
+              </div>
             </div>
           </TabsContent>
 
-          <TabsContent value="time" className="mt-5 space-y-5">
+          <TabsContent
+            value="time"
+            className="mt-5 min-h-0 flex-1 space-y-5 overflow-y-auto"
+          >
             <div className="flex items-center gap-3">
               <p className="min-w-0 shrink-0 text-sm tabular-nums text-text-primary">
                 {formatVisibleWorkEstimate(issue.loggedHours, issue.estimateHours, {
@@ -2385,7 +2486,10 @@ export function WorkIssueDrawer({
             )}
           </TabsContent>
 
-          <TabsContent value="requirements" className="mt-5 space-y-5">
+          <TabsContent
+            value="requirements"
+            className="mt-5 min-h-0 flex-1 space-y-5 overflow-y-auto"
+          >
             <RequirementsChecklistSection
               title="Acceptance criteria"
               info="What must be true for this issue to be done."
@@ -2639,7 +2743,10 @@ export function WorkIssueDrawer({
             </div>
           </TabsContent>
 
-          <TabsContent value="pre-deploy" className="mt-5 space-y-5">
+          <TabsContent
+            value="pre-deploy"
+            className="mt-5 min-h-0 flex-1 space-y-5 overflow-y-auto"
+          >
             <RequirementsChecklistSection
               title="Pre-deploy actions"
               info="Database or Litium back-office steps to complete before deploy."
@@ -2705,7 +2812,10 @@ export function WorkIssueDrawer({
             />
           </TabsContent>
 
-          <TabsContent value="files" className="mt-5 space-y-4">
+          <TabsContent
+            value="files"
+            className="mt-5 min-h-0 flex-1 space-y-4 overflow-y-auto"
+          >
             <div className="space-y-1">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-text-primary">
@@ -2926,7 +3036,10 @@ export function WorkIssueDrawer({
           </TabsContent>
 
           {canShowDangerTab ? (
-            <TabsContent value="danger" className="mt-5 space-y-4">
+            <TabsContent
+              value="danger"
+              className="mt-5 min-h-0 flex-1 space-y-4 overflow-y-auto"
+            >
               <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
                 <h2 className="text-label-l text-danger">Danger zone</h2>
                 <p className="mt-1 text-sm text-text-secondary">
@@ -3092,108 +3205,140 @@ export function WorkIssueDrawer({
       ) : null}
 
       {tab === "details" ? (
-      <form
-        className="flex shrink-0 flex-col gap-2 border-t border-border-subtle px-6 py-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const text = encodeMentions(commentDraft.trim(), board.members);
-          const body = joinWorkInlineImages(
-            text,
-            commentThumbs
-              .map((thumb) => thumb.fileId)
-              .filter((id): id is string => Boolean(id))
-          );
-          if (!body) return;
-          if (commentThumbs.some((thumb) => thumb.uploading)) return;
-          setCommentDraft("");
-          setCommentFocused(false);
-          setCommentThumbs((prev) => {
-            clearThumbs(prev);
-            return [];
-          });
-          run(() => addWorkIssueCommentAction(board.id, issue.id, body));
-        }}
-      >
-        {(() => {
-          const commentExpanded =
-            commentFocused ||
-            Boolean(commentDraft.trim()) ||
-            commentThumbs.length > 0;
+        (() => {
+          const sheetBusy = commentSheetOpen || !commentSheetSettled;
+          const submitDisabled =
+            pending ||
+            commentThumbs.some((thumb) => thumb.uploading) ||
+            (!commentDraft.trim() &&
+              commentThumbs.every((thumb) => !thumb.fileId));
+          const submitComment = () => {
+            const form = document.activeElement?.closest("form");
+            form?.requestSubmit();
+          };
+          const onSubmitComment = (event: React.FormEvent) => {
+            event.preventDefault();
+            const text = encodeMentions(commentDraft.trim(), board.members);
+            const body = joinWorkInlineImages(
+              text,
+              commentThumbs
+                .map((thumb) => thumb.fileId)
+                .filter((id): id is string => Boolean(id))
+            );
+            if (!body) return;
+            if (commentThumbs.some((thumb) => thumb.uploading)) return;
+            setCommentDismissed(true);
+            setCommentDraft("");
+            setCommentFocused(false);
+            setCommentEditorFocus(false);
+            setCommentThumbs((prev) => {
+              clearThumbs(prev);
+              return [];
+            });
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur();
+            }
+            run(() => addWorkIssueCommentAction(board.id, issue.id, body));
+          };
           return (
             <>
               <div
-                className={`flex gap-2 ${
-                  commentExpanded ? "items-end" : "h-9 items-center"
-                }`}
-                data-paste-zone="comment"
+                className="relative z-10 flex shrink-0 flex-col gap-2 border-t border-border-subtle bg-bg-default px-6 py-3"
+                aria-hidden={sheetBusy}
               >
-                <InitialsAvatar
-                  name={board.currentUser.name}
-                  initials={board.currentUser.initials}
-                  size="sm"
-                  className="!h-9 !w-9 !text-[11px]"
-                />
-                <div
-                  className={`min-w-0 flex-1 ${commentExpanded ? "" : "h-9"}`}
-                >
+                <div className="h-9 min-w-0" data-paste-zone="comment">
                   <WorkCommentComposer
                     people={board.members}
                     value={commentDraft}
-                    disabled={pending}
-                    rows={commentExpanded ? 3 : 1}
-                    showShortcutHint={commentExpanded}
-                    className={
-                      commentExpanded
-                        ? `${commentClass} min-h-[5.5rem] resize-none`
-                        : commentCollapsedClass
-                    }
+                    contentKey={`${issue.id}-new-comment`}
+                    disabled={pending || sheetBusy}
+                    compact
+                    showShortcutHint={false}
                     onChange={setCommentDraft}
                     onPasteImages={pasteCommentImages}
-                    onFocus={() => setCommentFocused(true)}
-                    onBlur={() => {
-                      if (!commentDraft.trim() && commentThumbs.length === 0) {
-                        setCommentFocused(false);
-                      }
+                    onSubmit={submitComment}
+                    onFocus={() => {
+                      setCommentDismissed(false);
+                      setCommentFocused(true);
                     }}
                   />
                 </div>
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="!h-9 !min-h-9 !max-h-9 shrink-0"
-                  disabled={
-                    pending ||
-                    commentThumbs.some((thumb) => thumb.uploading) ||
-                    (!commentDraft.trim() &&
-                      commentThumbs.every((thumb) => !thumb.fileId))
-                  }
-                >
-                  <Send className="h-4 w-4" aria-hidden />
-                  Send
-                </Button>
               </div>
-              <WorkInlineImageThumbs
-                items={commentThumbs.map((thumb) => ({
-                  key: thumb.localId,
-                  src: thumb.previewUrl,
-                  href: thumb.href ?? thumb.previewUrl,
-                  uploading: thumb.uploading,
-                  title: thumb.href ? "Open video" : "Open image",
-                }))}
-                onRemove={(key) => {
-                  setCommentThumbs((prev) => {
-                    const row = prev.find((thumb) => thumb.localId === key);
-                    if (row?.revokeOnClear) {
-                      URL.revokeObjectURL(row.previewUrl);
-                    }
-                    return prev.filter((thumb) => thumb.localId !== key);
-                  });
-                }}
-              />
+              <form
+                data-open={commentSheetOpen ? "true" : "false"}
+                data-settled={commentSheetSettled ? "true" : "false"}
+                className="work-comment-composer-sheet absolute inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t border-border-subtle bg-bg-default px-6 py-3 shadow-[0_-12px_40px_rgba(15,23,42,0.14)]"
+                onSubmit={onSubmitComment}
+                aria-hidden={!commentSheetOpen}
+              >
+                {sheetBusy ? (
+                  <>
+                    <div className="min-w-0" data-paste-zone="comment">
+                      <WorkCommentComposer
+                        people={board.members}
+                        value={commentDraft}
+                        contentKey={`${issue.id}-new-comment-sheet`}
+                        disabled={pending || !commentSheetOpen || commentDismissed}
+                        autoFocus={commentEditorFocus && !commentDismissed}
+                        showShortcutHint
+                        onChange={(next) => {
+                          if (commentDismissed) return;
+                          setCommentDraft(next);
+                        }}
+                        onPasteImages={pasteCommentImages}
+                        onSubmit={submitComment}
+                        onFocus={() => {
+                          if (commentDismissed) return;
+                          setCommentFocused(true);
+                        }}
+                        onBlur={() => {
+                          if (
+                            !commentDraft.trim() &&
+                            commentThumbs.length === 0
+                          ) {
+                            setCommentFocused(false);
+                          }
+                        }}
+                      />
+                    </div>
+                    <WorkInlineImageThumbs
+                      items={commentThumbs.map((thumb) => ({
+                        key: thumb.localId,
+                        src: thumb.previewUrl,
+                        href: thumb.href ?? thumb.previewUrl,
+                        uploading: thumb.uploading,
+                        title: thumb.href ? "Open video" : "Open image",
+                      }))}
+                      onRemove={(key) => {
+                        setCommentThumbs((prev) => {
+                          const row = prev.find(
+                            (thumb) => thumb.localId === key
+                          );
+                          if (row?.revokeOnClear) {
+                            URL.revokeObjectURL(row.previewUrl);
+                          }
+                          return prev.filter(
+                            (thumb) => thumb.localId !== key
+                          );
+                        });
+                      }}
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="w-full"
+                      disabled={submitDisabled || !commentSheetOpen}
+                      tabIndex={commentSheetOpen ? undefined : -1}
+                    >
+                      <Send className="h-4 w-4" aria-hidden />
+                      Send
+                    </Button>
+                  </>
+                ) : null}
+              </form>
             </>
           );
-        })()}
-      </form>
+        })()
       ) : null}
     </div>
 

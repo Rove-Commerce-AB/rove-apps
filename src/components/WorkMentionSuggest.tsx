@@ -18,7 +18,7 @@ export function WorkMentionSuggest({
     <div
       role="listbox"
       aria-label="Mention someone on this board"
-      className={`absolute inset-x-0 z-20 max-h-48 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg ${
+      className={`absolute inset-x-0 z-50 max-h-48 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg ${
         placement === "above" ? "bottom-full mb-1" : "top-full mt-1"
       }`}
     >

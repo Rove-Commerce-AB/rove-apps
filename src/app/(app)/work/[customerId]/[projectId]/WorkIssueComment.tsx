@@ -16,9 +16,6 @@ import {
   WorkInlineImageThumbs,
 } from "./WorkCommentComposer";
 
-const editClass =
-  "w-full rounded-md border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50";
-
 export function WorkIssueComment({
   comment,
   canEdit,
@@ -114,9 +111,11 @@ export function WorkIssueComment({
             <WorkCommentComposer
               people={people}
               value={draft}
+              contentKey={`${comment.id}-edit`}
               disabled={pending}
-              className={`${editClass} min-h-[5.5rem] resize-none`}
+              showShortcutHint={false}
               onChange={setDraft}
+              onSubmit={commitEdit}
             />
             <WorkInlineImageThumbs
               items={editImageIds.map((id) => ({

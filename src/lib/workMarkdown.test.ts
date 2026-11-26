@@ -24,6 +24,10 @@ describe("isAllowedWorkMarkdownHref", () => {
     expect(isAllowedWorkMarkdownHref("../escape")).toBe(false);
     expect(isAllowedWorkMarkdownHref("")).toBe(false);
   });
+
+  it("allows internal mention markers", () => {
+    expect(isAllowedWorkMarkdownHref("#mention:abc-123")).toBe(true);
+  });
 });
 
 describe("workMarkdownUrlTransform", () => {

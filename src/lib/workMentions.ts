@@ -130,6 +130,14 @@ export function mentionPlainText(body: string): string {
   return body.replace(mentionTokenRe(), "@$1");
 }
 
+/**
+ * Turn stored `@[Name](id)` tokens into Markdown links that WorkMarkdown
+ * can style as mention chips (`#mention:id`).
+ */
+export function mentionsToDisplayMarkdown(body: string): string {
+  return body.replace(mentionTokenRe(), "[@$1](#mention:$2)");
+}
+
 export function commentPreview(body: string, max = 120): string {
   const plain = mentionPlainText(body).replace(/\s+/g, " ").trim();
   if (plain.length <= max) return plain;

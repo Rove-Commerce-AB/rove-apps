@@ -28,20 +28,29 @@ const ALLOWED_ELEMENTS = [
 ] as const;
 
 const components: Components = {
-  a: ({ href, children, ...props }) => (
-    <a
-      {...props}
-      href={href}
-      target={href?.startsWith("/") ? undefined : "_blank"}
-      rel={href?.startsWith("/") ? undefined : "noopener noreferrer"}
-      onClick={(event) => {
-        event.stopPropagation();
-        props.onClick?.(event);
-      }}
-    >
-      {children}
-    </a>
-  ),
+  a: ({ href, children, ...props }) => {
+    if (href?.startsWith("#mention:")) {
+      return (
+        <span className="work-mention-chip" data-mention-id={href.slice("#mention:".length)}>
+          {children}
+        </span>
+      );
+    }
+    return (
+      <a
+        {...props}
+        href={href}
+        target={href?.startsWith("/") ? undefined : "_blank"}
+        rel={href?.startsWith("/") ? undefined : "noopener noreferrer"}
+        onClick={(event) => {
+          event.stopPropagation();
+          props.onClick?.(event);
+        }}
+      >
+        {children}
+      </a>
+    );
+  },
   input: ({ type, checked, ...props }) => {
     if (type !== "checkbox") return null;
     return (

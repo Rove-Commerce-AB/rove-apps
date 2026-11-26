@@ -27,6 +27,8 @@ import {
   WorkMentionSuggest,
 } from "@/components/WorkMentionSuggest";
 import { isAllowedWorkMarkdownHref } from "@/lib/workMarkdown";
+import { WorkMentionHighlight } from "@/lib/workMentionHighlight";
+import { WorkMentionMark } from "@/lib/workMentionMark";
 import {
   filterMentionPeople,
   insertMention,
@@ -105,9 +107,13 @@ export function WorkDescriptionEditor({
   people = [],
   disabled = false,
   placeholder = "Add description… Use @ to mention",
+  variant = "default",
+  footerHint = null,
+  autoFocus = false,
   onChange,
   onBlur,
   onPasteImages,
+  onModEnter,
 }: {
   value: string;
   /** Reset editor when this changes (e.g. issue id). */
@@ -115,9 +121,16 @@ export function WorkDescriptionEditor({
   people?: WorkPerson[];
   disabled?: boolean;
   placeholder?: string;
+  /** Comment composer: slightly shorter body. */
+  variant?: "default" | "comment";
+  /** Always-visible hint under the editor (avoids layout jump). */
+  footerHint?: string | null;
+  autoFocus?: boolean;
   onChange: (markdown: string) => void;
   onBlur?: () => void;
   onPasteImages?: (files: File[]) => void;
+  /** Ctrl/Cmd+Enter — e.g. send comment. */
+  onModEnter?: () => void;
 }) {
   const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg");
   const [sourceDraft, setSourceDraft] = useState(value);
@@ -130,6 +143,8 @@ export function WorkDescriptionEditor({
   onChangeRef.current = onChange;
   const onPasteImagesRef = useRef(onPasteImages);
   onPasteImagesRef.current = onPasteImages;
+  const onModEnterRef = useRef(onModEnter);
+  onModEnterRef.current = onModEnter;
   const peopleRef = useRef(people);
   peopleRef.current = people;
   const sourceRef = useRef<HTMLTextAreaElement>(null);
@@ -171,12 +186,16 @@ export function WorkDescriptionEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       Markdown,
+      WorkMentionMark,
+      WorkMentionHighlight({ getPeople: () => peopleRef.current }),
     ],
     content: value,
     contentType: "markdown",
     editorProps: {
       attributes: {
-        class: "work-markdown work-description-editor focus:outline-none",
+        class: `work-markdown work-description-editor focus:outline-none${
+          variant === "comment" ? " work-description-editor--comment" : ""
+        }`,
       },
       handlePaste: (_view, event) => {
         const data = event.clipboardData;
@@ -202,6 +221,15 @@ export function WorkDescriptionEditor({
         return true;
       },
       handleKeyDown: (_view, event) => {
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key === "Enter" &&
+          onModEnterRef.current
+        ) {
+          event.preventDefault();
+          onModEnterRef.current();
+          return true;
+        }
         const current = mentionRef.current;
         if (!current) return false;
         return mentionListKeyDown(event, {
@@ -222,7 +250,14 @@ export function WorkDescriptionEditor({
             ed.chain()
               .focus()
               .deleteRange({ from: range.from, to: range.to })
-              .insertContent(`@${person.name} `)
+              .insertContent([
+                {
+                  type: "text",
+                  text: `@${person.name}`,
+                  marks: [{ type: "workMention", attrs: { id: person.id } }],
+                },
+                { type: "text", text: " " },
+              ])
               .run();
             setMention(null);
           },
@@ -253,6 +288,14 @@ export function WorkDescriptionEditor({
     if (!editor) return;
     editor.setEditable(!disabled);
   }, [editor, disabled]);
+
+  useEffect(() => {
+    if (!editor || !autoFocus || disabled) return;
+    requestAnimationFrame(() => {
+      // Keep parent drawers/scroll areas still (comment sheet open, etc.).
+      editor.commands.focus("end", { scrollIntoView: false });
+    });
+  }, [editor, autoFocus, disabled, contentKey]);
 
   useEffect(() => {
     setMode("wysiwyg");
@@ -347,7 +390,14 @@ export function WorkDescriptionEditor({
       .chain()
       .focus()
       .deleteRange({ from: mention.from, to: mention.to })
-      .insertContent(`@${person.name} `)
+      .insertContent([
+        {
+          type: "text",
+          text: `@${person.name}`,
+          marks: [{ type: "workMention", attrs: { id: person.id } }],
+        },
+        { type: "text", text: " " },
+      ])
       .run();
     setMention(null);
   }
@@ -358,9 +408,28 @@ export function WorkDescriptionEditor({
 
   const iconClass = "h-3.5 w-3.5";
 
+  function keepEditorFocus(event: React.MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    // Let real controls take focus; chrome/footer clicks should not blur TipTap.
+    if (
+      target.closest(
+        "button, a, input, textarea, [contenteditable='true'], [role='listbox'], [role='option']"
+      )
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (mode === "wysiwyg") editor?.commands.focus();
+    else sourceRef.current?.focus();
+  }
+
   return (
-    <div className="relative overflow-hidden rounded-xl bg-bg-muted/40 ring-1 ring-border-subtle">
-      <div className="flex items-center gap-0.5 border-b border-border-subtle/70 px-1.5 py-1">
+    <div
+      className="relative flex flex-col rounded-xl bg-bg-muted/40 ring-1 ring-border-subtle"
+      onMouseDown={keepEditorFocus}
+    >
+      <div className="flex shrink-0 flex-nowrap items-center gap-0.5 overflow-x-auto rounded-t-xl border-b border-border-subtle/70 px-1.5 py-1">
         {mode === "wysiwyg" ? (
           <>
             <ToolbarButton
@@ -480,13 +549,19 @@ export function WorkDescriptionEditor({
         </div>
       </div>
 
-      <div className="relative bg-bg-default px-3 py-2">
+      <div
+        className={
+          variant === "comment"
+            ? "relative z-10 h-[12.5rem] shrink-0 cursor-text overflow-y-auto bg-bg-default px-3 py-2"
+            : "relative z-10 bg-bg-default px-3 py-2"
+        }
+      >
         {mention ? (
           <WorkMentionSuggest
             matches={matches}
             activeIndex={activeIndex}
             onPick={mode === "source" ? pickSourceMention : pickWysiwygMention}
-            placement="below"
+            placement={variant === "comment" ? "above" : "below"}
           />
         ) : null}
         {mode === "wysiwyg" ? (
@@ -497,8 +572,12 @@ export function WorkDescriptionEditor({
             value={sourceDraft}
             disabled={disabled}
             placeholder={placeholder}
-            rows={6}
-            className="w-full resize-y rounded-md border-0 bg-transparent px-0 py-0 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
+            rows={variant === "comment" ? undefined : 6}
+            className={
+              variant === "comment"
+                ? "h-full min-h-0 w-full resize-none rounded-md border-0 bg-transparent px-0 py-0 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
+                : "w-full resize-y rounded-md border-0 bg-transparent px-0 py-0 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
+            }
             onChange={(event) => {
               const next = event.target.value;
               setSourceDraft(next);
@@ -508,6 +587,15 @@ export function WorkDescriptionEditor({
             onClick={(event) => syncSourceMention(event.currentTarget)}
             onKeyUp={(event) => syncSourceMention(event.currentTarget)}
             onKeyDown={(event) => {
+              if (
+                (event.ctrlKey || event.metaKey) &&
+                event.key === "Enter" &&
+                onModEnter
+              ) {
+                event.preventDefault();
+                onModEnter();
+                return;
+              }
               mentionListKeyDown(event, {
                 open: Boolean(mention),
                 matches,
@@ -521,6 +609,11 @@ export function WorkDescriptionEditor({
           />
         )}
       </div>
+      {footerHint ? (
+        <p className="shrink-0 cursor-text rounded-b-xl border-t border-border-subtle/70 px-3 py-1 text-caption text-text-tertiary">
+          {footerHint}
+        </p>
+      ) : null}
     </div>
   );
 }

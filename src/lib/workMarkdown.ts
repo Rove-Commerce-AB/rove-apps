@@ -10,6 +10,8 @@ export function isAllowedWorkMarkdownHref(href: string): boolean {
   if (!raw) return false;
 
   if (raw.startsWith("/work/") || raw === "/work") return true;
+  // Internal mention markers used when rendering stored `@[Name](id)` tokens.
+  if (raw.startsWith("#mention:")) return true;
 
   // Block protocol-relative and sneaky schemes before URL parsing.
   if (raw.startsWith("//")) return false;

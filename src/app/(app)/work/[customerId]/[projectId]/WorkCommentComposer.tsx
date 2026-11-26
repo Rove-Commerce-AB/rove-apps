@@ -1,33 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import {
-  mentionListKeyDown,
-  WorkMentionSuggest,
-} from "@/components/WorkMentionSuggest";
-import {
-  filterMentionPeople,
-  insertMention,
-  mentionQueryAt,
-  parseMentionSegments,
-  type MentionQuery,
-} from "@/lib/workMentions";
+import { WorkDescriptionEditor } from "@/components/WorkDescriptionEditor";
+import { WorkMarkdown } from "@/components/WorkMarkdown";
 import {
   splitWorkInlineImages,
   workFileImageHref,
 } from "@/lib/workInlineImages";
+import { mentionsToDisplayMarkdown } from "@/lib/workMentions";
 import type { WorkPerson } from "@/lib/workTypes";
 
-function collectImageFiles(data: DataTransfer | null): File[] {
-  if (!data?.items?.length) return [];
-  const images: File[] = [];
-  for (const item of data.items) {
-    if (!item.type.startsWith("image/")) continue;
-    const blob = item.getAsFile();
-    if (blob) images.push(blob);
-  }
-  return images;
+function useSendShortcutHint(): string {
+  const [hint, setHint] = useState("Ctrl+Enter to send");
+  useEffect(() => {
+    const mac =
+      /Mac|iPhone|iPad|iPod/i.test(navigator.platform) ||
+      navigator.userAgent.includes("Mac");
+    setHint(mac ? "⌘+Enter to send" : "Ctrl+Enter to send");
+  }, []);
+  return hint;
 }
 
 export function WorkInlineImageThumbs({
@@ -83,24 +75,12 @@ export function WorkInlineImageThumbs({
 
 export function WorkCommentBody({ body }: { body: string }) {
   const { text, fileIds } = splitWorkInlineImages(body);
-  const parts = parseMentionSegments(text);
   return (
     <div className="mt-1">
       {text.trim() ? (
-        <p className="whitespace-pre-wrap text-body-m text-text-primary">
-          {parts.map((part, index) =>
-            part.type === "mention" ? (
-              <span
-                key={`${part.id}-${index}`}
-                className="font-medium text-accent-primary-text"
-              >
-                @{part.value}
-              </span>
-            ) : (
-              <span key={index}>{part.value}</span>
-            )
-          )}
-        </p>
+        <WorkMarkdown className="text-body-m text-text-primary">
+          {mentionsToDisplayMarkdown(text)}
+        </WorkMarkdown>
       ) : null}
       <WorkInlineImageThumbs
         items={fileIds.map((id) => ({
@@ -112,130 +92,105 @@ export function WorkCommentBody({ body }: { body: string }) {
   );
 }
 
+const collapsedClass =
+  "flex h-9 w-full items-center rounded-md border border-form bg-bg-default px-3 text-left text-sm text-text-muted hover:border-brand-signal/40 focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal/25 disabled:opacity-50";
+
 export function WorkCommentComposer({
   people,
   value,
+  contentKey,
   disabled,
-  className,
-  rows = 3,
+  compact = false,
   showShortcutHint = true,
+  autoFocus = true,
   onChange,
   onFocus,
   onBlur,
   onPasteImages,
+  onSubmit,
 }: {
   people: WorkPerson[];
   value: string;
+  /** Reset TipTap when this changes (issue id, comment id, …). */
+  contentKey: string;
   disabled?: boolean;
-  className: string;
-  rows?: number;
+  /** Collapsed single-line trigger; focus expands to the MD editor. */
+  compact?: boolean;
   showShortcutHint?: boolean;
+  autoFocus?: boolean;
   onChange: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
   /** Pure image pastes (drawer owns video / mixed clipboard pastes). */
   onPasteImages?: (files: File[]) => void;
+  onSubmit?: () => void;
 }) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [mention, setMention] = useState<MentionQuery | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const matches = useMemo(
-    () => (mention ? filterMentionPeople(people, mention.query) : []),
-    [mention, people]
-  );
+  const sendHint = useSendShortcutHint();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const ignoreBlurUntilRef = useRef(0);
+  const onBlurRef = useRef(onBlur);
+  onBlurRef.current = onBlur;
 
   useEffect(() => {
-    setActiveIndex(0);
-  }, [mention?.query, mention?.start, matches.length]);
+    // Expanding mounts TipTap with autoFocus; ignore transient blurs from that.
+    ignoreBlurUntilRef.current = Date.now() + 400;
+  }, [contentKey, compact]);
 
-  function syncMention(el: HTMLTextAreaElement) {
-    setMention(mentionQueryAt(el.value, el.selectionStart, people));
-  }
-
-  function pick(person: WorkPerson) {
-    const el = textareaRef.current;
-    if (!mention || !el) return;
-    const next = insertMention(value, mention.start, el.selectionStart, person);
-    onChange(next.text);
-    setMention(null);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(next.caret, next.caret);
-    });
-  }
-
-  // Overlay hint only while empty — otherwise it collides with multi-line text.
-  const hintVisible = showShortcutHint && value.length === 0;
-
-  return (
-    <div className="relative flex h-full w-full min-w-0 flex-col">
-      {mention ? (
-        <WorkMentionSuggest
-          matches={matches}
-          activeIndex={activeIndex}
-          onPick={pick}
-          placement="above"
-        />
-      ) : null}
-      <textarea
-        ref={textareaRef}
-        className={`block w-full ${className}${hintVisible ? " pb-6" : ""}`}
-        rows={rows}
-        placeholder="Write a comment… Use @ to mention"
-        value={value}
+  if (compact) {
+    return (
+      <button
+        type="button"
+        className={collapsedClass}
         disabled={disabled}
         onFocus={onFocus}
-        onBlur={onBlur}
-        onChange={(event) => {
-          onChange(event.target.value);
-          syncMention(event.target);
-        }}
-        onClick={(event) => syncMention(event.currentTarget)}
-        onKeyUp={(event) => syncMention(event.currentTarget)}
-        onPaste={(event) => {
-          if (!onPasteImages || disabled) return;
-          const data = event.clipboardData;
-          if (!data) return;
-          // Snipping Tool often pairs a still + video — let the drawer own those.
-          const items = Array.from(data.items || []);
-          const hasNonImageFile = items.some((item) => {
-            if (item.kind !== "file") return false;
-            const type = (item.type || "").toLowerCase();
-            if (!type) return true;
-            if (type.startsWith("video/")) return true;
-            return !type.startsWith("image/");
-          });
-          if (hasNonImageFile) return;
-          const images = collectImageFiles(data);
-          if (images.length === 0) return;
-          event.preventDefault();
-          event.stopPropagation();
-          onPasteImages(images);
-        }}
-        onKeyDown={(event) => {
-          if (
-            mentionListKeyDown(event, {
-              open: Boolean(mention),
-              matches,
-              activeIndex,
-              setActiveIndex,
-              onPick: pick,
-              onClose: () => setMention(null),
-            })
-          ) {
-            return;
-          }
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
+        onClick={onFocus}
+      >
+        Write a comment… Use @ to mention
+      </button>
+    );
+  }
+
+  function handleFocusOut(event: React.FocusEvent<HTMLDivElement>) {
+    if (Date.now() < ignoreBlurUntilRef.current) return;
+    const next = event.relatedTarget as Node | null;
+    // Keep open when focus moves to Send / other controls in the same form.
+    const form = event.currentTarget.closest("form");
+    if (next && (event.currentTarget.contains(next) || form?.contains(next))) {
+      return;
+    }
+    // TipTap/toolbar can blur before the next focus lands; wait a tick.
+    window.setTimeout(() => {
+      const root = rootRef.current;
+      if (!root) return;
+      const active = document.activeElement;
+      const ownerForm = root.closest("form");
+      if (active && (root.contains(active) || ownerForm?.contains(active))) {
+        return;
+      }
+      onBlurRef.current?.();
+    }, 0);
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative w-full min-w-0"
+      onFocusCapture={onFocus}
+      onBlur={handleFocusOut}
+    >
+      <WorkDescriptionEditor
+        contentKey={contentKey}
+        value={value}
+        people={people}
+        disabled={disabled}
+        variant="comment"
+        autoFocus={autoFocus}
+        placeholder="Write a comment… Use @ to mention"
+        footerHint={showShortcutHint ? sendHint : null}
+        onChange={onChange}
+        onPasteImages={onPasteImages}
+        onModEnter={onSubmit}
       />
-      {hintVisible ? (
-        <p className="pointer-events-none absolute bottom-1.5 left-3 text-caption text-text-tertiary">
-          Ctrl+Enter to send
-        </p>
-      ) : null}
     </div>
   );
 }
