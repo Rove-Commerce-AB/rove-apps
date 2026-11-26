@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { sortByIssueKey } from "@/lib/issueKeySort";
 
 export type JiraIssueOption = {
   value: string;
@@ -32,10 +33,10 @@ export async function getJiraIssuesByProjectKey(
     summary: string | null;
     url: string | null;
   }>(
-    `SELECT jira_key, summary, url FROM jira_issues WHERE project_key = $1 ORDER BY jira_key`,
+    `SELECT jira_key, summary, url FROM jira_issues WHERE project_key = $1`,
     [projectKey.trim()]
   );
-  return rows.map((row) => ({
+  return sortByIssueKey(rows, (row) => row.jira_key).map((row) => ({
     value: row.jira_key,
     label: row.summary ? `${row.jira_key}: ${row.summary}` : row.jira_key,
     url: row.url ?? null,
@@ -74,10 +75,10 @@ export async function getClickUpItemsByProjectKey(
     summary: string | null;
     url: string | null;
   }>(
-    `SELECT clickup_id, summary, url FROM clickup WHERE folder_id = $1 ORDER BY clickup_id`,
+    `SELECT clickup_id, summary, url FROM clickup WHERE folder_id = $1`,
     [projectKey.trim()]
   );
-  return rows.map((row) => ({
+  return sortByIssueKey(rows, (row) => row.clickup_id).map((row) => ({
     value: row.clickup_id,
     label: row.summary ? `${row.clickup_id}: ${row.summary}` : row.clickup_id,
     url: row.url ?? null,
