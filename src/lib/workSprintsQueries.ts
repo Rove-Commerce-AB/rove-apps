@@ -1,5 +1,5 @@
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import { pgDateToDateOnly } from "@/lib/pgDateOnly";
+import { pgDateToDateOnly, todayDateOnly } from "@/lib/pgDateOnly";
 
 export type WorkSprintRow = {
   id: string;
@@ -192,9 +192,9 @@ export async function startWorkSprint(
     if (sprint.status !== "next") {
       throw new Error("Only a planned sprint can be started");
     }
-    const today = new Date().toISOString().slice(0, 10);
-    const startsOn = String(sprint.starts_on).slice(0, 10);
-    const endsOn = String(sprint.ends_on).slice(0, 10);
+    const today = todayDateOnly();
+    const startsOn = toDateOnly(sprint.starts_on);
+    const endsOn = toDateOnly(sprint.ends_on);
     if (today < startsOn || today > endsOn) {
       throw new Error(
         "Today must fall within the sprint dates to start it"
@@ -328,7 +328,7 @@ export async function applyDefaultSprintDates(
 ): Promise<void> {
   const sprint = await fetchWorkSprintById(sprintId);
   if (!sprint || sprint.project_id !== boardId) return;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateOnly();
   const startsOn = toDateOnly(sprint.starts_on);
   const endsOn = toDateOnly(sprint.ends_on);
   const startDate = today > startsOn && today <= endsOn ? today : startsOn;

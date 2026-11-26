@@ -1,7 +1,11 @@
 import "server-only";
 
 import { withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import { pgDateToDateOnly, pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
+import {
+  pgDateToDateOnly,
+  pgDateToDateOnlyOrNull,
+  todayDateOnly,
+} from "@/lib/pgDateOnly";
 import {
   canSeeWorkEstimates,
   type WorkActor,
@@ -244,7 +248,7 @@ export async function setWorkIssuePlanning(
     if (sprint && sprintId !== issue.sprint_id) {
       const startsOn = pgDateToDateOnly(sprint.starts_on);
       const endsOn = pgDateToDateOnly(sprint.ends_on);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayDateOnly();
 
       if (changes.startDate === undefined && !startDate) startDate = today >= startsOn && today <= endsOn ? today : startsOn;
       if (changes.dueDate === undefined && !dueDate) dueDate = endsOn;

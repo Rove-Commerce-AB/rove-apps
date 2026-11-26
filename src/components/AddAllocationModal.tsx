@@ -27,6 +27,7 @@ import {
   logBulkAllocationHistory,
 } from "@/app/(app)/allocation/actions";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
+import { isoWeeksInYear } from "@/lib/dateUtils";
 
 type Props = {
   isOpen: boolean;
@@ -93,6 +94,7 @@ export function AddAllocationModal({
   const [percent, setPercent] = useState("100");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const maxWeek = isoWeeksInYear(allocYear);
 
   function filterProjectsForCustomer(list: Project[]): Project[] {
     if (!initialCustomerId) return list;
@@ -435,7 +437,7 @@ export function AddAllocationModal({
               label="From week"
               type="number"
               min={1}
-              max={52}
+              max={maxWeek}
               value={fromWeek}
               onChange={(e) => setFromWeek(parseInt(e.target.value, 10) || 1)}
               onFocus={(e) => e.target.select()}
@@ -445,7 +447,7 @@ export function AddAllocationModal({
               label="To week"
               type="number"
               min={1}
-              max={52}
+              max={maxWeek}
               value={toWeek}
               onChange={(e) => setToWeek(parseInt(e.target.value, 10) || 1)}
               onFocus={(e) => e.target.select()}

@@ -5,6 +5,7 @@ import { getCurrentAppUser } from "@/lib/appUsers";
 import { ROUTES } from "@/lib/routes";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import type { AllocationHistoryDetails } from "@/types";
+import { buildWeeksArray } from "@/lib/allocationWeekParams";
 
 export async function logAllocationHistory(
   allocationId: string | null,
@@ -150,14 +151,10 @@ function allocationWeekRange(
   weekFrom: number,
   weekTo: number
 ): { y: number; w: number }[] {
-  const weeks: { y: number; w: number }[] = [];
-  if (weekFrom <= weekTo) {
-    for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
-  } else {
-    for (let w = weekFrom; w <= 52; w++) weeks.push({ y: year, w });
-    for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
-  }
-  return weeks;
+  return buildWeeksArray(year, weekFrom, weekTo).map(({ year: y, week: w }) => ({
+    y,
+    w,
+  }));
 }
 
 /** Remove allocations for this consultant / project / role in the given week span (inclusive). */

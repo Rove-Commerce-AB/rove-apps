@@ -1,6 +1,7 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { notifyAllocationInserts } from "@/lib/userNotifications";
 import { isoWeeksInYear, addWeeksToYearWeek } from "./dateUtils";
+import { buildWeeksArray } from "./allocationWeekParams";
 import { timedDebug } from "@/lib/debugLogs";
 import { allocationIdentityKey, resolveAllocationIdentity } from "./billingItem";
 
@@ -305,13 +306,10 @@ export async function createAllocationsForWeekRange(
   weekTo: number,
   hoursPerWeek: number
 ): Promise<AllocationRecord[]> {
-  const weeks: { y: number; w: number }[] = [];
-  if (weekFrom <= weekTo) {
-    for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
-  } else {
-    for (let w = weekFrom; w <= 52; w++) weeks.push({ y: year, w });
-    for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
-  }
+  const weeks = buildWeeksArray(year, weekFrom, weekTo).map(({ year: y, week: w }) => ({
+    y,
+    w,
+  }));
 
   const existingMap = await getExistingAllocationsInRange(
     consultant_id,
@@ -393,13 +391,10 @@ export async function createAllocationsForWeekRangeWithGetter(
   weekTo: number,
   getHoursForWeek: (y: number, w: number) => Promise<number>
 ): Promise<AllocationRecord[]> {
-  const weeks: { y: number; w: number }[] = [];
-  if (weekFrom <= weekTo) {
-    for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
-  } else {
-    for (let w = weekFrom; w <= 52; w++) weeks.push({ y: year, w });
-    for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
-  }
+  const weeks = buildWeeksArray(year, weekFrom, weekTo).map(({ year: y, week: w }) => ({
+    y,
+    w,
+  }));
 
   const [existingMap, hoursByWeek] = await Promise.all([
     getExistingAllocationsInRange(consultant_id, project_id, role_id, weeks),

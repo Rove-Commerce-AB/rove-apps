@@ -16,6 +16,7 @@ import {
 } from "@/lib/workSprintsQueries";
 import { insertWorkIssueEvent } from "@/lib/workIssuesQueries";
 import type { WorkSprint } from "@/lib/workTypes";
+import { todayDateOnly } from "@/lib/pgDateOnly";
 
 async function requireBoardAccess(boardId: string, authenticatedActor?: WorkActor) {
   const visible = await requireVisibleWorkBoard(boardId, authenticatedActor);
@@ -52,7 +53,7 @@ export async function createWorkSprint(
   }
 ): Promise<WorkSprint> {
   const { actor } = await requireBoardAccess(boardId);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateOnly();
   const startsOn = input.startsOn
     ? parseDateOnly(input.startsOn, "Start date")
     : today;

@@ -63,9 +63,17 @@ function formatShortDate(iso: string) {
   });
 }
 
-/** True when UTC today is within [startsOn, endsOn] inclusive. */
+/** True when Stockholm calendar today is within [startsOn, endsOn] inclusive. */
 function isTodayWithinSprintDates(startsOn: string, endsOn: string) {
-  const today = new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Stockholm",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (name: string) =>
+    parts.find((item) => item.type === name)?.value;
+  const today = `${part("year")}-${part("month")}-${part("day")}`;
   return today >= startsOn && today <= endsOn;
 }
 
