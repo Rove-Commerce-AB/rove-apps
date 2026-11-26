@@ -12,6 +12,7 @@ import {
 import { ArrowRight } from "lucide-react";
 import { Button, ConfirmModal, Dialog, IconButton } from "@/components/ui";
 import { WorkScopeUnlockBanner } from "./WorkScopeUnlockBanner";
+import { WorkScopeApproverBanner } from "./WorkScopeApproverBanner";
 import {
   addWorkIssueAssigneeAction,
   closeWorkSprintAction,
@@ -127,7 +128,10 @@ export function WorkSprintView({
   onOptimisticIssuePatch?: (
     issueId: string,
     patch: Partial<
-      Pick<WorkIssue, "estimateHours" | "estimateSize" | "scopeApproved">
+      Pick<
+        WorkIssue,
+        "estimateHours" | "estimateSize" | "scopeApproved" | "scopeApprover"
+      >
     >
   ) => void;
 }) {
@@ -138,6 +142,11 @@ export function WorkSprintView({
   );
   const [unlockScopeBannerOpen, setUnlockScopeBannerOpen] = useState(false);
   const unlockScopeExitTimerRef = useRef<number | null>(null);
+  const [approverScopeIssueId, setApproverScopeIssueId] = useState<
+    string | null
+  >(null);
+  const [approverScopeBannerOpen, setApproverScopeBannerOpen] = useState(false);
+  const approverScopeExitTimerRef = useRef<number | null>(null);
 
   function clearUnlockScopeExitTimer() {
     if (unlockScopeExitTimerRef.current != null) {
@@ -183,6 +192,34 @@ export function WorkSprintView({
       unlockScopeExitTimerRef.current = null;
     }, 220);
   }
+
+  function clearApproverScopeExitTimer() {
+    if (approverScopeExitTimerRef.current != null) {
+      window.clearTimeout(approverScopeExitTimerRef.current);
+      approverScopeExitTimerRef.current = null;
+    }
+  }
+
+  function showApproverScopeBanner(issueId: string) {
+    clearApproverScopeExitTimer();
+    setApproverScopeIssueId(issueId);
+    setApproverScopeBannerOpen(false);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setApproverScopeBannerOpen(true);
+      });
+    });
+  }
+
+  function dismissApproverScopeBanner() {
+    clearApproverScopeExitTimer();
+    setApproverScopeBannerOpen(false);
+    approverScopeExitTimerRef.current = window.setTimeout(() => {
+      setApproverScopeIssueId(null);
+      approverScopeExitTimerRef.current = null;
+    }, 220);
+  }
+
   const [deleteSprintId, setDeleteSprintId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editSprintId, setEditSprintId] = useState<string | null>(null);
@@ -483,19 +520,38 @@ export function WorkSprintView({
     );
   }
 
-  function commitScopeApproved(issueId: string, approved: boolean) {
+  function commitScopeApproved(
+    issueId: string,
+    approved: boolean,
+    options?: { approverAppUserId?: string | null }
+  ) {
     if (!approved && !canUnlockScope(issueId)) {
       onError("Can't unlock scope while the issue is Done.");
       return;
     }
-    onOptimisticIssuePatch?.(issueId, { scopeApproved: approved });
+    const approver =
+      approved && options?.approverAppUserId
+        ? board.customerWorkApprovers.find(
+            (person) => person.id === options.approverAppUserId
+          ) ?? null
+        : null;
+    onOptimisticIssuePatch?.(issueId, {
+      scopeApproved: approved,
+      scopeApprover: approved ? approver : null,
+    });
     onIssuesChange(
       issues.map((issue) =>
-        issue.id === issueId ? { ...issue, scopeApproved: approved } : issue
+        issue.id === issueId
+          ? {
+              ...issue,
+              scopeApproved: approved,
+              scopeApprover: approved ? approver : null,
+            }
+          : issue
       )
     );
     runQuiet(() =>
-      setWorkIssueScopeApprovedAction(board.id, issueId, approved)
+      setWorkIssueScopeApprovedAction(board.id, issueId, approved, options)
     );
   }
 
@@ -837,8 +893,15 @@ export function WorkSprintView({
             onEstimateChange={commitEstimate}
             onEstimateSizeChange={commitEstimateSize}
             onScopeApproveToggle={(issueId, approved) => {
-              if (approved) commitScopeApproved(issueId, true);
-              else showUnlockScopeBanner(issueId);
+              if (approved) {
+                if (board.requiresCustomerApprover) {
+                  showApproverScopeBanner(issueId);
+                  return;
+                }
+                commitScopeApproved(issueId, true);
+                return;
+              }
+              showUnlockScopeBanner(issueId);
             }}
             unlockScopeIssueId={unlockScopeIssueId}
             unlockScopeBannerOpen={unlockScopeBannerOpen}
@@ -847,6 +910,13 @@ export function WorkSprintView({
               commitScopeApproved(issueId, false);
             }}
             onDismissUnlockScope={dismissUnlockScopeBanner}
+            approverScopeIssueId={approverScopeIssueId}
+            approverScopeBannerOpen={approverScopeBannerOpen}
+            onConfirmApproverScope={(issueId, approverAppUserId) => {
+              dismissApproverScopeBanner();
+              commitScopeApproved(issueId, true, { approverAppUserId });
+            }}
+            onDismissApproverScope={dismissApproverScopeBanner}
             onTypeChange={commitType}
             onSetOwner={commitOwner}
             onAddAssignee={commitAddAssignee}
@@ -905,8 +975,15 @@ export function WorkSprintView({
             onEstimateChange={commitEstimate}
             onEstimateSizeChange={commitEstimateSize}
             onScopeApproveToggle={(issueId, approved) => {
-              if (approved) commitScopeApproved(issueId, true);
-              else showUnlockScopeBanner(issueId);
+              if (approved) {
+                if (board.requiresCustomerApprover) {
+                  showApproverScopeBanner(issueId);
+                  return;
+                }
+                commitScopeApproved(issueId, true);
+                return;
+              }
+              showUnlockScopeBanner(issueId);
             }}
             unlockScopeIssueId={unlockScopeIssueId}
             unlockScopeBannerOpen={unlockScopeBannerOpen}
@@ -915,6 +992,13 @@ export function WorkSprintView({
               commitScopeApproved(issueId, false);
             }}
             onDismissUnlockScope={dismissUnlockScopeBanner}
+            approverScopeIssueId={approverScopeIssueId}
+            approverScopeBannerOpen={approverScopeBannerOpen}
+            onConfirmApproverScope={(issueId, approverAppUserId) => {
+              dismissApproverScopeBanner();
+              commitScopeApproved(issueId, true, { approverAppUserId });
+            }}
+            onDismissApproverScope={dismissApproverScopeBanner}
             onTypeChange={commitType}
             onSetOwner={commitOwner}
             onAddAssignee={commitAddAssignee}
@@ -1388,6 +1472,10 @@ function SprintColumn({
   unlockScopeBannerOpen = false,
   onConfirmUnlockScope,
   onDismissUnlockScope,
+  approverScopeIssueId = null,
+  approverScopeBannerOpen = false,
+  onConfirmApproverScope,
+  onDismissApproverScope,
   onTypeChange,
   onSetOwner,
   onAddAssignee,
@@ -1428,6 +1516,13 @@ function SprintColumn({
   unlockScopeBannerOpen?: boolean;
   onConfirmUnlockScope?: (issueId: string) => void;
   onDismissUnlockScope?: () => void;
+  approverScopeIssueId?: string | null;
+  approverScopeBannerOpen?: boolean;
+  onConfirmApproverScope?: (
+    issueId: string,
+    approverAppUserId: string
+  ) => void;
+  onDismissApproverScope?: () => void;
   onTypeChange: (issueId: string, issueType: WorkIssueType) => void;
   onSetOwner: (issueId: string, person: WorkPerson | null) => void;
   onAddAssignee: (issueId: string, person: WorkPerson) => void;
@@ -1501,6 +1596,7 @@ function SprintColumn({
     const isDragging = draggingIssueId === issue.id;
     const tone = statusTones[issue.status];
     const showUnlockBanner = unlockScopeIssueId === issue.id;
+    const showApproverBanner = approverScopeIssueId === issue.id;
     return (
       <Fragment key={key}>
         <li
@@ -1646,6 +1742,21 @@ function SprintColumn({
               open={unlockScopeBannerOpen}
               onUnlock={() => onConfirmUnlockScope(issue.id)}
               onDismiss={onDismissUnlockScope}
+            />
+          </li>
+        ) : null}
+        {showApproverBanner &&
+        onConfirmApproverScope &&
+        onDismissApproverScope ? (
+          <li className="list-none">
+            <WorkScopeApproverBanner
+              open={approverScopeBannerOpen}
+              people={board?.customerWorkApprovers ?? []}
+              disabled={estimateDisabled}
+              onConfirm={(approverAppUserId) =>
+                onConfirmApproverScope(issue.id, approverAppUserId)
+              }
+              onDismiss={onDismissApproverScope}
             />
           </li>
         ) : null}

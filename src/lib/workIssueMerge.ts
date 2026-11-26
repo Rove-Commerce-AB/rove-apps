@@ -29,6 +29,7 @@ export type WorkIssueOptimisticPatch = Partial<
     | "estimateHours"
     | "estimateSize"
     | "scopeApproved"
+    | "scopeApprover"
     | "owner"
     | "assignees"
     | "labels"
@@ -53,6 +54,7 @@ const OPTIMISTIC_PATCH_KEYS = new Set<keyof WorkIssueOptimisticPatch>([
   "estimateHours",
   "estimateSize",
   "scopeApproved",
+  "scopeApprover",
   "owner",
   "assignees",
   "labels",

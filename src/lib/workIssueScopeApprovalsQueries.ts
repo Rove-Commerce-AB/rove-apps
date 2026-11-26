@@ -8,7 +8,8 @@ export async function insertWorkIssueScopeApprovalIfPriced(
   client: PoolClient,
   boardId: string,
   issueId: string,
-  approvedAt?: Date
+  approvedAt?: Date,
+  options?: { approverAppUserId?: string | null }
 ): Promise<boolean> {
   const { rows: boardRows } = await client.query<{
     estimate_unit: string;
@@ -64,9 +65,10 @@ export async function insertWorkIssueScopeApprovalIfPriced(
 
   const inserted = await client.query(
     `INSERT INTO work_issue_scope_approvals (
-       issue_id, work_project_id, size, amount, currency, approved_at
+       issue_id, work_project_id, size, amount, currency, approved_at,
+       approver_app_user_id
      )
-     SELECT $1, $2, $3, $4, $5, COALESCE($6::timestamptz, now())
+     SELECT $1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()), $7
      WHERE NOT EXISTS (
        SELECT 1 FROM work_issue_scope_approvals
        WHERE issue_id = $1 AND reversed_at IS NULL
@@ -78,6 +80,7 @@ export async function insertWorkIssueScopeApprovalIfPriced(
       Number(row.amount),
       row.currency,
       approvedAt ?? null,
+      options?.approverAppUserId ?? null,
     ]
   );
 

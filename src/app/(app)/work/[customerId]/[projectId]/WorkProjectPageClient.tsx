@@ -72,6 +72,7 @@ import {
   linkWorkProjectToPlannerProjectAction,
   setWorkProjectEstimateUnitAction,
   setWorkProjectFixedPriceEnabledAction,
+  setWorkProjectRequiresCustomerApproverAction,
   hideDoneIssuesFromBoardAction,
   unhideHiddenIssuesFromBoardAction,
   setWorkProjectPreferredViewAction,
@@ -151,6 +152,7 @@ import { WorkProcessPanel } from "./WorkProcessPanel";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkScopeApproveButton } from "./WorkScopeApproveButton";
 import { WorkScopeUnlockBanner } from "./WorkScopeUnlockBanner";
+import { WorkScopeApproverBanner } from "./WorkScopeApproverBanner";
 import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
 import { WorkTimelineView } from "./WorkTimelineView";
@@ -343,7 +345,7 @@ export function WorkBoardPageClient({
     issueId: string;
     message: string;
     open: boolean;
-    variant?: "error" | "unlock";
+    variant?: "error" | "unlock" | "approver";
   } | null>(null);
   const cardErrorTimerRef = useRef<number | null>(null);
   const cardErrorExitTimerRef = useRef<number | null>(null);
@@ -454,6 +456,12 @@ export function WorkBoardPageClient({
     useState<Record<string, boolean>>({});
   const [fixedPriceEnabled, setFixedPriceEnabled] = useState(
     board.fixedPriceEnabled
+  );
+  const [requiresCustomerApprover, setRequiresCustomerApprover] = useState(
+    board.requiresCustomerApprover
+  );
+  const [customerWorkApprovers, setCustomerWorkApprovers] = useState(
+    board.customerWorkApprovers
   );
   const [sizePrices, setSizePrices] = useState<WorkSizePriceMap>(
     board.sizePrices
@@ -645,11 +653,15 @@ export function WorkBoardPageClient({
   useEffect(() => {
     setEstimateUnit(board.estimateUnit);
     setFixedPriceEnabled(board.fixedPriceEnabled);
+    setRequiresCustomerApprover(board.requiresCustomerApprover);
+    setCustomerWorkApprovers(board.customerWorkApprovers);
     setSizePrices(board.sizePrices);
     setBillingCurrency(board.billingCurrency);
   }, [
     board.estimateUnit,
     board.fixedPriceEnabled,
+    board.requiresCustomerApprover,
+    board.customerWorkApprovers,
     board.sizePrices,
     board.billingCurrency,
   ]);
@@ -863,7 +875,11 @@ export function WorkBoardPageClient({
     router.push(workBoardHref(board.customerId, board.id), { scroll: false });
   }
 
-  function applyScopeApproved(issueId: string, approved: boolean) {
+  function applyScopeApproved(
+    issueId: string,
+    approved: boolean,
+    options?: { approverAppUserId?: string | null }
+  ) {
     const previous = issuesRef.current;
     if (!approved) {
       const issue = previous.find((row) => row.id === issueId);
@@ -872,40 +888,88 @@ export function WorkBoardPageClient({
         return;
       }
     }
+    const approver =
+      approved && options?.approverAppUserId
+        ? customerWorkApprovers.find(
+            (person) => person.id === options.approverAppUserId
+          ) ?? null
+        : null;
     noteOptimisticIssuePatch(optimisticPatchesRef.current, issueId, {
       scopeApproved: approved,
+      scopeApprover: approved ? approver : null,
     });
     setIssues((current) => {
       const next = current.map((issue) =>
-        issue.id === issueId ? { ...issue, scopeApproved: approved } : issue
+        issue.id === issueId
+          ? {
+              ...issue,
+              scopeApproved: approved,
+              scopeApprover: approved ? approver : null,
+            }
+          : issue
       );
       issuesRef.current = next;
       return next;
     });
     setError(null);
-    void setWorkIssueScopeApprovedAction(board.id, issueId, approved).then(
-      (result) => {
-        if (result.ok) {
-          noteOptimisticIssuePatch(optimisticPatchesRef.current, issueId, {
-            scopeApproved: result.scopeApproved,
-          });
-          setIssues((current) => {
-            const next = current.map((issue) =>
-              issue.id === issueId
-                ? { ...issue, scopeApproved: result.scopeApproved }
-                : issue
-            );
-            issuesRef.current = next;
-            return next;
-          });
-          return;
-        }
-        setError(result.error);
-        clearOptimisticIssuePatch(optimisticPatchesRef.current, issueId);
-        issuesRef.current = previous;
-        setIssues(previous);
+    void setWorkIssueScopeApprovedAction(
+      board.id,
+      issueId,
+      approved,
+      options
+    ).then((result) => {
+      if (result.ok) {
+        const nextApprover =
+          result.scopeApproved && result.scopeApproverAppUserId
+            ? customerWorkApprovers.find(
+                (person) => person.id === result.scopeApproverAppUserId
+              ) ??
+              previous.find((row) => row.id === issueId)?.scopeApprover ??
+              null
+            : null;
+        noteOptimisticIssuePatch(optimisticPatchesRef.current, issueId, {
+          scopeApproved: result.scopeApproved,
+          scopeApprover: nextApprover,
+        });
+        setIssues((current) => {
+          const next = current.map((issue) =>
+            issue.id === issueId
+              ? {
+                  ...issue,
+                  scopeApproved: result.scopeApproved,
+                  scopeApprover: nextApprover,
+                }
+              : issue
+          );
+          issuesRef.current = next;
+          return next;
+        });
+        return;
       }
-    );
+      setError(result.error);
+      clearOptimisticIssuePatch(optimisticPatchesRef.current, issueId);
+      issuesRef.current = previous;
+      setIssues(previous);
+    });
+  }
+
+  function showCardApprover(issueId: string) {
+    clearCardErrorTimers();
+    setCardError({
+      issueId,
+      message: "Select approver",
+      open: false,
+      variant: "approver",
+    });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setCardError((current) =>
+          current?.issueId === issueId
+            ? { ...current, open: true, variant: "approver" }
+            : current
+        );
+      });
+    });
   }
 
   function leavesFixedPriceDone(
@@ -2800,6 +2864,10 @@ export function WorkBoardPageClient({
                                       showCardUnlock(issue.id);
                                       return;
                                     }
+                                    if (requiresCustomerApprover) {
+                                      showCardApprover(issue.id);
+                                      return;
+                                    }
                                     applyScopeApproved(issue.id, true);
                                   }}
                                 />
@@ -2826,6 +2894,18 @@ export function WorkBoardPageClient({
                           onUnlock={() => {
                             dismissCardError(issue.id);
                             applyScopeApproved(issue.id, false);
+                          }}
+                          onDismiss={() => dismissCardError(issue.id)}
+                        />
+                      ) : cardError.variant === "approver" ? (
+                        <WorkScopeApproverBanner
+                          open={cardError.open}
+                          people={customerWorkApprovers}
+                          onConfirm={(approverAppUserId) => {
+                            dismissCardError(issue.id);
+                            applyScopeApproved(issue.id, true, {
+                              approverAppUserId,
+                            });
                           }}
                           onDismiss={() => dismissCardError(issue.id)}
                         />
@@ -3045,6 +3125,7 @@ export function WorkBoardPageClient({
         components={components}
         estimateUnit={estimateUnit}
         fixedPriceEnabled={fixedPriceEnabled}
+        requiresCustomerApprover={requiresCustomerApprover}
         billingCurrency={billingCurrency}
         showDangerTab={
           !presenting.active && board.viewerRole !== "customer"
@@ -3056,8 +3137,12 @@ export function WorkBoardPageClient({
         onSetEstimateUnit={async (unit) => {
           const previousUnit = estimateUnit;
           const previousFixed = fixedPriceEnabled;
+          const previousRequires = requiresCustomerApprover;
           setEstimateUnit(unit);
-          if (unit !== "tshirt") setFixedPriceEnabled(false);
+          if (unit !== "tshirt") {
+            setFixedPriceEnabled(false);
+            setRequiresCustomerApprover(false);
+          }
           if (unit !== previousUnit) {
             setIssues((current) => {
               const next = current.map((issue) => ({
@@ -3065,6 +3150,7 @@ export function WorkBoardPageClient({
                 estimateHours: null as number | null,
                 estimateSize: null as WorkTshirtSize | null,
                 scopeApproved: false,
+                scopeApprover: null,
               }));
               issuesRef.current = next;
               return next;
@@ -3074,28 +3160,52 @@ export function WorkBoardPageClient({
           if (!result.ok) {
             setEstimateUnit(previousUnit);
             setFixedPriceEnabled(previousFixed);
+            setRequiresCustomerApprover(previousRequires);
             setError(result.error);
             router.refresh();
             return false;
           }
           setEstimateUnit(result.estimateUnit);
           setFixedPriceEnabled(result.fixedPriceEnabled);
+          if (result.estimateUnit !== "tshirt" || !result.fixedPriceEnabled) {
+            setRequiresCustomerApprover(false);
+          }
           router.refresh();
           return true;
         }}
         onSetFixedPriceEnabled={async (enabled) => {
           const previous = fixedPriceEnabled;
+          const previousRequires = requiresCustomerApprover;
           setFixedPriceEnabled(enabled);
+          if (!enabled) setRequiresCustomerApprover(false);
           const result = await setWorkProjectFixedPriceEnabledAction(
             board.id,
             enabled
           );
           if (!result.ok) {
             setFixedPriceEnabled(previous);
+            setRequiresCustomerApprover(previousRequires);
             setError(result.error);
             return false;
           }
           setFixedPriceEnabled(result.fixedPriceEnabled);
+          setRequiresCustomerApprover(result.requiresCustomerApprover);
+          router.refresh();
+          return true;
+        }}
+        onSetRequiresCustomerApprover={async (enabled) => {
+          const previous = requiresCustomerApprover;
+          setRequiresCustomerApprover(enabled);
+          const result = await setWorkProjectRequiresCustomerApproverAction(
+            board.id,
+            enabled
+          );
+          if (!result.ok) {
+            setRequiresCustomerApprover(previous);
+            setError(result.error);
+            return false;
+          }
+          setRequiresCustomerApprover(result.requiresCustomerApprover);
           router.refresh();
           return true;
         }}

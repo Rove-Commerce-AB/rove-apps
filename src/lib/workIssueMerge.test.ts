@@ -36,6 +36,7 @@ function issue(partial: Partial<WorkIssue> & Pick<WorkIssue, "id">): WorkIssue {
     estimateHours: null,
     estimateSize: null,
     scopeApproved: false,
+    scopeApprover: null,
     loggedHours: 0,
     sprintId: null,
     startDate: null,

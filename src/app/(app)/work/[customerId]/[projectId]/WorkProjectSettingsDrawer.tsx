@@ -74,9 +74,11 @@ export function WorkProjectSettingsDrawer({
   onImportFromJira,
   estimateUnit,
   fixedPriceEnabled,
+  requiresCustomerApprover,
   billingCurrency,
   onSetEstimateUnit,
   onSetFixedPriceEnabled,
+  onSetRequiresCustomerApprover,
   showDangerTab = true,
   canEditAccess = true,
   onProcessSaved,
@@ -98,9 +100,11 @@ export function WorkProjectSettingsDrawer({
   components: WorkComponent[];
   estimateUnit: WorkEstimateUnit;
   fixedPriceEnabled: boolean;
+  requiresCustomerApprover: boolean;
   billingCurrency: BillingCurrency;
   onSetEstimateUnit: (unit: WorkEstimateUnit) => Promise<boolean>;
   onSetFixedPriceEnabled: (enabled: boolean) => Promise<boolean>;
+  onSetRequiresCustomerApprover: (enabled: boolean) => Promise<boolean>;
   onRename: (nextTitle: string) => Promise<boolean>;
   onLinkPlannerProject: (
     plannerProjectId: string
@@ -139,23 +143,36 @@ export function WorkProjectSettingsDrawer({
   const [estimateUnitDraft, setEstimateUnitDraft] =
     useState<WorkEstimateUnit>(estimateUnit);
   const [fixedPriceDraft, setFixedPriceDraft] = useState(fixedPriceEnabled);
+  const [requiresApproverDraft, setRequiresApproverDraft] = useState(
+    requiresCustomerApprover
+  );
   const [pendingEstimateUnit, setPendingEstimateUnit] =
     useState<WorkEstimateUnit | null>(null);
   const [estimateChangeCount, setEstimateChangeCount] = useState(0);
   const [savingEstimateUnit, setSavingEstimateUnit] = useState(false);
   const [savingFixedPrice, setSavingFixedPrice] = useState(false);
+  const [savingRequiresApprover, setSavingRequiresApprover] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setNameDraft(title);
     setEstimateUnitDraft(estimateUnit);
     setFixedPriceDraft(fixedPriceEnabled);
+    setRequiresApproverDraft(requiresCustomerApprover);
     setPendingEstimateUnit(null);
     setTab(
       !showDangerTab && initialTab === "danger" ? "details" : initialTab
     );
     setNewComponentName("");
-  }, [open, title, estimateUnit, fixedPriceEnabled, initialTab, showDangerTab]);
+  }, [
+    open,
+    title,
+    estimateUnit,
+    fixedPriceEnabled,
+    requiresCustomerApprover,
+    initialTab,
+    showDangerTab,
+  ]);
 
   useEffect(() => {
     if (!showDangerTab && tab === "danger") setTab("details");
@@ -339,26 +356,57 @@ export function WorkProjectSettingsDrawer({
                   </p>
                 ) : null}
                 {estimateUnitDraft === "tshirt" ? (
-                  <Switch
-                    id="work-fixed-price"
-                    checked={fixedPriceDraft}
-                    disabled={
-                      savingFixedPrice ||
-                      savingEstimateUnit ||
-                      showDangerTab === false
-                    }
-                    onCheckedChange={(checked) => {
-                      void (async () => {
-                        setSavingFixedPrice(true);
-                        const previous = fixedPriceDraft;
-                        setFixedPriceDraft(checked);
-                        const ok = await onSetFixedPriceEnabled(checked);
-                        if (!ok) setFixedPriceDraft(previous);
-                        setSavingFixedPrice(false);
-                      })();
-                    }}
-                    label="Fixed price"
-                  />
+                  <div className="space-y-2">
+                    <Switch
+                      id="work-fixed-price"
+                      checked={fixedPriceDraft}
+                      disabled={
+                        savingFixedPrice ||
+                        savingEstimateUnit ||
+                        showDangerTab === false
+                      }
+                      onCheckedChange={(checked) => {
+                        void (async () => {
+                          setSavingFixedPrice(true);
+                          const previous = fixedPriceDraft;
+                          const previousApprover = requiresApproverDraft;
+                          setFixedPriceDraft(checked);
+                          if (!checked) setRequiresApproverDraft(false);
+                          const ok = await onSetFixedPriceEnabled(checked);
+                          if (!ok) {
+                            setFixedPriceDraft(previous);
+                            setRequiresApproverDraft(previousApprover);
+                          }
+                          setSavingFixedPrice(false);
+                        })();
+                      }}
+                      label="Fixed price"
+                    />
+                    {fixedPriceDraft ? (
+                      <Switch
+                        id="work-requires-customer-approver"
+                        checked={requiresApproverDraft}
+                        disabled={
+                          savingRequiresApprover ||
+                          savingFixedPrice ||
+                          savingEstimateUnit ||
+                          showDangerTab === false
+                        }
+                        onCheckedChange={(checked) => {
+                          void (async () => {
+                            setSavingRequiresApprover(true);
+                            const previous = requiresApproverDraft;
+                            setRequiresApproverDraft(checked);
+                            const ok =
+                              await onSetRequiresCustomerApprover(checked);
+                            if (!ok) setRequiresApproverDraft(previous);
+                            setSavingRequiresApprover(false);
+                          })();
+                        }}
+                        label="Require customer approver"
+                      />
+                    ) : null}
+                  </div>
                 ) : null}
               </section>
 

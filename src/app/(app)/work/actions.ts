@@ -23,6 +23,7 @@ import {
   saveWorkProjectProcess,
   setWorkProjectEstimateUnit,
   setWorkProjectFixedPriceEnabled,
+  setWorkProjectRequiresCustomerApprover,
   setWorkProjectPreferredView,
   countWorkProjectEstimates,
 } from "@/lib/workBoards";
@@ -338,11 +339,38 @@ export async function setWorkProjectEstimateUnitAction(
 export async function setWorkProjectFixedPriceEnabledAction(
   boardId: string,
   enabled: boolean
-): Promise<{ ok: true; fixedPriceEnabled: boolean } | Err> {
+): Promise<
+  | {
+      ok: true;
+      fixedPriceEnabled: boolean;
+      requiresCustomerApprover: boolean;
+    }
+  | Err
+> {
   try {
     const result = await setWorkProjectFixedPriceEnabled(boardId, enabled);
     revalidateBoard(boardId);
-    return { ok: true, fixedPriceEnabled: result.fixedPriceEnabled };
+    return {
+      ok: true,
+      fixedPriceEnabled: result.fixedPriceEnabled,
+      requiresCustomerApprover: result.requiresCustomerApprover,
+    };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setWorkProjectRequiresCustomerApproverAction(
+  boardId: string,
+  enabled: boolean
+): Promise<{ ok: true; requiresCustomerApprover: boolean } | Err> {
+  try {
+    const result = await setWorkProjectRequiresCustomerApprover(
+      boardId,
+      enabled
+    );
+    revalidateBoard(boardId);
+    return { ok: true, requiresCustomerApprover: result.requiresCustomerApprover };
   } catch (error) {
     return fail(error);
   }
@@ -598,12 +626,28 @@ export async function updateWorkIssueEstimateSizeAction(
 export async function setWorkIssueScopeApprovedAction(
   boardId: string,
   issueId: string,
-  approved: boolean
-): Promise<(Ok & { scopeApproved: boolean }) | Err> {
+  approved: boolean,
+  options?: { approverAppUserId?: string | null }
+): Promise<
+  | (Ok & {
+      scopeApproved: boolean;
+      scopeApproverAppUserId: string | null;
+    })
+  | Err
+> {
   try {
-    const result = await setWorkIssueScopeApproved(boardId, issueId, approved);
+    const result = await setWorkIssueScopeApproved(
+      boardId,
+      issueId,
+      approved,
+      options
+    );
     revalidateBoard(boardId, issueId);
-    return { ok: true, scopeApproved: result.scopeApproved };
+    return {
+      ok: true,
+      scopeApproved: result.scopeApproved,
+      scopeApproverAppUserId: result.scopeApproverAppUserId,
+    };
   } catch (error) {
     return fail(error);
   }

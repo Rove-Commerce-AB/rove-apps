@@ -51,6 +51,7 @@ function issue(
     estimateHours: null,
     estimateSize: null,
     scopeApproved: false,
+    scopeApprover: null,
     loggedHours: 0,
     priority: null,
     sprintId: null,

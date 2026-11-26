@@ -145,6 +145,14 @@ export async function getWorkIssue(actor: WorkActor, input: WorkIssueLookup): Pr
         ? parseWorkTshirtSize(row.estimate_size)
         : null,
       scopeApproved: row.scope_approved_at != null,
+      scopeApprover:
+        row.scope_approver_app_user_id != null
+          ? workPersonFromUser({
+              id: row.scope_approver_app_user_id,
+              name: row.scope_approver_name,
+              email: row.scope_approver_email ?? "",
+            })
+          : null,
       loggedHours: showReportedTime ? hours.get(row.id) ?? 0 : 0,
       sprintId: row.sprint_id,
       startDate: pgDateToDateOnlyOrNull(row.start_date),

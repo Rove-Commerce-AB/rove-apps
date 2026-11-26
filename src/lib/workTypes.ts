@@ -110,7 +110,7 @@ export type WorkIssueLookup = { projectId: string; issueId?: string; issueKey?: 
 export type WorkIssueDetails = WorkIssueListItem & Pick<WorkIssue,
   "reporter" | "component" | "requirements" | "definitionOfDone" | "preDeployActions" |
   "references" | "relations" | "files" | "estimateHours" | "estimateSize" | "scopeApproved" |
-  "loggedHours" | "sprintId" | "startDate" | "dueDate"
+  "scopeApprover" | "loggedHours" | "sprintId" | "startDate" | "dueDate"
 > & { showEstimates: boolean; showReportedTime: boolean };
 
 export type WorkIssueCommentsInput = { projectId: string; issueId: string; limit?: number; cursor?: string };
@@ -216,6 +216,8 @@ export type WorkIssue = {
   estimateSize: WorkTshirtSize | null;
   /** Fixed-price t-shirt: scope (size + description/requirements) is locked. */
   scopeApproved: boolean;
+  /** Customer Work user selected as approver when the project requires one. */
+  scopeApprover: WorkPerson | null;
   loggedHours: number;
   sprintId: string | null;
   startDate: string | null;
@@ -244,6 +246,13 @@ export type WorkBoardView = {
   estimateUnit: WorkEstimateUnit;
   /** When estimateUnit is tshirt: show size × catalog price (display only). */
   fixedPriceEnabled: boolean;
+  /**
+   * When fixed-price t-shirt: approving scope requires picking a customer
+   * Work user as approver.
+   */
+  requiresCustomerApprover: boolean;
+  /** Customer Work users eligible as scope approvers. */
+  customerWorkApprovers: WorkPerson[];
   /** Resolved size → amount (customer + project overrides). Empty when not fixed price. */
   sizePrices: WorkSizePriceMap;
   /** Customer billing currency — used when estimateUnit is currency. */

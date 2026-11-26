@@ -130,6 +130,7 @@ import { formatWorkHours } from "@/lib/workTime";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkScopeApproveButton } from "./WorkScopeApproveButton";
 import { WorkScopeUnlockBanner } from "./WorkScopeUnlockBanner";
+import { WorkScopeApproverBanner } from "./WorkScopeApproverBanner";
 import type {
   WorkIssueTimeLogEntry,
   WorkIssueTimeLogRoleOption,
@@ -454,6 +455,8 @@ export function WorkIssueDrawer({
   const [moving, setMoving] = useState(false);
   const [unlockScopeBanner, setUnlockScopeBanner] = useState(false);
   const [unlockScopeBannerOpen, setUnlockScopeBannerOpen] = useState(false);
+  const [approverBanner, setApproverBanner] = useState(false);
+  const [approverBannerOpen, setApproverBannerOpen] = useState(false);
 
   const scopeApprovalAvailable =
     workScopeApprovalEnabled({
@@ -497,13 +500,27 @@ export function WorkIssueDrawer({
     board.showReportedTime,
   ]);
 
-  function applyScopeApproved(approved: boolean) {
+  function applyScopeApproved(
+    approved: boolean,
+    options?: { approverAppUserId?: string | null }
+  ) {
     if (!approved && !canUnlockScope) {
       onError("Can't unlock scope while the issue is Done.");
       return;
     }
-    onIssuePatch({ scopeApproved: approved });
-    run(() => setWorkIssueScopeApprovedAction(board.id, issue.id, approved));
+    const approver =
+      approved && options?.approverAppUserId
+        ? board.customerWorkApprovers.find(
+            (person) => person.id === options.approverAppUserId
+          ) ?? null
+        : null;
+    onIssuePatch({
+      scopeApproved: approved,
+      scopeApprover: approved ? approver : null,
+    });
+    run(() =>
+      setWorkIssueScopeApprovedAction(board.id, issue.id, approved, options)
+    );
   }
 
   useEffect(() => {
@@ -1812,6 +1829,7 @@ export function WorkIssueDrawer({
                       onToggle={() => {
                         if (issue.scopeApproved) {
                           if (!canUnlockScope) return;
+                          setApproverBanner(false);
                           setUnlockScopeBanner(true);
                           setUnlockScopeBannerOpen(false);
                           requestAnimationFrame(() => {
@@ -1822,6 +1840,17 @@ export function WorkIssueDrawer({
                           return;
                         }
                         setUnlockScopeBanner(false);
+                        if (board.requiresCustomerApprover) {
+                          setApproverBanner(true);
+                          setApproverBannerOpen(false);
+                          requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                              setApproverBannerOpen(true);
+                            });
+                          });
+                          return;
+                        }
+                        setApproverBanner(false);
                         applyScopeApproved(true);
                       }}
                     />
@@ -1912,6 +1941,28 @@ export function WorkIssueDrawer({
                       setUnlockScopeBannerOpen(false);
                       window.setTimeout(() => {
                         setUnlockScopeBanner(false);
+                      }, 200);
+                    }}
+                  />
+                </div>
+              ) : null}
+              {approverBanner ? (
+                <div className="w-full basis-full">
+                  <WorkScopeApproverBanner
+                    open={approverBannerOpen}
+                    people={board.customerWorkApprovers}
+                    disabled={pending}
+                    onConfirm={(approverAppUserId) => {
+                      setApproverBannerOpen(false);
+                      window.setTimeout(() => {
+                        setApproverBanner(false);
+                        applyScopeApproved(true, { approverAppUserId });
+                      }, 200);
+                    }}
+                    onDismiss={() => {
+                      setApproverBannerOpen(false);
+                      window.setTimeout(() => {
+                        setApproverBanner(false);
                       }, 200);
                     }}
                   />

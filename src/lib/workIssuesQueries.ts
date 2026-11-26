@@ -42,6 +42,9 @@ export type WorkIssueRow = {
   estimate_size: string | null;
   scope_approved_at: Date | string | null;
   scope_approved_by_app_user_id: string | null;
+  scope_approver_app_user_id: string | null;
+  scope_approver_name: string | null;
+  scope_approver_email: string | null;
   sprint_id: string | null;
   start_date: Date | string | null;
   due_date: Date | string | null;
@@ -232,6 +235,9 @@ export async function fetchWorkIssuesForBoard(
        i.estimate_size,
        i.scope_approved_at,
        i.scope_approved_by_app_user_id,
+       i.scope_approver_app_user_id,
+       sa.name AS scope_approver_name,
+       sa.email AS scope_approver_email,
        i.sprint_id,
        i.start_date,
        i.due_date,
@@ -242,6 +248,7 @@ export async function fetchWorkIssuesForBoard(
      LEFT JOIN work_components c ON c.id = i.component_id
      LEFT JOIN app_users r ON r.id = i.created_by_app_user_id
      LEFT JOIN app_users o ON o.id = i.owner_app_user_id
+     LEFT JOIN app_users sa ON sa.id = i.scope_approver_app_user_id
      WHERE i.project_id = $1
        ${issue ? ("id" in issue ? "AND i.id = $2::uuid" : "AND i.number = $2::int") : ""}
      ORDER BY i.status, i.sort_order, i.number`,
@@ -632,7 +639,8 @@ export async function updateWorkIssueScopeApproved(
   issueId: string,
   approved: boolean,
   actorAppUserId: string,
-  client?: PoolClient
+  client?: PoolClient,
+  options?: { approverAppUserId?: string | null }
 ): Promise<boolean> {
   const db = client ?? cloudSqlPool;
   const result = await db.query(
@@ -640,18 +648,65 @@ export async function updateWorkIssueScopeApproved(
       ? `UPDATE work_issues
          SET scope_approved_at = now(),
              scope_approved_by_app_user_id = $3,
+             scope_approver_app_user_id = $4,
              updated_at = now()
          WHERE id = $2 AND project_id = $1`
       : `UPDATE work_issues
          SET scope_approved_at = NULL,
              scope_approved_by_app_user_id = NULL,
+             scope_approver_app_user_id = NULL,
              updated_at = now()
          WHERE id = $2 AND project_id = $1`,
     approved
-      ? [boardId, issueId, actorAppUserId]
+      ? [
+          boardId,
+          issueId,
+          actorAppUserId,
+          options?.approverAppUserId ?? null,
+        ]
       : [boardId, issueId]
   );
   return (result.rowCount ?? 0) === 1;
+}
+
+/** Customer users on this customer with Work app access (approver pool). */
+export async function fetchCustomerWorkApproverCandidates(
+  customerId: string
+): Promise<WorkUserRow[]> {
+  const { rows } = await cloudSqlPool.query<WorkUserRow>(
+    `SELECT u.id, u.name, u.email
+     FROM customer_app_users cau
+     JOIN app_users u ON u.id = cau.app_user_id
+     JOIN app_user_apps aua ON aua.app_user_id = u.id
+     JOIN apps a ON a.id = aua.app_id AND a.key = 'work'
+     WHERE cau.customer_id = $1
+       AND u.role = 'customer'
+     GROUP BY u.id, u.name, u.email
+     ORDER BY lower(COALESCE(NULLIF(trim(u.name), ''), u.email))`,
+    [customerId]
+  );
+  return rows;
+}
+
+export async function isCustomerWorkApproverCandidate(
+  customerId: string,
+  appUserId: string,
+  client?: PoolClient
+): Promise<boolean> {
+  const db = client ?? cloudSqlPool;
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT u.id
+     FROM customer_app_users cau
+     JOIN app_users u ON u.id = cau.app_user_id
+     JOIN app_user_apps aua ON aua.app_user_id = u.id
+     JOIN apps a ON a.id = aua.app_id AND a.key = 'work'
+     WHERE cau.customer_id = $1
+       AND u.id = $2
+       AND u.role = 'customer'
+     LIMIT 1`,
+    [customerId, appUserId]
+  );
+  return rows.length > 0;
 }
 
 export async function updateWorkIssuePriority(

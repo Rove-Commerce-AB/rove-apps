@@ -54,6 +54,7 @@ import {
   updateWorkIssueField,
   fetchWorkIssueScopeLockState,
   updateWorkIssueScopeApproved,
+  isCustomerWorkApproverCandidate,
   updateWorkIssueOwner,
   updateWorkIssuePriority,
   updateWorkIssueType,
@@ -743,10 +744,15 @@ export async function removeIssueRequirement(
 export async function setWorkIssueScopeApproved(
   boardId: string,
   issueId: string,
-  approved: boolean
-): Promise<{ scopeApproved: boolean }> {
+  approved: boolean,
+  options?: { approverAppUserId?: string | null }
+): Promise<{
+  scopeApproved: boolean;
+  scopeApproverAppUserId: string | null;
+}> {
   const { actor, board } = await requireBoardAccess(boardId);
   const estimateUnit = parseWorkEstimateUnit(board.estimate_unit);
+  const requiresApprover = board.requires_customer_approver === true;
 
   const state = await fetchWorkIssueScopeLockState(boardId, issueId);
   if (!state) throw new WorkInputError("Issue not found in this project.");
@@ -760,7 +766,26 @@ export async function setWorkIssueScopeApproved(
     if (!state.estimateSize) {
       throw new WorkInputError("Set a size before approving scope.");
     }
-    if (state.scopeApproved) return { scopeApproved: true };
+    if (state.scopeApproved) {
+      return { scopeApproved: true, scopeApproverAppUserId: null };
+    }
+    let approverAppUserId: string | null = null;
+    if (requiresApprover) {
+      const candidate = options?.approverAppUserId?.trim() || null;
+      if (!candidate) {
+        throw new WorkInputError("Select a customer approver before approving.");
+      }
+      const okApprover = await isCustomerWorkApproverCandidate(
+        board.customer_id,
+        candidate
+      );
+      if (!okApprover) {
+        throw new WorkInputError(
+          "Approver must be a customer user with Work access."
+        );
+      }
+      approverAppUserId = candidate;
+    }
     const ok = await withCloudSqlTransaction(
       "work-scope-approve",
       async (client) => {
@@ -769,13 +794,16 @@ export async function setWorkIssueScopeApproved(
           issueId,
           true,
           actor.id,
-          client
+          client,
+          { approverAppUserId }
         );
         if (!updated) return false;
         const recorded = await insertWorkIssueScopeApprovalIfPriced(
           client,
           boardId,
-          issueId
+          issueId,
+          undefined,
+          { approverAppUserId }
         );
         if (!recorded) {
           throw new WorkInputError(
@@ -787,7 +815,9 @@ export async function setWorkIssueScopeApproved(
             issueId,
             actorAppUserId: actor.id,
             kind: "scope",
-            summary: "approved the scope",
+            summary: approverAppUserId
+              ? "approved the scope (with customer approver)"
+              : "approved the scope",
           },
           client
         );
@@ -795,10 +825,15 @@ export async function setWorkIssueScopeApproved(
       }
     );
     if (!ok) throw new WorkInputError("Issue not found in this project.");
-    return { scopeApproved: true };
+    return {
+      scopeApproved: true,
+      scopeApproverAppUserId: approverAppUserId,
+    };
   }
 
-  if (!state.scopeApproved) return { scopeApproved: false };
+  if (!state.scopeApproved) {
+    return { scopeApproved: false, scopeApproverAppUserId: null };
+  }
   if (state.statusIsDone || state.hasActiveDelivery) {
     throw new WorkInputError(
       "Can't unlock scope while the issue is Done or has an active delivery."
@@ -829,7 +864,7 @@ export async function setWorkIssueScopeApproved(
     }
   );
   if (!ok) throw new WorkInputError("Issue not found in this project.");
-  return { scopeApproved: false };
+  return { scopeApproved: false, scopeApproverAppUserId: null };
 }
 
 export async function addIssuePreDeployAction(

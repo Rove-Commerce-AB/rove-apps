@@ -80,6 +80,7 @@ import {
   fetchWorkBoardMembers,
   fetchWorkAccessPickerPeople,
   fetchWorkPeopleForCustomer,
+  fetchCustomerWorkApproverCandidates,
   fetchWorkUserById,
   fetchWorkIssuesForBoard,
   fetchLoggedHoursByIssueIds,
@@ -639,6 +640,14 @@ export async function getWorkBoardView(
         ? parseWorkTshirtSize(row.estimate_size)
         : null,
       scopeApproved: row.scope_approved_at != null,
+      scopeApprover:
+        row.scope_approver_app_user_id != null
+          ? personOrFallback(
+              row.scope_approver_app_user_id,
+              row.scope_approver_name,
+              row.scope_approver_email ?? ""
+            )
+          : null,
       loggedHours: showReportedTime
         ? loggedHoursByIssue.get(row.id) ?? 0
         : 0,
@@ -698,6 +707,10 @@ export async function getWorkBoardView(
     plannerProjectName: board.planner_project_name ?? null,
     estimateUnit: parseWorkEstimateUnit(board.estimate_unit),
     fixedPriceEnabled: board.fixed_price_enabled === true,
+    requiresCustomerApprover: board.requires_customer_approver === true,
+    customerWorkApprovers: (
+      await fetchCustomerWorkApproverCandidates(board.customer_id)
+    ).map(workPersonFromUser),
     sizePrices:
       board.fixed_price_enabled === true
         ? await getResolvedSizePriceMap(
@@ -920,6 +933,7 @@ export async function setWorkProjectFixedPriceEnabled(
 ): Promise<{
   fixedPriceEnabled: boolean;
   customerId: string;
+  requiresCustomerApprover: boolean;
 }> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
@@ -936,6 +950,34 @@ export async function setWorkProjectFixedPriceEnabled(
   }
   return {
     fixedPriceEnabled: enabled,
+    customerId: visible.board.customer_id,
+    requiresCustomerApprover: enabled
+      ? visible.board.requires_customer_approver === true
+      : false,
+  };
+}
+
+export async function setWorkProjectRequiresCustomerApprover(
+  boardId: string,
+  enabled: boolean
+): Promise<{
+  requiresCustomerApprover: boolean;
+  customerId: string;
+}> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) throw new Error("Board not found");
+  if (visible.actor.role === "customer") {
+    throw new Error("Customer users cannot change approver requirement");
+  }
+  const unit = parseWorkEstimateUnit(visible.board.estimate_unit);
+  if (unit !== "tshirt" || visible.board.fixed_price_enabled !== true) {
+    throw new Error(
+      "Customer approver is only available on fixed-price t-shirt projects."
+    );
+  }
+  await q.updateWorkProjectRequiresCustomerApprover(boardId, enabled);
+  return {
+    requiresCustomerApprover: enabled,
     customerId: visible.board.customer_id,
   };
 }
