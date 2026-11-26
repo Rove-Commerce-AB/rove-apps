@@ -81,6 +81,7 @@ export function startWorkCardDragGhost(
   event.dataTransfer.setDragImage(blank, 0, 0);
 
   const wrap = document.createElement("div");
+  wrap.dataset.workCardDragGhost = "true";
   wrap.style.position = "fixed";
   wrap.style.left = "0";
   wrap.style.top = "0";
@@ -132,22 +133,34 @@ export function startWorkCardDragGhost(
     if (blank.isConnected) blank.remove();
   }
 
+  function restoreSource() {
+    if (source.isConnected) source.style.opacity = "";
+  }
+
   function remove() {
     disposed = true;
     cleanupListeners();
     cleanupBlank();
+    restoreSource();
     if (wrap.isConnected) wrap.remove();
   }
 
   async function dispose(): Promise<void> {
-    if (disposed) return;
+    if (disposed) {
+      // Prior landAt/dispose may have finished the animation but left the wrap
+      // for the caller — never leave a stranded ghost behind.
+      remove();
+      return;
+    }
     disposed = true;
     cleanupListeners();
     cleanupBlank();
+    restoreSource();
+    if (!wrap.isConnected) return;
     ghost.style.transition = `transform ${durationMs}ms ${ease}`;
     ghost.style.transform = "rotate(0deg) scale(1)";
     await waitTransition(ghost, "transform", durationMs + 80);
-    wrap.remove();
+    if (wrap.isConnected) wrap.remove();
   }
 
   async function landAt(target: {
@@ -155,10 +168,18 @@ export function startWorkCardDragGhost(
     top: number;
     width?: number;
   }): Promise<void> {
-    if (disposed) return;
+    if (disposed) {
+      remove();
+      return;
+    }
     disposed = true;
     cleanupListeners();
     cleanupBlank();
+
+    if (!wrap.isConnected) {
+      restoreSource();
+      return;
+    }
 
     if (typeof target.width === "number" && target.width > 0) {
       ghost.style.width = `${target.width}px`;

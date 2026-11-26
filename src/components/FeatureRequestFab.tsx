@@ -94,8 +94,18 @@ export function FeatureRequestFab({
   useEffect(() => {
     if (phase !== "open") return;
     function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node | null;
-      if (!target || rootRef.current?.contains(target)) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      // Radix Select / type picker portaled outside the FAB root.
+      if (
+        target instanceof Element &&
+        (target.closest("[data-radix-select-content]") ||
+          target.closest("[data-card-issue-type]") ||
+          target.closest("[data-combobox-list]"))
+      ) {
+        return;
+      }
       if (submitting) return;
       setPhase("closed");
       setError(null);

@@ -280,19 +280,42 @@ export function WorkSprintView({
     dragGhostRef.current = null;
   }
 
+  useEffect(() => {
+    return () => {
+      dropIssueIdRef.current = null;
+      draggingIdRef.current = null;
+      clearDragGhost();
+      // Orphaned clones from a mid-flight land animation.
+      document
+        .querySelectorAll<HTMLElement>("[data-work-card-drag-ghost]")
+        .forEach((node) => node.remove());
+    };
+  }, []);
+
   async function finishSprintDragGhost() {
     const ghost = dragGhostRef.current;
     dragGhostRef.current = null;
     const issueId = dropIssueIdRef.current;
     dropIssueIdRef.current = null;
     if (!ghost) return;
+
+    // Hard failsafe — never leave a floating clone after drop/cancel.
+    const safety = window.setTimeout(() => ghost.remove(), 900);
     let landed: HTMLElement | null = null;
     try {
       if (issueId) {
-        await waitForPaint(2);
-        landed = document.querySelector<HTMLElement>(
-          `[data-sprint-issue-id="${CSS.escape(issueId)}"]`
-        );
+        for (let attempt = 0; attempt < 12; attempt++) {
+          await waitForPaint(1);
+          const nodes = document.querySelectorAll<HTMLElement>(
+            `[data-sprint-issue-id="${CSS.escape(issueId)}"]`
+          );
+          // Prefer the visible destination card over the opacity-0 drag source.
+          landed =
+            [...nodes].find((node) => node.style.opacity !== "0") ??
+            nodes[0] ??
+            null;
+          if (landed && landed.style.opacity !== "0") break;
+        }
         if (landed) {
           landed.style.opacity = "0";
           const rect = landed.getBoundingClientRect();
@@ -308,9 +331,13 @@ export function WorkSprintView({
         }
       }
       await ghost.dispose();
+      ghost.remove();
     } catch {
       ghost.remove();
       if (landed) landed.style.opacity = "";
+    } finally {
+      window.clearTimeout(safety);
+      ghost.remove();
     }
   }
 

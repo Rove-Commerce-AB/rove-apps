@@ -535,6 +535,40 @@ export async function deletePlannerLeaveDay(id: string): Promise<void> {
   });
 }
 
+/**
+ * Clear leave on the given dates for one consultant + absence project.
+ * Deletes day rows and resyncs weekly allocations (sum 0 → removes week-band
+ * vacation booked from Consultant/week views too).
+ */
+export async function clearPlannerLeaveDates(input: {
+  consultantId: string;
+  projectId: string;
+  dates: string[];
+}): Promise<void> {
+  if (!input.consultantId || !input.projectId) {
+    throw new Error("Consultant and project are required");
+  }
+  const dates = [...new Set(input.dates)].filter((d) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(d)
+  );
+  if (dates.length === 0) return;
+
+  await cloudSqlPool.query(
+    `DELETE FROM consultant_leave_days
+     WHERE consultant_id = $1
+       AND project_id = $2
+       AND leave_date = ANY($3::date[])`,
+    [input.consultantId, input.projectId, dates]
+  );
+
+  // Even with no day rows, sync zeros the weekly absence allocation for those weeks.
+  await syncWeeksForDates({
+    consultantId: input.consultantId,
+    projectId: input.projectId,
+    dates,
+  });
+}
+
 export async function upsertPlannerLeaveRange(input: {
   consultantId: string;
   projectId: string;

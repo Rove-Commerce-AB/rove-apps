@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 import {
+  clearPlannerLeaveDates,
   deletePlannerLeaveDay,
   getPlannerLeavePageData,
   listConsultantIdsForCurrentPm,
@@ -41,6 +42,16 @@ export async function upsertPlannerLeaveDayAction(input: {
 export async function deletePlannerLeaveDayAction(id: string) {
   await assertNotSubcontractorForWrite();
   await deletePlannerLeaveDay(id);
+  revalidatePlanner();
+}
+
+export async function clearPlannerLeaveDatesAction(input: {
+  consultantId: string;
+  projectId: string;
+  dates: string[];
+}) {
+  await assertNotSubcontractorForWrite();
+  await clearPlannerLeaveDates(input);
   revalidatePlanner();
 }
 

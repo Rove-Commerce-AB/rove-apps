@@ -44,6 +44,7 @@ import type {
   WorkPerson,
   WorkSprint,
 } from "@/lib/workTypes";
+import { workSprintLabel } from "@/lib/workSprintLabel";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import {
   clearOptimisticIssuePatch,
@@ -739,6 +740,15 @@ export function WorkBoardPageClient({
     () => sprints.slice().sort((a, b) => a.number - b.number),
     [sprints]
   );
+  /** Board create: exactly one sprint filter → assign there; else backlog. */
+  const createTargetSprint = useMemo(() => {
+    if (sprintFilterIds.length !== 1) return null;
+    const id = sprintFilterIds[0]!;
+    return orderedSprints.find((sprint) => sprint.id === id) ?? null;
+  }, [sprintFilterIds, orderedSprints]);
+  const createTargetHint = createTargetSprint
+    ? `Adds to ${workSprintLabel(createTargetSprint)}`
+    : "Adds to backlog";
 
   const visibleIds = useMemo(
     () =>
@@ -1764,6 +1774,7 @@ export function WorkBoardPageClient({
       title: trimmed,
       status,
       issueType: draftIssueType,
+      sprintId: createTargetSprint?.id ?? null,
     });
     if (!result.ok) {
       setError(result.error);
@@ -2965,6 +2976,9 @@ export function WorkBoardPageClient({
                       </span>
                     </p>
                   ) : null}
+                  <p className="px-0.5 text-[11px] text-text-tertiary">
+                    {createTargetHint}
+                  </p>
                   <div className="flex items-start gap-2">
                     <WorkIssueTypePicker
                       name={`New issue type ${status}`}
@@ -2987,7 +3001,8 @@ export function WorkBoardPageClient({
               ) : (
                 <button
                   type="button"
-                  className={`mx-2 mb-3 flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-body-m transition-colors ${
+                  title={createTargetHint}
+                  className={`mx-2 mb-3 flex flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-body-m transition-colors ${
                     relationAddIssueOverStatus === status
                       ? "bg-brand-signal/15 text-text-primary ring-2 ring-brand-signal"
                       : "text-text-secondary hover:bg-bg-muted hover:text-text-primary"
@@ -3038,10 +3053,17 @@ export function WorkBoardPageClient({
                     openAddIssueFromRelation(status, fromId);
                   }}
                 >
-                  <Plus className="h-4 w-4" aria-hidden />
-                  {relationDragFromId
-                    ? "Drop to create linked issue"
-                    : "Add issue"}
+                  <span className="inline-flex items-center gap-1">
+                    <Plus className="h-4 w-4" aria-hidden />
+                    {relationDragFromId
+                      ? "Drop to create linked issue"
+                      : "Add issue"}
+                  </span>
+                  {!relationDragFromId ? (
+                    <span className="pl-5 text-[11px] text-text-tertiary">
+                      {createTargetHint}
+                    </span>
+                  ) : null}
                 </button>
               )}
               </div>

@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  deletePlannerLeaveDayAction,
+  clearPlannerLeaveDatesAction,
   upsertPlannerLeaveDayAction,
   upsertPlannerLeaveRangeAction,
 } from "@/app/(app)/planner/leaveActions";
@@ -311,13 +311,9 @@ function formatDateRangeLabel(dates: string[]): string {
   return `${dates[0]} → ${dates[dates.length - 1]} (${dates.length} days)`;
 }
 
-function workableDates(
-  dates: string[],
-  holidayByDate: Map<string, string> | undefined
-): string[] {
-  return dates.filter(
-    (d) => !isWeekend(d) && !(holidayByDate?.has(d) ?? false)
-  );
+/** Weekends stay non-editable; public holidays are allowed (e.g. SEM on Dec 25). */
+function workableDates(dates: string[]): string[] {
+  return dates.filter((d) => !isWeekend(d));
 }
 
 /** CSS :has() crosshair — same idea as Time report; avoids React hover races with nested buttons.
@@ -604,7 +600,8 @@ function AvailabilityGrid({
                         .get(consultant.id)
                         ?.get(date);
                       const holiday = Boolean(holidayName);
-                      const blocked = weekend || holiday;
+                      // Weekends blocked; holidays stay clickable so leave can be booked.
+                      const blocked = weekend;
                       const leaves =
                         leaveByKey.get(`${consultant.id}:${date}`) ?? [];
                       const primary = leaves[0];
@@ -817,22 +814,21 @@ export function PlannerAvailabilityClient({
     data?.defaultVacationProjectId ?? data?.absenceProjects[0]?.id ?? "";
 
   function openPrompt(next: LeavePrompt) {
-    const workDates = workableDates(
-      next.dates,
-      holidaysByConsultantId.get(next.consultantId)
-    );
+    const workDates = workableDates(next.dates);
     if (workDates.length === 0) return;
     setPrompt({ ...next, dates: workDates });
     // Prefer existing day leave, else week-band absence already booked on these days.
-    const bandProjectId = workDates
-      .map((d) => weekBandByKey.get(`${next.consultantId}:${d}`)?.projectId)
-      .find((id): id is string => Boolean(id));
+    const band = workDates
+      .map((d) => weekBandByKey.get(`${next.consultantId}:${d}`))
+      .find((cell): cell is WeekBandCell => Boolean(cell));
     setPromptProjectId(
-      next.existing?.projectId || bandProjectId || defaultProjectId
+      next.existing?.projectId || band?.projectId || defaultProjectId
     );
     setPromptHours(
       String(
         next.existing?.hours ??
+          // Week bands store total week hours — show a full day as the editable default.
+          (band ? next.hoursPerDay : null) ??
           next.hoursPerDay ??
           8
       )
@@ -1022,11 +1018,78 @@ export function PlannerAvailabilityClient({
     });
   }
 
+  function applyClearedLeave(input: {
+    consultantId: string;
+    projectId: string;
+    dates: string[];
+  }) {
+    const dateSet = new Set(input.dates);
+    const weeks = new Set<string>();
+    for (const date of input.dates) {
+      const { year, week } = getYearWeekForDate(new Date(`${date}T12:00:00`));
+      weeks.add(`${year}-${String(week).padStart(2, "0")}`);
+    }
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        leaveDays: prev.leaveDays.filter(
+          (d) =>
+            !(
+              d.consultantId === input.consultantId &&
+              d.projectId === input.projectId &&
+              dateSet.has(d.leaveDate)
+            )
+        ),
+        weeklyAbsences: (prev.weeklyAbsences ?? []).filter((row) => {
+          if (row.consultantId !== input.consultantId) return true;
+          if (row.projectId !== input.projectId) return true;
+          const key = `${row.year}-${String(row.week).padStart(2, "0")}`;
+          return !weeks.has(key);
+        }),
+      };
+    });
+  }
+
+  function promptHasRemovableLeave(): boolean {
+    if (!prompt || !promptProjectId) return false;
+    if (prompt.existing) return true;
+    return prompt.dates.some((date) => {
+      const band = weekBandByKey.get(`${prompt.consultantId}:${date}`);
+      return band?.projectId === promptProjectId;
+    });
+  }
+
+  function clearPromptLeave() {
+    if (!prompt || !promptProjectId) return;
+    const payload = {
+      consultantId: prompt.consultantId,
+      projectId: promptProjectId,
+      dates: prompt.dates,
+    };
+    startTransition(async () => {
+      setMessage(null);
+      try {
+        await clearPlannerLeaveDatesAction(payload);
+        applyClearedLeave(payload);
+        setPrompt(null);
+        router.refresh();
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : "Remove failed");
+      }
+    });
+  }
+
   function submitPrompt() {
     if (!prompt || !promptProjectId) return;
     const hours = Number(promptHours.replace(",", "."));
-    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+    if (!Number.isFinite(hours) || hours < 0 || hours > 24) {
       setMessage("Hours must be between 0 and 24");
+      return;
+    }
+    // 0 hours = remove leave (day rows and/or week-band absence).
+    if (hours === 0) {
+      clearPromptLeave();
       return;
     }
     const datesToSave = prompt.dates;
@@ -1069,29 +1132,6 @@ export function PlannerAvailabilityClient({
         router.refresh();
       } catch (e) {
         setMessage(e instanceof Error ? e.message : "Save failed");
-      }
-    });
-  }
-
-  function removePromptLeave() {
-    if (!prompt?.existing) return;
-    const id = prompt.existing.id;
-    startTransition(async () => {
-      setMessage(null);
-      try {
-        await deletePlannerLeaveDayAction(id);
-        setData((prev) =>
-          prev
-            ? {
-                ...prev,
-                leaveDays: prev.leaveDays.filter((d) => d.id !== id),
-              }
-            : prev
-        );
-        setPrompt(null);
-        router.refresh();
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : "Remove failed");
       }
     });
   }
@@ -1176,7 +1216,7 @@ export function PlannerAvailabilityClient({
         onOpenChange={(open) => {
           if (!open) setPrompt(null);
         }}
-        title="Add leave"
+        title={promptHasRemovableLeave() ? "Edit leave" : "Add leave"}
         subtitle={
           prompt
             ? `${prompt.consultantName} · ${formatDateRangeLabel(prompt.dates)}`
@@ -1204,14 +1244,17 @@ export function PlannerAvailabilityClient({
               onChange={(event) => setPromptHours(event.target.value)}
               inputMode="decimal"
             />
+            <p className="text-[12px] text-text-tertiary">
+              Set hours to 0 to remove leave.
+            </p>
             <div className="flex justify-end gap-2 pt-1">
-              {prompt.existing ? (
+              {promptHasRemovableLeave() ? (
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   disabled={pending}
-                  onClick={removePromptLeave}
+                  onClick={clearPromptLeave}
                 >
                   Remove
                 </Button>
