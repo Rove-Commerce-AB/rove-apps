@@ -1683,6 +1683,11 @@ export function WorkBoardPageClient({
     } catch {
       ghost?.remove();
       if (source) source.style.opacity = "";
+    } finally {
+      document
+        .querySelectorAll<HTMLElement>("[data-work-card-drag-ghost]")
+        .forEach((node) => node.remove());
+      if (source?.isConnected) source.style.opacity = "";
     }
   }
 

@@ -64,7 +64,6 @@ import {
 } from "@/lib/workStatusColors";
 import {
   startWorkCardDragGhost,
-  waitForPaint,
   type WorkCardDragGhost,
 } from "@/lib/workCardDragGhost";
 import { WorkAddIssueInline } from "./WorkAddIssueInline";
@@ -275,70 +274,34 @@ export function WorkSprintView({
   const dragGhostRef = useRef<WorkCardDragGhost | null>(null);
   const dropIssueIdRef = useRef<string | null>(null);
 
-  function clearDragGhost() {
+  function scrubDragGhosts() {
     dragGhostRef.current?.remove();
     dragGhostRef.current = null;
+    document
+      .querySelectorAll<HTMLElement>("[data-work-card-drag-ghost]")
+      .forEach((node) => node.remove());
+  }
+
+  function clearDragGhost() {
+    scrubDragGhosts();
   }
 
   useEffect(() => {
     return () => {
       dropIssueIdRef.current = null;
       draggingIdRef.current = null;
-      clearDragGhost();
-      // Orphaned clones from a mid-flight land animation.
-      document
-        .querySelectorAll<HTMLElement>("[data-work-card-drag-ghost]")
-        .forEach((node) => node.remove());
+      scrubDragGhosts();
     };
   }, []);
 
-  async function finishSprintDragGhost() {
-    const ghost = dragGhostRef.current;
-    dragGhostRef.current = null;
-    const issueId = dropIssueIdRef.current;
+  /**
+   * Sprint drop used to animate a land onto [data-sprint-issue-id], but the
+   * floating clone also carried that attribute and could be targeted — leaving
+   * a stuck duplicate. Prefer instant cleanup; polish is secondary to correctness.
+   */
+  function finishSprintDragGhost() {
     dropIssueIdRef.current = null;
-    if (!ghost) return;
-
-    // Hard failsafe — never leave a floating clone after drop/cancel.
-    const safety = window.setTimeout(() => ghost.remove(), 900);
-    let landed: HTMLElement | null = null;
-    try {
-      if (issueId) {
-        for (let attempt = 0; attempt < 12; attempt++) {
-          await waitForPaint(1);
-          const nodes = document.querySelectorAll<HTMLElement>(
-            `[data-sprint-issue-id="${CSS.escape(issueId)}"]`
-          );
-          // Prefer the visible destination card over the opacity-0 drag source.
-          landed =
-            [...nodes].find((node) => node.style.opacity !== "0") ??
-            nodes[0] ??
-            null;
-          if (landed && landed.style.opacity !== "0") break;
-        }
-        if (landed) {
-          landed.style.opacity = "0";
-          const rect = landed.getBoundingClientRect();
-          await ghost.landAt({
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-          });
-          landed.style.opacity = "";
-          await waitForPaint(2);
-          ghost.remove();
-          return;
-        }
-      }
-      await ghost.dispose();
-      ghost.remove();
-    } catch {
-      ghost.remove();
-      if (landed) landed.style.opacity = "";
-    } finally {
-      window.clearTimeout(safety);
-      ghost.remove();
-    }
+    scrubDragGhosts();
   }
 
   const orderedSprints = useMemo(() => sortSprints(sprints), [sprints]);
@@ -760,17 +723,13 @@ export function WorkSprintView({
     setDragOverTarget(null);
     draggingIdRef.current = null;
     setDraggingId(null);
-    if (!issueId) {
-      clearDragGhost();
-      return;
-    }
-    dropIssueIdRef.current = issueId;
+    // Drop fires before dragend — scrub now so a stuck clone cannot survive
+    // navigation before finishSprintDragGhost runs.
+    dropIssueIdRef.current = null;
+    clearDragGhost();
+    if (!issueId) return;
     if (target === "sprint") {
-      if (!viewing) {
-        dropIssueIdRef.current = null;
-        clearDragGhost();
-        return;
-      }
+      if (!viewing) return;
       moveIssue(issueId, viewing.id);
       return;
     }

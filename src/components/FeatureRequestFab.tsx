@@ -93,32 +93,41 @@ export function FeatureRequestFab({
 
   useEffect(() => {
     if (phase !== "open") return;
-    function handlePointerDown(event: MouseEvent) {
+
+    function isPortaledOverlayTarget(target: EventTarget | null) {
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest("[data-radix-select-content]") ||
+          target.closest("[data-radix-popper-content-wrapper]") ||
+          target.closest("[data-radix-select-viewport]") ||
+          target.closest("[data-combobox-list]") ||
+          // Select may unmount content before mouseup; treat open menus as inside.
+          document.querySelector("[data-radix-select-content]")
+      );
+    }
+
+    function handlePointerDown(event: PointerEvent) {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (rootRef.current?.contains(target)) return;
-      // Radix Select / type picker portaled outside the FAB root.
-      if (
-        target instanceof Element &&
-        (target.closest("[data-radix-select-content]") ||
-          target.closest("[data-card-issue-type]") ||
-          target.closest("[data-combobox-list]"))
-      ) {
-        return;
-      }
+      // Capture phase + Select portal: item pointerdown can dismiss the menu
+      // before a bubble mousedown, which otherwise looks like an outside click.
+      if (isPortaledOverlayTarget(target)) return;
       if (submitting) return;
       setPhase("closed");
       setError(null);
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape" || submitting) return;
+      // Let an open Select consume Escape first.
+      if (document.querySelector("[data-radix-select-content]")) return;
       setPhase("closed");
       setError(null);
     }
-    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown, true);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [phase, submitting]);

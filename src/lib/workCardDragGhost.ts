@@ -91,6 +91,16 @@ export function startWorkCardDragGhost(
 
   const ghost = source.cloneNode(true) as HTMLElement;
   ghost.removeAttribute("draggable");
+  // Drop landing looks up real cards by these ids — strip so the clone
+  // cannot be mistaken for the destination (leaves a stuck duplicate).
+  ghost.removeAttribute("data-sprint-issue-id");
+  ghost.removeAttribute("data-issue-card");
+  ghost.querySelectorAll("[data-sprint-issue-id], [data-issue-card]").forEach(
+    (node) => {
+      node.removeAttribute("data-sprint-issue-id");
+      node.removeAttribute("data-issue-card");
+    }
+  );
   ghost.style.width = `${rect.width}px`;
   ghost.style.margin = "0";
   ghost.style.boxSizing = "border-box";
