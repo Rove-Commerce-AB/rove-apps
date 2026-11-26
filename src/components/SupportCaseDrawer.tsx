@@ -20,6 +20,8 @@ import {
   TabsTrigger,
 } from "@/components/ui";
 import { WorkCardPeople } from "@/app/(app)/work/[customerId]/[projectId]/WorkIssueDrawer";
+import { TranslateDraftButton } from "@/components/TranslateDraftButton";
+import { TranslateText } from "@/components/TranslateText";
 import {
   addSupportCaseAssignee,
   addSupportCaseComment,
@@ -140,6 +142,7 @@ function CommentCard({
       <pre className="whitespace-pre-wrap font-sans text-sm text-text-secondary">
         {item.body}
       </pre>
+      <TranslateText text={item.body} as="pre" />
     </li>
   );
 }
@@ -689,6 +692,13 @@ export function SupportCaseDrawer({
                   }
                 />
               </label>
+              <div className="mt-1 flex justify-end">
+                <TranslateDraftButton
+                  text={comment}
+                  disabled={pending}
+                  onTranslated={setComment}
+                />
+              </div>
               {composeMode === "email" ? (
                 <div className="space-y-2">
                   <label className="block text-xs text-text-secondary">

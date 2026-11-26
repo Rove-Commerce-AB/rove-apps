@@ -115,6 +115,15 @@ export function SideDrawer({
           }}
           onEscapeKeyDown={(e) => {
             const el = eventTargetElement(e.target);
+            // Comment composer sheet owns the first Escape (collapse, keep draft).
+            if (
+              document.querySelector(
+                '.work-comment-composer-sheet[data-open="true"]'
+              )
+            ) {
+              e.preventDefault();
+              return;
+            }
             if (
               document.querySelectorAll("[data-radix-dialog-content]").length > 1 ||
               document.querySelector("[data-radix-alert-dialog-content]") ||

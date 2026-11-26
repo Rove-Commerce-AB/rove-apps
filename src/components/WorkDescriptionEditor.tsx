@@ -109,6 +109,7 @@ export function WorkDescriptionEditor({
   placeholder = "Add description… Use @ to mention",
   variant = "default",
   footerHint = null,
+  footerEnd = null,
   autoFocus = false,
   onChange,
   onBlur,
@@ -125,6 +126,8 @@ export function WorkDescriptionEditor({
   variant?: "default" | "comment";
   /** Always-visible hint under the editor (avoids layout jump). */
   footerHint?: string | null;
+  /** Right-aligned actions in the editor footer (e.g. translate draft). */
+  footerEnd?: React.ReactNode;
   autoFocus?: boolean;
   onChange: (markdown: string) => void;
   onBlur?: () => void;
@@ -609,10 +612,19 @@ export function WorkDescriptionEditor({
           />
         )}
       </div>
-      {footerHint ? (
-        <p className="shrink-0 cursor-text rounded-b-xl border-t border-border-subtle/70 px-3 py-1 text-caption text-text-tertiary">
-          {footerHint}
-        </p>
+      {footerHint || footerEnd ? (
+        <div className="flex shrink-0 items-center gap-2 rounded-b-xl border-t border-border-subtle/70 px-3 py-1">
+          {footerHint ? (
+            <p className="min-w-0 flex-1 cursor-text text-caption text-text-tertiary">
+              {footerHint}
+            </p>
+          ) : (
+            <span className="min-w-0 flex-1" />
+          )}
+          {footerEnd ? (
+            <div className="flex shrink-0 items-center">{footerEnd}</div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

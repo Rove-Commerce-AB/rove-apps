@@ -2,13 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { TranslateDraftButton } from "@/components/TranslateDraftButton";
+import { TranslateText } from "@/components/TranslateText";
 import { WorkDescriptionEditor } from "@/components/WorkDescriptionEditor";
 import { WorkMarkdown } from "@/components/WorkMarkdown";
 import {
   splitWorkInlineImages,
   workFileImageHref,
 } from "@/lib/workInlineImages";
-import { mentionsToDisplayMarkdown } from "@/lib/workMentions";
+import {
+  mentionPlainText,
+  mentionsToDisplayMarkdown,
+} from "@/lib/workMentions";
 import type { WorkPerson } from "@/lib/workTypes";
 
 function useSendShortcutHint(): string {
@@ -75,12 +80,16 @@ export function WorkInlineImageThumbs({
 
 export function WorkCommentBody({ body }: { body: string }) {
   const { text, fileIds } = splitWorkInlineImages(body);
+  const display = text.trim() ? mentionsToDisplayMarkdown(text) : "";
   return (
     <div className="mt-1">
-      {text.trim() ? (
-        <WorkMarkdown className="text-body-m text-text-primary">
-          {mentionsToDisplayMarkdown(text)}
-        </WorkMarkdown>
+      {display ? (
+        <>
+          <WorkMarkdown className="text-body-m text-text-primary">
+            {display}
+          </WorkMarkdown>
+          <TranslateText text={mentionPlainText(text)} />
+        </>
       ) : null}
       <WorkInlineImageThumbs
         items={fileIds.map((id) => ({
@@ -137,6 +146,7 @@ export function WorkCommentComposer({
   }, [contentKey, compact]);
 
   if (compact) {
+    const draftPreview = value.replace(/\s+/g, " ").trim();
     return (
       <button
         type="button"
@@ -145,7 +155,9 @@ export function WorkCommentComposer({
         onFocus={onFocus}
         onClick={onFocus}
       >
-        Write a comment… Use @ to mention
+        <span className={draftPreview ? "truncate text-text-primary" : undefined}>
+          {draftPreview || "Write a comment… Use @ to mention"}
+        </span>
       </button>
     );
   }
@@ -187,6 +199,13 @@ export function WorkCommentComposer({
         autoFocus={autoFocus}
         placeholder="Write a comment… Use @ to mention"
         footerHint={showShortcutHint ? sendHint : null}
+        footerEnd={
+          <TranslateDraftButton
+            text={value}
+            disabled={disabled}
+            onTranslated={onChange}
+          />
+        }
         onChange={onChange}
         onPasteImages={onPasteImages}
         onModEnter={onSubmit}

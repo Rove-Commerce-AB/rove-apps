@@ -106,6 +106,7 @@ import {
   confirmWorkFileUploadAction,
   uploadWorkIssueFileAction,
 } from "../../actions";
+import { TranslateText } from "@/components/TranslateText";
 import { WorkDescriptionEditor } from "@/components/WorkDescriptionEditor";
 import { WorkCardTypeBadge } from "./WorkBoardViewControls";
 import { WorkCommentComposer, WorkInlineImageThumbs } from "./WorkCommentComposer";
@@ -637,11 +638,20 @@ export function WorkIssueDrawer({
   /** After Send / ⌘↵, ignore leftover TipTap onChange so the sheet can collapse. */
   const [commentDismissed, setCommentDismissed] = useState(false);
   const drawerRootRef = useRef<HTMLDivElement>(null);
-  const commentWantOpen =
-    !commentDismissed &&
-    (commentFocused ||
-      Boolean(commentDraft.trim()) ||
-      commentThumbs.length > 0);
+  /** Open only while focused — draft/thumbs are kept when the sheet collapses. */
+  const commentWantOpen = commentFocused && !commentDismissed;
+
+  function collapseCommentSheet() {
+    setCommentFocused(false);
+    setCommentEditorFocus(false);
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      const sheet = drawerRootRef.current?.querySelector(
+        ".work-comment-composer-sheet"
+      );
+      if (sheet?.contains(active)) active.blur();
+    }
+  }
 
   function freezeDrawerScroll(ms: number) {
     const root = drawerRootRef.current;
@@ -724,6 +734,47 @@ export function WorkIssueDrawer({
       window.clearTimeout(timer);
     };
   }, [commentWantOpen]);
+
+  // Escape / click outside sheet → collapse composer, keep draft (don't close drawer).
+  useEffect(() => {
+    if (!commentSheetOpen) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      // SideDrawer also preventDefaults Escape while the sheet is open; this
+      // collapses the composer. A second Escape (sheet closed) closes the drawer.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      collapseCommentSheet();
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const root = drawerRootRef.current;
+      const sheet = root?.querySelector(".work-comment-composer-sheet");
+      if (!sheet || sheet.contains(target)) return;
+      // Outside the whole drawer (overlay) — let SideDrawer close as usual.
+      if (root && !root.contains(target)) return;
+      if (
+        target instanceof Element &&
+        (target.closest("[data-radix-alert-dialog-content]") ||
+          target.closest("[data-radix-select-content]") ||
+          target.closest("[data-combobox-list]"))
+      ) {
+        return;
+      }
+      collapseCommentSheet();
+    }
+
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [commentSheetOpen]);
+
   const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadingVideoCount, setUploadingVideoCount] = useState(0);
   const [uploadBarVisible, setUploadBarVisible] = useState(false);
@@ -848,6 +899,8 @@ export function WorkIssueDrawer({
     });
     setCommentDraft("");
     setCommentFocused(false);
+    setCommentDismissed(false);
+    setCommentEditorFocus(false);
     setLoggingTime(false);
     setEditingTimeId(null);
     setDeletingTimeId(null);
@@ -2027,6 +2080,7 @@ export function WorkIssueDrawer({
                   onBlur={saveDescription}
                   onPasteImages={pasteDescriptionImages}
                 />
+                <TranslateText text={description} />
                 <WorkInlineImageThumbs
                   items={descriptionThumbs.map((thumb) => ({
                     key: thumb.localId,
@@ -3341,14 +3395,6 @@ export function WorkIssueDrawer({
                         onFocus={() => {
                           if (commentDismissed) return;
                           setCommentFocused(true);
-                        }}
-                        onBlur={() => {
-                          if (
-                            !commentDraft.trim() &&
-                            commentThumbs.length === 0
-                          ) {
-                            setCommentFocused(false);
-                          }
                         }}
                       />
                     </div>
