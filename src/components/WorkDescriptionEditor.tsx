@@ -555,10 +555,11 @@ export function WorkDescriptionEditor({
       <div
         className={
           variant === "comment"
-            ? "relative z-10 h-[12.5rem] shrink-0 cursor-text overflow-y-auto bg-bg-default px-3 py-2"
-            : "relative z-10 bg-bg-default px-3 py-2"
+            ? "relative z-10 h-[12.5rem] shrink-0 cursor-text bg-bg-default"
+            : "relative z-10 bg-bg-default"
         }
       >
+        {/* Outside the scrollport so placement="above" isn't clipped. */}
         {mention ? (
           <WorkMentionSuggest
             matches={matches}
@@ -567,6 +568,13 @@ export function WorkDescriptionEditor({
             placement={variant === "comment" ? "above" : "below"}
           />
         ) : null}
+        <div
+          className={
+            variant === "comment"
+              ? "h-full overflow-y-auto px-3 py-2"
+              : "px-3 py-2"
+          }
+        >
         {mode === "wysiwyg" ? (
           <EditorContent editor={editor} />
         ) : (
@@ -611,6 +619,7 @@ export function WorkDescriptionEditor({
             onBlur={() => onBlur?.()}
           />
         )}
+        </div>
       </div>
       {footerHint || footerEnd ? (
         <div className="flex shrink-0 items-center gap-2 rounded-b-xl border-t border-border-subtle/70 px-3 py-1">
