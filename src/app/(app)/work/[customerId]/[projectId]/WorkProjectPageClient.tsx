@@ -1948,15 +1948,21 @@ export function WorkBoardPageClient({
             className="h-7 py-0 pl-8 text-[13px]"
           />
         </div>
-        {boardMode === "board" && orderedSprints.length > 0 ? (
-          <WorkSprintPicker
-            sprints={orderedSprints}
-            selectedIds={sprintFilterIds}
-            onChange={setSprintFilterIds}
-            multi
-          />
-        ) : null}
-        {boardMode === "board" ? (
+      </div>
+      {boardMode === "board" ? (
+        <div className="mb-1.5 flex shrink-0 flex-wrap items-center gap-3">
+          {orderedSprints.length > 0 ? (
+            <div className="min-w-0 flex-1">
+              <WorkSprintPicker
+                sprints={orderedSprints}
+                selectedIds={sprintFilterIds}
+                onChange={setSprintFilterIds}
+                multi
+              />
+            </div>
+          ) : (
+            <span className="min-w-0 flex-1" />
+          )}
           <div className="ml-auto flex items-center gap-1">
             <WorkBoardViewControls
               people={ownerPeople}
@@ -1973,8 +1979,8 @@ export function WorkBoardPageClient({
               onGroupByChange={setGroupBy}
             />
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {boardMode === "sprint" ? (
         <WorkSprintView
