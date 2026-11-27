@@ -748,7 +748,7 @@ export function WorkBoardPageClient({
   }, [sprintFilterIds, orderedSprints]);
   const createTargetHint = createTargetSprint
     ? `Adds to ${workSprintLabel(createTargetSprint)}`
-    : "Adds to backlog";
+    : null;
 
   const visibleIds = useMemo(
     () =>
@@ -2987,9 +2987,11 @@ export function WorkBoardPageClient({
                       </span>
                     </p>
                   ) : null}
-                  <p className="px-0.5 text-[11px] text-text-tertiary">
-                    {createTargetHint}
-                  </p>
+                  {createTargetHint ? (
+                    <p className="px-0.5 text-[11px] text-text-tertiary">
+                      {createTargetHint}
+                    </p>
+                  ) : null}
                   <div className="flex items-start gap-2">
                     <WorkIssueTypePicker
                       name={`New issue type ${status}`}
@@ -3012,7 +3014,7 @@ export function WorkBoardPageClient({
               ) : (
                 <button
                   type="button"
-                  title={createTargetHint}
+                  title={createTargetHint ?? undefined}
                   className={`mx-2 mb-3 flex flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-body-m transition-colors ${
                     relationAddIssueOverStatus === status
                       ? "bg-brand-signal/15 text-text-primary ring-2 ring-brand-signal"
@@ -3070,7 +3072,7 @@ export function WorkBoardPageClient({
                       ? "Drop to create linked issue"
                       : "Add issue"}
                   </span>
-                  {!relationDragFromId ? (
+                  {!relationDragFromId && createTargetHint ? (
                     <span className="pl-5 text-[11px] text-text-tertiary">
                       {createTargetHint}
                     </span>

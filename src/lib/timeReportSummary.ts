@@ -66,6 +66,7 @@ export async function getTimeReportSummary(
       project_id: string;
       project_name: string;
       project_type: string;
+      absence_code: string | null;
       month: number;
       hours: string | number;
     }>(
@@ -76,6 +77,7 @@ export async function getTimeReportSummary(
              tre.project_id::text AS project_id,
              p.name AS project_name,
              p.type::text AS project_type,
+             NULLIF(btrim(p.absence_code), '') AS absence_code,
              EXTRACT(MONTH FROM tre.entry_date)::int AS month,
              SUM(tre.hours) AS hours
            FROM time_report_entries tre
@@ -86,13 +88,14 @@ export async function getTimeReportSummary(
              AND tre.entry_date <= $3::date
              AND tre.customer_id <> $4::uuid
            GROUP BY tre.customer_id, cu.name, tre.project_id, p.name, p.type,
-                    EXTRACT(MONTH FROM tre.entry_date)`
+                    p.absence_code, EXTRACT(MONTH FROM tre.entry_date)`
         : `SELECT
              tre.customer_id::text AS customer_id,
              cu.name AS customer_name,
              tre.project_id::text AS project_id,
              p.name AS project_name,
              p.type::text AS project_type,
+             NULLIF(btrim(p.absence_code), '') AS absence_code,
              EXTRACT(MONTH FROM tre.entry_date)::int AS month,
              SUM(tre.hours) AS hours
            FROM time_report_entries tre
@@ -102,7 +105,7 @@ export async function getTimeReportSummary(
              AND tre.entry_date >= $2::date
              AND tre.entry_date <= $3::date
            GROUP BY tre.customer_id, cu.name, tre.project_id, p.name, p.type,
-                    EXTRACT(MONTH FROM tre.entry_date)`,
+                    p.absence_code, EXTRACT(MONTH FROM tre.entry_date)`,
       excludeInternalId
         ? [consultant.id, start, end, excludeInternalId]
         : [consultant.id, start, end]
@@ -121,6 +124,7 @@ export async function getTimeReportSummary(
     projectId: r.project_id,
     projectName: r.project_name,
     projectType: parseProjectType(r.project_type),
+    absenceCode: r.absence_code,
     month: Number(r.month),
     hours: Number(r.hours ?? 0),
   }));

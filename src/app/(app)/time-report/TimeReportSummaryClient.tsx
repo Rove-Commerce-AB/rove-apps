@@ -41,10 +41,21 @@ const TYPE_FILTERS: { value: ProjectType; label: string }[] = [
   { value: "absence", label: "Absence" },
 ];
 
+/** Absence codes deducted from the invoice total (unpaid leave). */
+const UNPAID_ABSENCE_CODES = new Set(["SEM_OBE", "PEM"]);
+
 function formatHours(n: number): string {
   if (!Number.isFinite(n) || Math.abs(n) < 0.05) return "0";
   const rounded = Math.round(n * 10) / 10;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function isUnpaidAbsence(bucket: TimeReportSummaryBucket): boolean {
+  return (
+    bucket.projectType === "absence" &&
+    bucket.absenceCode != null &&
+    UNPAID_ABSENCE_CODES.has(bucket.absenceCode)
+  );
 }
 
 function sumHours(rows: TimeReportSummaryBucket[]): number {
@@ -107,11 +118,15 @@ export function TimeReportSummaryClient({ initial }: Props) {
     const customer = sumHours(scoped.filter((b) => b.projectType === "customer"));
     const internal = sumHours(scoped.filter((b) => b.projectType === "internal"));
     const absence = sumHours(scoped.filter((b) => b.projectType === "absence"));
+    const unpaidAbsence = sumHours(scoped.filter(isUnpaidAbsence));
+    const total = customer + internal + absence;
     return {
       customer,
       internal,
       absence,
-      total: customer + internal + absence,
+      unpaidAbsence,
+      total,
+      toInvoice: total - unpaidAbsence,
     };
   }, [scoped]);
 
@@ -289,19 +304,28 @@ export function TimeReportSummaryClient({ initial }: Props) {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {(
           [
             { label: "Total", hours: totals.total },
             { label: "Customer", hours: totals.customer },
             { label: "Internal", hours: totals.internal },
             { label: "Absence", hours: totals.absence },
+            {
+              label: "To invoice",
+              hours: totals.toInvoice,
+              title:
+                totals.unpaidAbsence > 0
+                  ? `Total − unpaid leave (${formatHours(totals.unpaidAbsence)} h)`
+                  : "Total hours (no unpaid leave to deduct)",
+            },
           ] as const
         ).map((card) => (
           <div
             key={card.label}
             className="rounded-panel border border-panel px-4 py-3"
             style={{ backgroundColor: "var(--panel-bg)" }}
+            title={"title" in card ? card.title : undefined}
           >
             <p className="text-xs text-text-tertiary">{card.label}</p>
             <p className="mt-0.5 text-xl font-semibold tabular-nums text-text-primary">
@@ -334,28 +358,40 @@ export function TimeReportSummaryClient({ initial }: Props) {
                     No absence reported this year.
                   </p>
                 ) : (
-                  <DataTable
-                    density="compact"
-                    columns={[
-                      {
-                        id: "name",
-                        header: "Project",
-                        cell: (row) => row.name,
-                      },
-                      {
-                        id: "hours",
-                        header: "Hours",
-                        align: "right",
-                        cell: (row) => (
-                          <span className="tabular-nums">{formatHours(row.hours)}</span>
-                        ),
-                      },
-                    ]}
-                    rows={absenceProjects}
-                    getRowId={(row) => row.id}
-                    selectedRowId={projectId ?? undefined}
-                    onRowClick={(row) => toggleProject(row.id)}
-                  />
+                  <>
+                    <DataTable
+                      density="compact"
+                      columns={[
+                        {
+                          id: "name",
+                          header: "Project",
+                          cell: (row) => row.name,
+                        },
+                        {
+                          id: "hours",
+                          header: "Hours",
+                          align: "right",
+                          cell: (row) => (
+                            <span className="tabular-nums">
+                              {formatHours(row.hours)}
+                            </span>
+                          ),
+                        },
+                      ]}
+                      rows={absenceProjects}
+                      getRowId={(row) => row.id}
+                      selectedRowId={projectId ?? undefined}
+                      onRowClick={(row) => toggleProject(row.id)}
+                    />
+                    {totals.unpaidAbsence > 0 ? (
+                      <p className="flex justify-between gap-3 px-3 pb-3 pt-2 text-sm text-text-secondary">
+                        <span>Deducted from invoice (unpaid leave)</span>
+                        <span className="tabular-nums font-medium text-text-primary">
+                          −{formatHours(totals.unpaidAbsence)} h
+                        </span>
+                      </p>
+                    ) : null}
+                  </>
                 )}
               </div>
             </Panel>

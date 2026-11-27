@@ -6,6 +6,8 @@ export type TimeReportSummaryBucket = {
   projectId: string;
   projectName: string;
   projectType: ProjectType;
+  /** Set for absence projects (e.g. SEM, SEM_OBE). */
+  absenceCode: string | null;
   month: number;
   hours: number;
 };
