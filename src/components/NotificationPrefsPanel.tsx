@@ -13,6 +13,7 @@ type Props = {
 type RowKey =
   | "assign"
   | "comment"
+  | "commentReaction"
   | "mention"
   | "done";
 
@@ -70,6 +71,14 @@ export function NotificationPrefsPanel({ initialPrefs }: Props) {
       email: prefs.workCommentEmail,
       setInApp: (value) => patch({ workCommentInApp: value }),
       setEmail: (value) => patch({ workCommentEmail: value }),
+    },
+    {
+      key: "commentReaction",
+      label: "Reactions on my comments",
+      inApp: prefs.workCommentReactionInApp,
+      email: prefs.workCommentReactionEmail,
+      setInApp: (value) => patch({ workCommentReactionInApp: value }),
+      setEmail: (value) => patch({ workCommentReactionEmail: value }),
     },
     {
       key: "mention",

@@ -102,6 +102,20 @@ function lineForOutboxItem(kind: string, payload: Record<string, unknown>): stri
     case USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENTED:
       action = `${actor} commented on ${issueKey}${issueTitle}${preview}`;
       break;
+    case USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENT_REACTION: {
+      const emoji =
+        typeof payload.reactionEmoji === "string" &&
+        payload.reactionEmoji.trim()
+          ? payload.reactionEmoji.trim()
+          : "";
+      const label =
+        typeof payload.reactionLabel === "string" &&
+        payload.reactionLabel.trim()
+          ? payload.reactionLabel.trim()
+          : "reacted";
+      action = `${actor} reacted ${emoji ? `${emoji} ` : ""}(${label}) to your comment on ${issueKey}${issueTitle}${preview}`;
+      break;
+    }
     case USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED:
       action = `${actor} mentioned you on ${issueKey}${issueTitle}${preview}`;
       break;

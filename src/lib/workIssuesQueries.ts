@@ -1397,6 +1397,76 @@ export async function deleteWorkIssueComment(input: {
   return (result.rowCount ?? 0) > 0;
 }
 
+export async function fetchWorkIssueCommentReactions(commentIds: string[]) {
+  if (commentIds.length === 0) return [];
+  const { rows } = await cloudSqlPool.query<{
+    comment_id: string;
+    reaction: string;
+    app_user_id: string;
+    user_name: string | null;
+    user_email: string;
+  }>(
+    `SELECT
+       r.comment_id,
+       r.reaction,
+       r.app_user_id,
+       u.name AS user_name,
+       u.email AS user_email
+     FROM work_issue_comment_reactions r
+     JOIN app_users u ON u.id = r.app_user_id
+     WHERE r.comment_id = ANY($1::uuid[])
+     ORDER BY r.created_at ASC, u.email ASC`,
+    [commentIds]
+  );
+  return rows;
+}
+
+export async function fetchWorkIssueCommentForReaction(input: {
+  boardId: string;
+  issueId: string;
+  commentId: string;
+}): Promise<{
+  id: string;
+  body: string;
+  author_app_user_id: string;
+} | null> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    body: string;
+    author_app_user_id: string;
+  }>(
+    `SELECT c.id, c.body, c.author_app_user_id
+     FROM work_issue_comments c
+     JOIN work_issues i ON i.id = c.issue_id AND i.project_id = $1
+     WHERE c.id = $2 AND c.issue_id = $3`,
+    [input.boardId, input.commentId, input.issueId]
+  );
+  return rows[0] ?? null;
+}
+
+/** Toggle reaction. Returns whether a reaction was added (true) or removed (false). */
+export async function toggleWorkIssueCommentReactionRow(input: {
+  commentId: string;
+  appUserId: string;
+  reaction: string;
+}): Promise<{ added: boolean }> {
+  const deleted = await cloudSqlPool.query(
+    `DELETE FROM work_issue_comment_reactions
+     WHERE comment_id = $1 AND app_user_id = $2 AND reaction = $3`,
+    [input.commentId, input.appUserId, input.reaction]
+  );
+  if ((deleted.rowCount ?? 0) > 0) {
+    return { added: false };
+  }
+  await cloudSqlPool.query(
+    `INSERT INTO work_issue_comment_reactions (comment_id, app_user_id, reaction)
+     VALUES ($1, $2, $3)
+     ON CONFLICT DO NOTHING`,
+    [input.commentId, input.appUserId, input.reaction]
+  );
+  return { added: true };
+}
+
 export async function fetchWorkIssueNotifyMeta(
   boardId: string,
   issueId: string

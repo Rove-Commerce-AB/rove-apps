@@ -8,8 +8,10 @@ import type {
 import type { WorkProcess, WorkProcessStep } from "@/lib/workProcess";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkIssueRelations } from "@/lib/workIssueRelations";
+import type { WorkCommentReaction } from "@/lib/workCommentReactions";
 
 export type { WorkIssueRelations, WorkProcess, WorkProcessStep };
+export type { WorkCommentReaction };
 
 export type { WorkBoardStatus, WorkIssueStatus };
 
@@ -168,6 +170,7 @@ export type WorkComment = {
   body: string;
   createdAt: string;
   author: WorkPerson;
+  reactions: WorkCommentReaction[];
 };
 
 export type WorkEvent = {

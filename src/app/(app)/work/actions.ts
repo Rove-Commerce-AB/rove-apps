@@ -43,6 +43,7 @@ import type {
 import {
   addIssueAssignee,
   addIssueComment,
+  toggleIssueCommentReaction,
   addIssueLabel,
   addIssueRelation,
   addIssuePreDeployAction,
@@ -997,6 +998,21 @@ export async function deleteWorkIssueCommentAction(
 ): Promise<Ok | Err> {
   try {
     await deleteIssueComment(boardId, issueId, commentId);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function toggleWorkIssueCommentReactionAction(
+  boardId: string,
+  issueId: string,
+  commentId: string,
+  reaction: string
+): Promise<Ok | Err> {
+  try {
+    await toggleIssueCommentReaction(boardId, issueId, commentId, reaction);
     revalidateBoard(boardId, issueId);
     return { ok: true };
   } catch (error) {

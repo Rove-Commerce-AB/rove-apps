@@ -12,6 +12,8 @@ export type UserNotificationPrefs = {
   workAssignEmail: boolean;
   workCommentInApp: boolean;
   workCommentEmail: boolean;
+  workCommentReactionInApp: boolean;
+  workCommentReactionEmail: boolean;
   workMentionInApp: boolean;
   /** Always true in product rules; stored for schema symmetry. */
   workMentionEmail: boolean;
@@ -24,6 +26,8 @@ export const DEFAULT_USER_NOTIFICATION_PREFS: UserNotificationPrefs = {
   workAssignEmail: true,
   workCommentInApp: true,
   workCommentEmail: true,
+  workCommentReactionInApp: true,
+  workCommentReactionEmail: true,
   workMentionInApp: true,
   workMentionEmail: true,
   workDoneInApp: true,
@@ -35,6 +39,8 @@ type PrefsRow = {
   work_assign_email: boolean;
   work_comment_in_app: boolean;
   work_comment_email: boolean;
+  work_comment_reaction_in_app: boolean;
+  work_comment_reaction_email: boolean;
   work_mention_in_app: boolean;
   work_mention_email: boolean;
   work_done_in_app: boolean;
@@ -47,6 +53,8 @@ function mapRow(row: PrefsRow): UserNotificationPrefs {
     workAssignEmail: row.work_assign_email,
     workCommentInApp: row.work_comment_in_app,
     workCommentEmail: row.work_comment_email,
+    workCommentReactionInApp: row.work_comment_reaction_in_app,
+    workCommentReactionEmail: row.work_comment_reaction_email,
     workMentionInApp: row.work_mention_in_app,
     workMentionEmail: true,
     workDoneInApp: row.work_done_in_app,
@@ -74,6 +82,8 @@ export async function getUserNotificationPrefs(
          work_assign_email,
          work_comment_in_app,
          work_comment_email,
+         work_comment_reaction_in_app,
+         work_comment_reaction_email,
          work_mention_in_app,
          work_mention_email,
          work_done_in_app,
@@ -109,6 +119,10 @@ export async function saveNotificationPrefsForCurrentUser(
     workAssignEmail: input.workAssignEmail ?? current.workAssignEmail,
     workCommentInApp: input.workCommentInApp ?? current.workCommentInApp,
     workCommentEmail: input.workCommentEmail ?? current.workCommentEmail,
+    workCommentReactionInApp:
+      input.workCommentReactionInApp ?? current.workCommentReactionInApp,
+    workCommentReactionEmail:
+      input.workCommentReactionEmail ?? current.workCommentReactionEmail,
     workMentionInApp: input.workMentionInApp ?? current.workMentionInApp,
     workMentionEmail: true,
     workDoneInApp: input.workDoneInApp ?? current.workDoneInApp,
@@ -122,17 +136,21 @@ export async function saveNotificationPrefsForCurrentUser(
        work_assign_email,
        work_comment_in_app,
        work_comment_email,
+       work_comment_reaction_in_app,
+       work_comment_reaction_email,
        work_mention_in_app,
        work_mention_email,
        work_done_in_app,
        work_done_email,
        updated_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,true,$7,$8, now())
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10, now())
      ON CONFLICT (app_user_id) DO UPDATE SET
        work_assign_in_app = EXCLUDED.work_assign_in_app,
        work_assign_email = EXCLUDED.work_assign_email,
        work_comment_in_app = EXCLUDED.work_comment_in_app,
        work_comment_email = EXCLUDED.work_comment_email,
+       work_comment_reaction_in_app = EXCLUDED.work_comment_reaction_in_app,
+       work_comment_reaction_email = EXCLUDED.work_comment_reaction_email,
        work_mention_in_app = EXCLUDED.work_mention_in_app,
        work_mention_email = true,
        work_done_in_app = EXCLUDED.work_done_in_app,
@@ -144,6 +162,8 @@ export async function saveNotificationPrefsForCurrentUser(
       next.workAssignEmail,
       next.workCommentInApp,
       next.workCommentEmail,
+      next.workCommentReactionInApp,
+      next.workCommentReactionEmail,
       next.workMentionInApp,
       next.workDoneInApp,
       next.workDoneEmail,
@@ -174,6 +194,11 @@ export function channelsForNotificationKind(
       return {
         inApp: prefs.workCommentInApp,
         email: prefs.workCommentEmail,
+      };
+    case USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENT_REACTION:
+      return {
+        inApp: prefs.workCommentReactionInApp,
+        email: prefs.workCommentReactionEmail,
       };
     case USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED:
       return {

@@ -31,9 +31,11 @@ import {
   insertWorkIssue,
   deleteWorkIssueComment,
   deleteWorkIssueRelation,
+  fetchWorkIssueCommentForReaction,
   fetchWorkIssueRelations,
   insertWorkIssueComment,
   insertWorkIssueEvent,
+  toggleWorkIssueCommentReactionRow,
   insertWorkIssueRelation,
   insertWorkIssueRequirement,
   insertWorkIssuePreDeployAction,
@@ -83,6 +85,11 @@ import {
 } from "@/lib/workIssueRelations";
 import { USER_NOTIFICATION_KIND } from "@/lib/userNotificationKinds";
 import { insertUserNotification } from "@/lib/userNotifications";
+import {
+  isWorkCommentReactionType,
+  WORK_COMMENT_REACTION_META,
+  type WorkCommentReactionType,
+} from "@/lib/workCommentReactions";
 import { guessMimeFromNameAndBytes } from "@/lib/workMedia";
 import {
   beginSignedWorkFileUpload,
@@ -1143,6 +1150,46 @@ export async function deleteIssueComment(
   await logEvent(issueId, actor.id, "comment", "deleted a comment");
 }
 
+export async function toggleIssueCommentReaction(
+  boardId: string,
+  issueId: string,
+  commentId: string,
+  reaction: string
+): Promise<{ added: boolean }> {
+  const { actor, board } = await requireBoardAccess(boardId);
+  if (!isWorkCommentReactionType(reaction)) {
+    throw new WorkInputError("Invalid reaction.");
+  }
+  const comment = await fetchWorkIssueCommentForReaction({
+    boardId,
+    issueId,
+    commentId,
+  });
+  if (!comment) throw new WorkInputError("Comment not found.");
+
+  const result = await toggleWorkIssueCommentReactionRow({
+    commentId,
+    appUserId: actor.id,
+    reaction,
+  });
+
+  if (result.added) {
+    await notifyWorkIssueCommentReaction({
+      boardId,
+      issueId,
+      commentBody: comment.body,
+      commentAuthorAppUserId: comment.author_app_user_id,
+      reaction,
+      actorId: actor.id,
+      customerId: board.customer_id,
+      boardTitle: board.title,
+      boardPrefix: board.prefix,
+    });
+  }
+
+  return result;
+}
+
 export async function setWorkIssueStatus(
   boardId: string,
   issueId: string,
@@ -1420,6 +1467,50 @@ async function notifyWorkIssueMentions(input: {
     console.warn("[work] mention notification failed", error);
   }
   return mentioned;
+}
+
+/** Notify comment author when someone reacts (skip self-react). */
+async function notifyWorkIssueCommentReaction(input: {
+  boardId: string;
+  issueId: string;
+  commentBody: string;
+  commentAuthorAppUserId: string;
+  reaction: WorkCommentReactionType;
+  actorId: string;
+  customerId: string;
+  boardTitle: string;
+  boardPrefix: string;
+}): Promise<void> {
+  if (input.commentAuthorAppUserId === input.actorId) return;
+  try {
+    const [issue, actorName] = await Promise.all([
+      fetchWorkIssueNotifyMeta(input.boardId, input.issueId),
+      workIssueNotifyActorLabel(input.boardId, input.actorId),
+    ]);
+    if (!issue) return;
+    const meta = WORK_COMMENT_REACTION_META.find(
+      (row) => row.type === input.reaction
+    );
+    await insertUserNotification(
+      input.commentAuthorAppUserId,
+      USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENT_REACTION,
+      {
+        customerId: input.customerId,
+        boardId: input.boardId,
+        boardTitle: input.boardTitle,
+        issueId: input.issueId,
+        issueKey: workIssueKey(input.boardPrefix, issue.number),
+        issueTitle: issue.title,
+        actorName,
+        reaction: input.reaction,
+        reactionEmoji: meta?.emoji ?? "",
+        reactionLabel: meta?.label ?? input.reaction,
+        commentPreview: commentPreview(input.commentBody),
+      }
+    );
+  } catch (error) {
+    console.warn("[work] comment reaction notification failed", error);
+  }
 }
 
 /** Notify assignee + owner when someone comments (skip author and @mentioned). */

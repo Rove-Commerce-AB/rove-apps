@@ -7,6 +7,8 @@ export const USER_NOTIFICATION_KIND = {
   WORK_ISSUE_ASSIGNED: "work_issue_assigned",
   /** Assignee/owner notified when someone comments (not @mention). */
   WORK_ISSUE_COMMENTED: "work_issue_commented",
+  /** Comment author notified when someone reacts to their comment. */
+  WORK_ISSUE_COMMENT_REACTION: "work_issue_comment_reaction",
   /** Reporter notified when an issue first enters a Done column. */
   WORK_ISSUE_MARKED_DONE: "work_issue_marked_done",
 } as const;

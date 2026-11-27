@@ -19,9 +19,11 @@ import {
   fetchIssueReferences,
   fetchIssueRequirements,
   fetchLoggedHoursByIssueIds,
+  fetchWorkIssueCommentReactions,
   fetchWorkIssuesForBoard,
   fetchWorkIssueStatus,
 } from "@/lib/workIssuesQueries";
+import { aggregateWorkCommentReactions } from "@/lib/workCommentReactions";
 import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
 import { parseWorkTshirtSize } from "@/lib/workEstimate";
 import type { WorkIssueCommentsInput, WorkIssueCommentsPage, WorkIssueDetails, WorkIssueLookup } from "@/lib/workTypes";
@@ -200,6 +202,15 @@ export async function listWorkIssueComments(actor: WorkActor, input: WorkIssueCo
   const rows = await fetchWorkIssueCommentPage({ ...input, limit, after });
   const page = rows.slice(0, limit);
   const last = page.at(-1);
+  const reactionRows = await fetchWorkIssueCommentReactions(
+    page.map((comment) => comment.id)
+  );
+  const reactionsByComment = new Map<string, typeof reactionRows>();
+  for (const row of reactionRows) {
+    const list = reactionsByComment.get(row.comment_id) ?? [];
+    list.push(row);
+    reactionsByComment.set(row.comment_id, list);
+  }
 
   return {
     projectId: input.projectId,
@@ -208,7 +219,15 @@ export async function listWorkIssueComments(actor: WorkActor, input: WorkIssueCo
       id: comment.id,
       body: comment.body,
       createdAt: comment.created_at,
-      author: workPersonFromUser({ id: comment.author_id, name: comment.author_name, email: comment.author_email }),
+      author: workPersonFromUser({
+        id: comment.author_id,
+        name: comment.author_name,
+        email: comment.author_email,
+      }),
+      reactions: aggregateWorkCommentReactions(
+        reactionsByComment.get(comment.id) ?? [],
+        actor.id
+      ),
     })),
     // Preserve PostgreSQL microseconds so comments in the same millisecond paginate correctly.
     nextCursor: rows.length > limit && last

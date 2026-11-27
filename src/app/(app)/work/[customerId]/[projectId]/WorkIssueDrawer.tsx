@@ -74,6 +74,7 @@ import {
   assignWorkIssueComponentAction,
   deleteWorkIssueAction,
   deleteWorkIssueCommentAction,
+  toggleWorkIssueCommentReactionAction,
   deleteWorkIssueFileAction,
   deleteWorkIssuePreDeployActionAction,
   deleteWorkIssueReferenceAction,
@@ -119,6 +120,10 @@ import {
   isWorkActivityVisibleToActor,
 } from "@/lib/workAccess";
 import { encodeMentions, mentionPlainText } from "@/lib/workMentions";
+import {
+  emptyWorkCommentReactions,
+  toggleWorkCommentReactionLocal,
+} from "@/lib/workCommentReactions";
 import {
   formatVisibleWorkEstimate,
   parseWorkEstimateValue,
@@ -2306,7 +2311,11 @@ export function WorkIssueDrawer({
                     issue.comments.map((comment) => (
                       <WorkIssueComment
                         key={comment.id}
-                        comment={comment}
+                        comment={{
+                          ...comment,
+                          reactions:
+                            comment.reactions ?? emptyWorkCommentReactions(),
+                        }}
                         canEdit={comment.author.id === board.currentUser.id}
                         people={board.members}
                         pending={pending}
@@ -2336,6 +2345,31 @@ export function WorkIssueDrawer({
                               board.id,
                               issue.id,
                               comment.id
+                            )
+                          );
+                        }}
+                        onToggleReaction={(reaction) => {
+                          onIssuePatch({
+                            comments: issue.comments.map((row) =>
+                              row.id === comment.id
+                                ? {
+                                    ...row,
+                                    reactions: toggleWorkCommentReactionLocal(
+                                      row.reactions ??
+                                        emptyWorkCommentReactions(),
+                                      reaction,
+                                      board.currentUser.name
+                                    ),
+                                  }
+                                : row
+                            ),
+                          });
+                          run(() =>
+                            toggleWorkIssueCommentReactionAction(
+                              board.id,
+                              issue.id,
+                              comment.id,
+                              reaction
                             )
                           );
                         }}

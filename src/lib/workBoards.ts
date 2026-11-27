@@ -44,6 +44,7 @@ import {
   workIssueKey,
   workPersonFromUser,
 } from "@/lib/workIssueKey";
+import { aggregateWorkCommentReactions } from "@/lib/workCommentReactions";
 import type {
   WorkAccessPerson,
   WorkBoardView,
@@ -70,6 +71,7 @@ import {
   fetchBoardLabels,
   fetchIssueAssignees,
   fetchIssueComments,
+  fetchWorkIssueCommentReactions,
   fetchIssueEvents,
   fetchIssueFiles,
   fetchIssueLabels,
@@ -485,6 +487,17 @@ export async function getWorkBoardView(
     list.push({ id: row.id, name: row.name });
     labelsByIssue.set(row.issue_id, list);
   }
+  const commentIds = commentRows.map((row) => row.id);
+  const reactionRows =
+    commentIds.length === 0
+      ? []
+      : await fetchWorkIssueCommentReactions(commentIds);
+  const reactionsByComment = new Map<string, typeof reactionRows>();
+  for (const row of reactionRows) {
+    const list = reactionsByComment.get(row.comment_id) ?? [];
+    list.push(row);
+    reactionsByComment.set(row.comment_id, list);
+  }
   const commentsByIssue = new Map<string, WorkComment[]>();
   for (const row of commentRows) {
     const list = commentsByIssue.get(row.issue_id) ?? [];
@@ -497,6 +510,10 @@ export async function getWorkBoardView(
         name: row.author_name,
         email: row.author_email,
       }),
+      reactions: aggregateWorkCommentReactions(
+        reactionsByComment.get(row.id) ?? [],
+        actor.id
+      ),
     });
     commentsByIssue.set(row.issue_id, list);
   }

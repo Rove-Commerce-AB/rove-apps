@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { TranslateDraftButton } from "@/components/TranslateDraftButton";
 import { TranslateText } from "@/components/TranslateText";
@@ -78,25 +78,57 @@ export function WorkInlineImageThumbs({
   );
 }
 
-export function WorkCommentBody({ body }: { body: string }) {
+export function WorkCommentBody({
+  body,
+  toolbarLeading,
+}: {
+  body: string;
+  /** Left side of the action row (e.g. reactions); translate controls sit on the right. */
+  toolbarLeading?: ReactNode;
+}) {
   const { text, fileIds } = splitWorkInlineImages(body);
   const display = text.trim() ? mentionsToDisplayMarkdown(text) : "";
+  const plain = mentionPlainText(text);
+  const thumbs = (
+    <WorkInlineImageThumbs
+      items={fileIds.map((id) => ({
+        key: id,
+        src: workFileImageHref(id),
+      }))}
+    />
+  );
+
   return (
     <div className="mt-1">
       {display ? (
+        <TranslateText
+          text={plain}
+          render={({ controls, result }) => (
+            <>
+              <WorkMarkdown className="text-body-m text-text-primary">
+                {display}
+              </WorkMarkdown>
+              {result}
+              {thumbs}
+              <div className="mt-1 flex h-8 items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-1">
+                  {toolbarLeading}
+                </div>
+                <div className="ml-auto shrink-0">{controls}</div>
+              </div>
+            </>
+          )}
+        />
+      ) : (
         <>
-          <WorkMarkdown className="text-body-m text-text-primary">
-            {display}
-          </WorkMarkdown>
-          <TranslateText text={mentionPlainText(text)} />
+          {thumbs}
+          {toolbarLeading ? (
+            <div className="mt-1 flex h-8 items-center gap-1">
+              {toolbarLeading}
+            </div>
+          ) : null}
         </>
-      ) : null}
-      <WorkInlineImageThumbs
-        items={fileIds.map((id) => ({
-          key: id,
-          src: workFileImageHref(id),
-        }))}
-      />
+      )}
     </div>
   );
 }

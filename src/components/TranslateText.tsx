@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import {
+  useEffect,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { Check, Copy, Languages } from "lucide-react";
 import {
   getTranslationLangAction,
@@ -13,18 +18,33 @@ import {
   type TranslationLang,
 } from "@/lib/translationLang";
 
+type TranslateParts = {
+  controls: ReactNode;
+  result: ReactNode;
+};
+
 type Props = {
   text: string;
   className?: string;
   /** Render mode for the translated block. */
   as?: "pre" | "div";
+  /**
+   * Custom layout. `controls` = language trigger; `result` = translated block
+   * (null when hidden). Default stacks controls then result under the text.
+   */
+  render?: (parts: TranslateParts) => ReactNode;
 };
 
 /**
  * On-demand Translate under the original text (Work comments, Support mail, …).
  * Copy lets writers paste the result into the draft when needed.
  */
-export function TranslateText({ text, className = "", as = "div" }: Props) {
+export function TranslateText({
+  text,
+  className = "",
+  as = "div",
+  render,
+}: Props) {
   const plain = text.trim();
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -93,52 +113,55 @@ export function TranslateText({ text, className = "", as = "div" }: Props) {
       ? "Hide translation"
       : `Translate to ${TRANSLATION_LANG_LABELS[lang]}`;
 
-  return (
-    <div className={`mt-1 ${className}`.trim()}>
-      <div className="flex flex-wrap items-center gap-1">
-        <button
-          type="button"
+  const controls = (
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        disabled={pending}
+        title={label}
+        aria-label={label}
+        aria-pressed={shown}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-text-primary/[0.06] hover:text-text-secondary disabled:opacity-50"
+        onClick={() => {
+          if (shown) {
+            setOpen(false);
+            return;
+          }
+          runTranslate();
+        }}
+      >
+        <Languages className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      <label className="inline-flex items-center">
+        <span className="sr-only">Translation language</span>
+        <select
+          value={lang}
           disabled={pending}
-          title={label}
-          aria-label={label}
-          aria-pressed={shown}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-text-primary/[0.06] hover:text-text-secondary disabled:opacity-50"
-          onClick={() => {
-            if (shown) {
-              setOpen(false);
-              return;
-            }
-            runTranslate();
+          title="Translation language"
+          className="h-6 rounded-md border-0 bg-transparent px-0.5 text-[11px] text-text-tertiary hover:text-text-secondary focus:outline-none focus:ring-1 focus:ring-brand-signal/30 disabled:opacity-50"
+          onChange={(event) => {
+            const next = event.target.value as TranslationLang;
+            setLang(next);
+            startTransition(() => {
+              void setTranslationLangAction(next).then((result) => {
+                if (result.ok) setLang(result.lang);
+              });
+            });
+            if (open) runTranslate(next);
           }}
         >
-          <Languages className="h-3.5 w-3.5" aria-hidden />
-        </button>
-        <label className="inline-flex items-center">
-          <span className="sr-only">Translation language</span>
-          <select
-            value={lang}
-            disabled={pending}
-            title="Translation language"
-            className="h-6 rounded-md border-0 bg-transparent px-0.5 text-[11px] text-text-tertiary hover:text-text-secondary focus:outline-none focus:ring-1 focus:ring-brand-signal/30 disabled:opacity-50"
-            onChange={(event) => {
-              const next = event.target.value as TranslationLang;
-              setLang(next);
-              startTransition(() => {
-                void setTranslationLangAction(next).then((result) => {
-                  if (result.ok) setLang(result.lang);
-                });
-              });
-              if (open) runTranslate(next);
-            }}
-          >
-            {TRANSLATION_LANGS.map((code) => (
-              <option key={code} value={code}>
-                {code.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+          {TRANSLATION_LANGS.map((code) => (
+            <option key={code} value={code}>
+              {code.toUpperCase()}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+
+  const result = (
+    <>
       {error ? (
         <p role="alert" className="mt-1 text-[12px] text-danger">
           {error}
@@ -175,6 +198,17 @@ export function TranslateText({ text, className = "", as = "div" }: Props) {
           {translated}
         </TranslatedTag>
       ) : null}
+    </>
+  );
+
+  if (render) {
+    return <>{render({ controls, result })}</>;
+  }
+
+  return (
+    <div className={`mt-1 ${className}`.trim()}>
+      {controls}
+      {result}
     </div>
   );
 }

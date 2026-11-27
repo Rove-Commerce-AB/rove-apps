@@ -36,6 +36,7 @@ export function notificationAppGroup(
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENTED ||
+    kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENT_REACTION ||
     kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE ||
     kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_BOARD_INVITED ||
     kind === LEGACY_TASK_NOTIFICATION_KIND.TASK_TODO_ASSIGNED
@@ -197,6 +198,7 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_OWNER_SET ||
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_ASSIGNED ||
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENTED ||
+    n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENT_REACTION ||
     n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MARKED_DONE
   ) {
     const actorName =
@@ -280,6 +282,39 @@ export function notificationBody(n: UserNotificationRow): { text: ReactNode } {
           <>
             <span className="font-medium">{actorName}</span> commented on{" "}
             {linkedIssue}
+            {preview ? (
+              <>
+                :{" "}
+                <span className="font-medium opacity-90">
+                  &quot;{preview}&quot;
+                </span>
+              </>
+            ) : (
+              "."
+            )}
+          </>
+        ),
+      };
+    }
+    if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_COMMENT_REACTION) {
+      const emoji =
+        typeof p.reactionEmoji === "string" && p.reactionEmoji.trim()
+          ? p.reactionEmoji.trim()
+          : "";
+      const label =
+        typeof p.reactionLabel === "string" && p.reactionLabel.trim()
+          ? p.reactionLabel.trim()
+          : "reacted";
+      const preview =
+        typeof p.commentPreview === "string" && p.commentPreview.trim()
+          ? p.commentPreview.trim()
+          : null;
+      return {
+        text: (
+          <>
+            <span className="font-medium">{actorName}</span> reacted{" "}
+            {emoji ? `${emoji} ` : ""}
+            ({label}) to your comment on {linkedIssue}
             {preview ? (
               <>
                 :{" "}
